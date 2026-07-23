@@ -293,43 +293,6 @@ export function LandingPage() {
          </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-20 border-t border-slate-100">
-         <div className="max-w-7xl mx-auto px-6">
-            <div className="grid md:grid-cols-4 gap-12 mb-20">
-               <div className="col-span-2">
-                  <div className="text-2xl font-black text-indigo-600 mb-6 tracking-tighter">SooVoice</div>
-                  <p className="text-lg text-slate-500 font-medium max-w-sm leading-relaxed mb-8">
-                     {language === 'ar' 
-                       ? 'نحن نساعد المتاجر على النمو من خلال تقنيات الذكاء الاصطناعي الصوتي المتطورة.' 
-                       : 'Helping stores grow through cutting-edge Voice AI technology.'}
-                  </p>
-                  <div className="flex items-center gap-4">
-                     <div className="h-12 w-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors"><Mail /></div>
-                     <div className="h-12 w-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors"><Phone /></div>
-                  </div>
-               </div>
-               <div>
-                  <h4 className="font-black text-slate-900 mb-8 uppercase tracking-widest text-sm">{language === 'ar' ? 'الروابط' : 'Links'}</h4>
-                  <ul className="space-y-4 text-slate-500 font-bold">
-                     <li><a href="#features" className="hover:text-indigo-600 transition-colors">{language === 'ar' ? 'المميزات' : 'Features'}</a></li>
-                     <li><Link to="/store" className="hover:text-indigo-600 transition-colors">{language === 'ar' ? 'المتجر' : 'Demo Store'}</Link></li>
-                     <li><Link to="/auth" className="hover:text-indigo-600 transition-colors">{language === 'ar' ? 'تسجيل الدخول' : 'Login'}</Link></li>
-                  </ul>
-               </div>
-               <div>
-                  <h4 className="font-black text-slate-900 mb-8 uppercase tracking-widest text-sm">{language === 'ar' ? 'قانوني' : 'Legal'}</h4>
-                  <ul className="space-y-4 text-slate-500 font-bold">
-                     <li><Link to="/privacy" className="hover:text-indigo-600 transition-colors">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy'}</Link></li>
-                     <li><Link to="/terms" className="hover:text-indigo-600 transition-colors">{language === 'ar' ? 'الشروط والأحكام' : 'Terms'}</Link></li>
-                  </ul>
-               </div>
-            </div>
-            <div className="pt-12 border-t border-slate-100 text-center">
-               <p className="text-slate-400 font-bold">© 2026 SooVoice AI. All rights reserved.</p>
-            </div>
-         </div>
-      </footer>
     </div>
   );
 }
