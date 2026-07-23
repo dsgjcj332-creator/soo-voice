@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "Merchant": {
+      "title": "Merchant",
+      "description": "Represents a store registered on the platform.",
+      "type": "object",
+      "properties": {
+        "store": { "type": "string" },
+        "email": { "type": "string" },
+        "platform": { "type": "string", "enum": ["Shopify", "Salla", "WooCommerce", "Zid", "Custom"] },
+        "status": { "type": "string", "enum": ["Active", "Pending", "Blocked", "Inactive"] },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "number", "description": "Timestamp in milliseconds" }
+      },
+      "required": ["store", "platform", "status", "ownerId", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A voice AI session instance.",
+      "type": "object",
+      "properties": {
+        "merchantId": { "type": "string" },
+        "user": { "type": "string" },
+        "intent": { "type": "string" },
+        "status": { "type": "string", "enum": ["Resolved", "Transferred", "Converted", "Drop-off"] },
+        "duration": { "type": "string" },
+        "date": { "type": "string" },
+        "isSuccess": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["merchantId", "status", "createdAt"]
+    },
+    "KnowledgeDocument": {
+      "title": "Knowledge Document",
+      "description": "A file or link providing context to the AI.",
+      "type": "object",
+      "properties": {
+        "merchantId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "content": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["merchantId", "name", "content", "createdAt"]
+    },
+    "SystemSettings": {
+      "title": "System Settings",
+      "description": "Global toggles for platform super admins.",
+      "type": "object",
+      "properties": {
+        "allowNewRegistrations": { "type": "boolean" },
+        "enableShopify": { "type": "boolean" },
+        "enableSalla": { "type": "boolean" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["allowNewRegistrations", "enableShopify", "enableSalla"]
+    },
+    "MenuItem": {
+      "title": "Menu Item",
+      "description": "A product or menu dish offered by the merchant, can be public or AI-only.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "isAiOnly": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "ownerId", "name", "price", "isAiOnly", "createdAt"]
+    },
+    "MerchantSettings": {
+      "title": "Merchant Settings",
+      "description": "Custom dynamic configurations for voice dialect, voice tone, and active business sector for each merchant.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "dialect": { "type": "string", "enum": ["standard", "egyptian", "gulf", "levantine"] },
+        "voiceTone": { "type": "string", "enum": ["Zephyr", "Charon", "Fenrir", "Kore", "Puck", "Aoede"] },
+        "businessType": { "type": "string", "enum": ["restaurant", "real_estate", "automotive", "general"] },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "dialect", "voiceTone", "businessType", "updatedAt"]
+    },
+    "WebhookSettings": {
+      "title": "Webhook Settings",
+      "description": "Stores POS and legacy integration webhook details for a merchant.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "webhookUrl": { "type": "string" },
+        "webhookSecret": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["ownerId", "webhookUrl", "webhookSecret"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Stores table and digital menu checkout orders for legacy system synchronization.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "tableNumber": { "type": "string" },
+        "items": { "type": "array" },
+        "total": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "ownerId", "tableNumber", "items", "total", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/merchants/{merchantId}": {
+      "schema": "Merchant",
+      "description": "Stores all merchants on the platform"
+    },
+    "/merchant_settings/{merchantId}": {
+      "schema": "MerchantSettings",
+      "description": "Stores voice dialing and widget settings for a merchant"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Stores logs of AI conversations"
+    },
+    "/knowledge_documents/{documentId}": {
+      "schema": "KnowledgeDocument",
+      "description": "Stores RAG documents for context"
+    },
+    "/settings/{settingId}": {
+      "schema": "SystemSettings",
+      "description": "Global system configurations (e.g. settings/global)"
+    },
+    "/menu_items/{itemId}": {
+      "schema": "MenuItem",
+      "description": "Stores digital menu items and product catalogs including hidden AI-only inventory"
+    },
+    "/webhook_settings/{merchantId}": {
+      "schema": "WebhookSettings",
+      "description": "Stores POS webhooks for merchant order sync"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Stores real-time orders from customers scanning table QRs"
+    }
+  }
+}

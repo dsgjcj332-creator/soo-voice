@@ -1,0 +1,293 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function isVerifiedUser() { return isSignedIn(); }
+    function isAdmin() { 
+      return isVerifiedUser() && request.auth.token.email == 'cbngj055@gmail.com'; 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // ==========================================
+    // MERCHANTS
+    // ==========================================
+    function isValidMerchantCreate(data) {
+      return data.keys().hasAll(['id', 'store', 'platform', 'status', 'ownerId', 'createdAt'])
+        && data.size() >= 6 && data.size() <= 7
+        && data.id is string
+        && data.store is string && data.store.size() > 0 && data.store.size() <= 100
+        && data.platform is string && (data.platform in ['Shopify', 'Salla', 'WooCommerce', 'Zid', 'Custom', 'MNMKNK'])
+        && data.status is string && (data.status in ['Active', 'Pending', 'Blocked', 'Inactive'])
+        && data.ownerId == request.auth.uid
+        && data.createdAt is number
+        && (!('email' in data.keys()) || (data.email is string && data.email.size() <= 100));
+    }
+
+    match /merchants/{merchantId} {
+      allow get: if isVerifiedUser() && isValidId(merchantId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      
+      allow create: if isVerifiedUser() 
+        && isValidId(merchantId) 
+        && isValidMerchantCreate(incoming());
+
+      allow update: if isVerifiedUser() && isValidId(merchantId) && (
+        isAdmin() ||
+        (existing().ownerId == request.auth.uid 
+         && incoming().diff(existing()).affectedKeys().hasOnly(['store', 'platform'])
+         && incoming().store is string && incoming().store.size() <= 100
+         && incoming().platform in ['Shopify', 'Salla', 'WooCommerce', 'Zid', 'Custom', 'MNMKNK']
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // CONVERSATIONS
+    // ==========================================
+    function isValidConversationCreate(data) {
+      return data.keys().hasAll(['merchantId', 'ownerId', 'status', 'createdAt'])
+        && data.size() >= 4 && data.size() <= 9
+        && data.merchantId is string && data.merchantId.size() <= 128
+        && data.ownerId is string && data.ownerId == request.auth.uid
+        && data.status is string && data.status in ['Resolved', 'Transferred', 'Converted', 'Drop-off']
+        && data.createdAt is number;
+    }
+
+    match /conversations/{conversationId} {
+      allow get: if isVerifiedUser() && isValidId(conversationId) && 
+        (existing().ownerId == request.auth.uid || isAdmin());
+        
+      allow list: if isVerifiedUser() && 
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isVerifiedUser() 
+        && isValidId(conversationId) 
+        && isValidConversationCreate(incoming());
+
+      allow update: if false; // Conversations are immutable logs
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // KNOWLEDGE DOCUMENTS
+    // ==========================================
+    function isValidKnowledgeCreate(data) {
+      return data.keys().hasAll(['id', 'merchantId', 'ownerId', 'name', 'type', 'content', 'status', 'date', 'createdAt'])
+        && data.size() >= 9 && data.size() <= 10
+        && data.id is string
+        && data.merchantId is string && data.merchantId.size() <= 128
+        && data.ownerId is string && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.type is string
+        && data.status is string
+        && data.date is string
+        && data.content is string && data.content.size() <= 1000000 // 1MB limit for safety
+        && data.createdAt is number;
+    }
+
+    match /knowledge_documents/{documentId} {
+      allow get: if isVerifiedUser() && isValidId(documentId) && 
+        (existing().ownerId == request.auth.uid || isAdmin());
+        
+      allow list: if isVerifiedUser() && 
+        (resource.data.ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isVerifiedUser() 
+        && isValidId(documentId)
+        && isValidKnowledgeCreate(incoming());
+
+      allow update: if false; // Documents are immutable. Delete and recreate.
+      
+      allow delete: if isVerifiedUser() && isValidId(documentId) && 
+        (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // ==========================================
+    // SYSTEM SETTINGS
+    // ==========================================
+    match /settings/{settingId} {
+      allow get: if isVerifiedUser() && isValidId(settingId);
+      allow list: if isVerifiedUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==========================================
+    // MERCHANT SETTINGS
+    // ==========================================
+    function isValidMerchantSettings(data) {
+      return data.keys().hasAll(['ownerId', 'dialect', 'voiceTone', 'businessType', 'updatedAt'])
+        && data.size() == 5
+        && data.ownerId == request.auth.uid
+        && data.dialect is string && (data.dialect in ['standard', 'egyptian', 'gulf', 'levantine'])
+        && data.voiceTone is string && (data.voiceTone in ['Zephyr', 'Charon', 'Fenrir', 'Kore', 'Puck', 'Aoede'])
+        && data.businessType is string && (data.businessType in ['restaurant', 'real_estate', 'automotive', 'general'])
+        && data.updatedAt is number;
+    }
+
+    match /merchant_settings/{merchantId} {
+      allow get: if isValidId(merchantId);
+      allow list: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      
+      allow create: if isVerifiedUser()
+        && isValidId(merchantId)
+        && merchantId == request.auth.uid
+        && isValidMerchantSettings(incoming());
+
+      allow update: if isVerifiedUser()
+        && isValidId(merchantId)
+        && merchantId == request.auth.uid
+        && (isAdmin() || (
+            existing().ownerId == request.auth.uid
+            && isValidMerchantSettings(incoming())
+            && incoming().diff(existing()).affectedKeys().hasOnly(['dialect', 'voiceTone', 'businessType', 'updatedAt'])
+        ));
+
+      allow delete: if isAdmin() || (isVerifiedUser() && merchantId == request.auth.uid);
+    }
+
+    // ==========================================
+    // MENU ITEMS
+    // ==========================================
+    function isValidMenuItemCreate(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'price', 'isAiOnly', 'createdAt'])
+        && data.size() >= 6 && data.size() <= 9
+        && data.id is string
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.price is number && data.price >= 0
+        && data.isAiOnly is bool
+        && data.createdAt is number
+        && (!('category' in data.keys()) || (data.category is string && data.category.size() <= 100))
+        && (!('description' in data.keys()) || (data.description is string && data.description.size() <= 1000))
+        && (!('merchantId' in data.keys()) || (data.merchantId is string && data.merchantId.size() <= 128));
+    }
+
+    match /menu_items/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true; // Publicly readable for widgets and store demo
+      
+      allow create: if isVerifiedUser()
+        && isValidId(itemId)
+        && isValidMenuItemCreate(incoming());
+
+      allow update: if isVerifiedUser() && isValidId(itemId) && (
+        isAdmin() ||
+        (existing().ownerId == request.auth.uid
+         && isValidMenuItemCreate(incoming())
+         && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'price', 'description', 'category', 'isAiOnly', 'updatedAt'])
+        )
+      );
+
+      allow delete: if isVerifiedUser() && isValidId(itemId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+    
+    // ==========================================
+    // GLOBAL VOICES
+    // ==========================================
+    match /global_voices/{voiceId} {
+      allow get: if isVerifiedUser() && isValidId(voiceId);
+      allow list: if isVerifiedUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==========================================
+    // WEBHOOK SETTINGS
+    // ==========================================
+    function isValidWebhookSettings(data) {
+      return data.keys().hasAll(['ownerId', 'webhookUrl', 'webhookSecret'])
+        && data.size() >= 3 && data.size() <= 5
+        && data.ownerId == request.auth.uid
+        && data.webhookUrl is string && data.webhookUrl.size() <= 1000
+        && data.webhookSecret is string && data.webhookSecret.size() <= 256
+        && (!('createdAt' in data.keys()) || data.createdAt is number)
+        && (!('updatedAt' in data.keys()) || data.updatedAt is number);
+    }
+
+    match /webhook_settings/{merchantId} {
+      allow get: if isVerifiedUser() && isValidId(merchantId) && (merchantId == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow create: if isVerifiedUser() && isValidId(merchantId) && merchantId == request.auth.uid && isValidWebhookSettings(incoming());
+      allow update: if isVerifiedUser() && isValidId(merchantId) && merchantId == request.auth.uid && isValidWebhookSettings(incoming());
+      allow delete: if isVerifiedUser() && isValidId(merchantId) && (merchantId == request.auth.uid || isAdmin());
+    }
+
+    // ==========================================
+    // ORDERS
+    // ==========================================
+    function isValidOrderCreate(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'tableNumber', 'items', 'total', 'status', 'createdAt'])
+        && data.size() == 7
+        && data.id is string
+        && data.ownerId is string
+        && data.tableNumber is string && data.tableNumber.size() <= 100
+        && data.items is list && data.items.size() >= 0 && data.items.size() <= 100
+        && data.total is number && data.total >= 0
+        && data.status is string && (data.status in ['pending', 'preparing', 'completed', 'cancelled'])
+        && data.createdAt is number;
+    }
+
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && (
+        !resource.data.keys().hasAll(['ownerId']) || 
+        (isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin()))
+      );
+      allow list: if isVerifiedUser() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      
+      // Allow any customer to create an order
+      allow create: if isValidId(orderId) && isValidOrderCreate(incoming());
+      
+      // Allow merchant to update order status
+      allow update: if isVerifiedUser() && isValidId(orderId) && (
+        isAdmin() || (
+          existing().ownerId == request.auth.uid
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+          && incoming().status in ['pending', 'preparing', 'completed', 'cancelled']
+        )
+      );
+      
+      allow delete: if isVerifiedUser() && isValidId(orderId) && (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // ==========================================
+    // USERS (Profiles)
+    // ==========================================
+    function isValidUserCreate(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'plan'])
+        && data.size() >= 5 && data.size() <= 6
+        && data.uid is string && data.uid == request.auth.uid
+        && data.email is string && data.email.size() <= 200
+        && data.displayName is string && data.displayName.size() <= 200
+        && data.createdAt is number
+        && data.plan is string && (data.plan in ['free', 'pro', 'enterprise']);
+    }
+
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid && isValidUserCreate(incoming());
+      allow update: if isVerifiedUser() && isValidId(userId) && userId == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'plan']);
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // ADMINS
+    // ==========================================
+    match /admins/{uid} {
+      allow read: if isVerifiedUser(); // Allow users to check if an admin exists
+      allow write: if false; // Only manageable from backend script or GCP console
+    }
+  }
+}
