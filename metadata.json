@@ -1,6 +1,0 @@
-{
-  "name": "Live Voice AI SaaS",
-  "description": "A SaaS application with a live voice widget powered by Gemini Live API",
-  "requestFramePermissions": ["microphone"],
-  "majorCapabilities": []
-}
