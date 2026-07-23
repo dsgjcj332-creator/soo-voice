@@ -2,18 +2,18 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import crypto from 'crypto';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 
-async function startServer() {
+export async function createApp() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json({ limit: '2mb' }));
 
-  // Initialize Firebase Admin-like access (server-side)
-  const fbApp = initializeApp(firebaseConfig);
+  // Initialize Firebase (reuse if already initialized)
+  const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
   const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
 
   // ==========================================
@@ -255,7 +255,7 @@ async function startServer() {
   });
 
   // ==========================================
-  // VITE MIDDLEWARE (Handles frontend React app)
+  // VITE MIDDLEWARE (Handles frontend React app) - DEV ONLY
   // ==========================================
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -271,10 +271,15 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`API endpoints: /api/analytics, /api/conversations, /api/orders, /api/webhook-settings, /api/health`);
-  });
+  return { app, PORT };
 }
 
-startServer();
+// Run as standalone server only in dev mode (not on Netlify)
+if (!process.env.NETLIFY) {
+  createApp().then(({ app, PORT }) => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`API endpoints: /api/analytics, /api/conversations, /api/orders, /api/webhook-settings, /api/health`);
+    });
+  });
+}
