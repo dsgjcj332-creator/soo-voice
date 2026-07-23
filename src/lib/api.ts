@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import crypto from 'crypto';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -6,6 +7,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 export function createApiApp() {
   const app = express();
+  app.use(cors({ origin: true }));
   app.use(express.json({ limit: '2mb' }));
 
   const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
