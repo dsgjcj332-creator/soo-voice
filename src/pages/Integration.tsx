@@ -28,8 +28,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, setDoc, collection, query, where, onSnapshot, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+// Firebase imports removed for Supabase-only mode
 
 export function Integration() {
   const { language } = useLanguage();

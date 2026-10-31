@@ -3,9 +3,8 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle2, ShieldCheck, Loader2, Bot, Database, Blocks, LogIn } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
-import { doc, setDoc } from "firebase/firestore";
-import { db, auth } from "../lib/firebase";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+// Firebase imports removed for Supabase-only mode
+import { getSupabase, getSupabaseConfig } from "../lib/supabase";
 
 export function OAuthInstall() {
   const [searchParams] = useSearchParams();

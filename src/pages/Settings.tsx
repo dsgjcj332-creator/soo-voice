@@ -327,7 +327,7 @@ export function Settings() {
             ) : (
               <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-bold flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                {language === 'ar' ? 'قيد العمل (فايربيز الافتراضي)' : 'Running on Firebase'}
+                {language === 'ar' ? 'قيد العمل (الوضع المحلي)' : 'Running in Local Mode'}
               </span>
             )}
           </div>
@@ -422,7 +422,7 @@ export function Settings() {
               <RotateCcw className="w-4 h-4 text-slate-500" />
               {resetSuccess 
                 ? (language === 'ar' ? 'تمت العودة للوضع الافتراضي!' : 'Restored!') 
-                : (language === 'ar' ? 'استعادة ضبط Firebase الافتراضي' : 'Reset to Default Firebase')}
+                : (language === 'ar' ? 'استعادة ضبط الإعدادات الافتراضية' : 'Reset to Default Settings')}
             </button>
           </div>
 
