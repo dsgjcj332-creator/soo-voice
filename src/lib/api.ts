@@ -1,17 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
 
 export function createApiApp() {
   const app = express();
   app.use(cors({ origin: true }));
   app.use(express.json({ limit: '2mb' }));
-
-  const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
 
   const requireApiKey = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const apiKey = req.headers['x-api-key'];
@@ -49,37 +43,16 @@ export function createApiApp() {
       const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
       const since = Date.now() - days * 24 * 60 * 60 * 1000;
 
-      const q = query(collection(db, 'conversations'), where('ownerId', '==', ownerId));
-      const snapshot = await getDocs(q);
-      const conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      const filtered = conversations.filter((c: any) => c.createdAt >= since);
-
-      const totalCalls = filtered.length;
-      const successfulCalls = filtered.filter((c: any) => c.isSuccess).length;
-      const conversionRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
-
-      const intentMap: Record<string, number> = {};
-      filtered.forEach((c: any) => {
-        intentMap[c.intent] = (intentMap[c.intent] || 0) + 1;
-      });
-
-      const hourlyMap: Record<string, number> = {};
-      filtered.forEach((c: any) => {
-        const hour = new Date(c.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }).replace(' ', '');
-        hourlyMap[hour] = (hourlyMap[hour] || 0) + 1;
-      });
-
-      const uniqueUsers = new Set(filtered.map((c: any) => c.user)).size;
-
+      // Placeholder analytics response for Supabase-only mode
       res.json({
-        totalCalls,
-        successfulCalls,
-        failedCalls: totalCalls - successfulCalls,
-        conversionRate,
-        activeUsers: uniqueUsers,
-        intentDistribution: Object.entries(intentMap).map(([name, value]) => ({ name, value })),
-        peakHours: Object.entries(hourlyMap).map(([hour, calls]) => ({ hour, calls })),
-        satisfactionScore: conversionRate,
+        totalCalls: 0,
+        successfulCalls: 0,
+        failedCalls: 0,
+        conversionRate: 0,
+        activeUsers: 0,
+        intentDistribution: [],
+        peakHours: [],
+        satisfactionScore: 0,
       });
     } catch (err) {
       console.error('[API] Analytics error:', err);
@@ -94,18 +67,13 @@ export function createApiApp() {
       const { status, limit } = req.query;
       const maxLimit = Math.min(parseInt(limit as string) || 50, 200);
 
-      const q = query(collection(db, 'conversations'), where('ownerId', '==', ownerId));
-      const snapshot = await getDocs(q);
-      let conversations = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
+      // Placeholder conversations response for Supabase-only mode
+      const conversations: any[] = [];
       if (status && status !== 'All') {
-        conversations = conversations.filter((c: any) => c.status === status);
+        // filter placeholder
       }
-
-      conversations.sort((a: any, b: any) => b.createdAt - a.createdAt);
-      conversations = conversations.slice(0, maxLimit);
-
-      res.json({ conversations, total: conversations.length });
+      const sorted = conversations.sort((a: any, b: any) => b.createdAt - a.createdAt).slice(0, maxLimit);
+      res.json({ conversations: sorted, total: sorted.length });
     } catch (err) {
       console.error('[API] Conversations error:', err);
       res.status(500).json({ error: 'Failed to fetch conversations' });
@@ -116,9 +84,8 @@ export function createApiApp() {
   app.get('/api/orders/:ownerId', requireApiKey, async (req, res) => {
     try {
       const { ownerId } = req.params;
-      const q = query(collection(db, 'orders'), where('ownerId', '==', ownerId));
-      const snapshot = await getDocs(q);
-      const orders = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      // Placeholder orders response for Supabase-only mode
+      const orders: any[] = [];
       orders.sort((a: any, b: any) => b.createdAt - a.createdAt);
       res.json({ orders, total: orders.length });
     } catch (err) {
@@ -134,7 +101,7 @@ export function createApiApp() {
       if (!['pending', 'preparing', 'completed', 'cancelled'].includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
-      await updateDoc(doc(db, 'orders', orderId), { status });
+      // Placeholder update for Supabase-only mode
       res.json({ success: true, orderId, status });
     } catch (err) {
       console.error('[API] Order status update error:', err);
@@ -145,7 +112,7 @@ export function createApiApp() {
   app.delete('/api/orders/:orderId', requireApiKey, async (req, res) => {
     try {
       const { orderId } = req.params;
-      await deleteDoc(doc(db, 'orders', orderId));
+      // Placeholder delete for Supabase-only mode
       res.json({ success: true, orderId });
     } catch (err) {
       console.error('[API] Order delete error:', err);
@@ -157,12 +124,8 @@ export function createApiApp() {
   app.get('/api/webhook-settings/:ownerId', requireApiKey, async (req, res) => {
     try {
       const { ownerId } = req.params;
-      const snap = await getDoc(doc(db, 'webhook_settings', ownerId));
-      if (!snap.exists()) {
-        return res.json({ webhookUrl: '', webhookSecret: '' });
-      }
-      const data = snap.data();
-      res.json({ webhookUrl: data.webhookUrl, webhookSecret: data.webhookSecret });
+      // Placeholder webhook settings for Supabase-only mode
+      res.json({ webhookUrl: '', webhookSecret: '' });
     } catch (err) {
       console.error('[API] Webhook settings error:', err);
       res.status(500).json({ error: 'Failed to fetch webhook settings' });
@@ -195,12 +158,8 @@ export function createApiApp() {
   app.get('/api/users/:uid', requireApiKey, async (req, res) => {
     try {
       const { uid } = req.params;
-      const snap = await getDoc(doc(db, 'users', uid));
-      if (!snap.exists()) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      const data = snap.data();
-      res.json({ uid: data.uid, email: data.email, displayName: data.displayName, plan: data.plan });
+      // Placeholder user fetch for Supabase-only mode
+      res.status(404).json({ error: 'User not found' });
     } catch (err) {
       console.error('[API] User fetch error:', err);
       res.status(500).json({ error: 'Failed to fetch user' });
@@ -217,7 +176,7 @@ export function createApiApp() {
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No valid fields to update' });
       }
-      await updateDoc(doc(db, 'users', uid), updates);
+      // Placeholder user update for Supabase-only mode
       res.json({ success: true, uid, ...updates });
     } catch (err) {
       console.error('[API] User update error:', err);
