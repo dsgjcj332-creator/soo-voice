@@ -56,7 +56,7 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
             .order('createdAt', { ascending: false });
             
           if (error) throw error;
-          setDocuments(data || []);
+          setDocuments((data || []).sort((a, b) => b.createdAt - a.createdAt));
         } catch (err) {
           console.error("Failed to fetch from Supabase table 'knowledge_documents'.", err);
           console.log("[Knowledge] Falling back to LocalStorage simulation for Supabase testing...");
@@ -86,26 +86,6 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
       return () => {
         supabase.removeChannel(channel);
       };
-    } else {
-      console.log("[Knowledge] Subscribed and fetching from Firebase Firestore...");
-      const q = query(
-        collection(db, 'knowledge_documents'), 
-        where('ownerId', '==', user.uid)
-      );
-      
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const docs = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        } as KnowledgeDocument));
-        setDocuments(docs.sort((a, b) => b.createdAt - a.createdAt));
-        setLoading(false);
-      }, (error) => {
-         console.error("Knowledge base fetch error:", error);
-         setLoading(false);
-      });
-
-      return () => unsubscribe();
     }
   }, [user, isConfigured]);
 
@@ -144,9 +124,6 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(`sb_docs_${user.uid}`, JSON.stringify(updated));
         setDocuments(updated);
       }
-    } else {
-      // Save to firebase
-      await setDoc(doc(db, 'knowledge_documents', docId), newDoc);
     }
   };
 
@@ -187,9 +164,6 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(`sb_docs_${user.uid}`, JSON.stringify(updated));
         setDocuments(updated);
       }
-    } else {
-      // Save to firebase
-      await setDoc(doc(db, 'knowledge_documents', id), updatedDoc);
     }
   };
 
@@ -215,8 +189,6 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(`sb_docs_${user.uid}`, JSON.stringify(updated));
         setDocuments(updated);
       }
-    } else {
-      await deleteDoc(doc(db, 'knowledge_documents', id));
     }
   };
 

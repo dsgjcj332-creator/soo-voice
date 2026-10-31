@@ -1,26 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { 
-  Code2, 
-  ShoppingBag, 
-  Store, 
-  Boxes, 
-  Copy, 
-  ExternalLink, 
-  ArrowRight, 
-  CheckCircle2, 
-  Monitor, 
-  Code, 
-  Wifi, 
-  Webhook, 
-  Play, 
-  Terminal, 
-  HelpCircle, 
-  RefreshCw, 
-  AlertCircle, 
-  Trash, 
-  Server, 
-  CheckSquare, 
+  Code2,
+  ShoppingBag,
+  Store,
+  Boxes,
+  Copy,
+  ExternalLink,
+  ArrowRight,
+  CheckCircle2,
+  Monitor,
+  Code,
+  Wifi,
+  Webhook,
+  Play,
+  Terminal,
+  HelpCircle,
+  RefreshCw,
+  AlertCircle,
+  Trash,
+  Server,
+  CheckSquare,
   Bell,
   Utensils,
   Plus,
@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-// Firebase imports removed for Supabase-only mode
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export function Integration() {
   const { language } = useLanguage();
@@ -67,19 +67,27 @@ export function Integration() {
   // Load webhook settings
   useEffect(() => {
     if (!user) return;
-    if (user.provider === 'local') return; // Skip Firestore for local demo users
+    if (user.provider === 'local') return; // Skip DB for local demo users
     const fetchWebhookSettings = async () => {
       try {
-        const docRef = doc(db, 'webhook_settings', user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
-          if (data.webhookSecret) setWebhookSecret(data.webhookSecret);
-        } else {
-          // Generate a default random secret token
-          const randSecret = 'whsec_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-          setWebhookSecret(randSecret);
+        const supabase = getSupabase();
+        const { isConfigured } = getSupabaseConfig();
+        
+        if (isConfigured && supabase) {
+          const { data, error } = await supabase
+            .from('webhook_settings')
+            .select('*')
+            .eq('ownerId', user.uid)
+            .single();
+
+          if (!error && data) {
+            if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
+            if (data.webhookSecret) setWebhookSecret(data.webhookSecret);
+          } else {
+            // Generate a default random secret token
+            const randSecret = 'whsec_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            setWebhookSecret(randSecret);
+          }
         }
       } catch (err) {
         console.error('Error fetching webhook settings:', err);
@@ -91,40 +99,53 @@ export function Integration() {
   // Listen to live orders from table QR codes in real-time
   useEffect(() => {
     if (!user) return;
-    if (user.provider === 'local') return; // Skip Firestore for local demo users
+    if (user.provider === 'local') return; // Skip DB for local demo users
     setLoadingOrders(true);
 
-    const q = query(
-      collection(db, 'orders'),
-      where('ownerId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setOrders(docs);
+    if (!isConfigured || !supabase) {
       setLoadingOrders(false);
+      return;
+    }
 
-      // Play sound notification if a new pending order arrives
-      const hasNewOrder = snapshot.docChanges().some(change => change.type === 'added');
-      if (hasNewOrder && snapshot.docChanges().length > 0) {
-        try {
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-600.wav');
-          audio.volume = 0.5;
-          audio.play();
-        } catch (e) {
-          console.log('Audio notification bypass:', e);
+    const channel = supabase
+      .channel('integration-orders-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `ownerId=eq.${user.uid}`
+        },
+        (payload) => {
+          if (payload.new) {
+            setOrders(prev => {
+              const exists = prev.some(o => o.id === (payload.new as any).id);
+              if (exists) return prev;
+              return [(payload.new as any), ...prev];
+            });
+          }
         }
-      }
-    }, (error) => {
-      console.error('Error listening to live orders:', error);
-      setLoadingOrders(false);
-    });
+      )
+      .subscribe();
 
-    return () => unsubscribe();
+    // Load initial orders
+    supabase
+      .from('orders')
+      .select('*')
+      .eq('ownerId', user.uid)
+      .order('createdAt', { ascending: false })
+      .then(({ data }) => {
+        setOrders(data || []);
+        setLoadingOrders(false);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const origin = window.location.origin;
@@ -191,12 +212,14 @@ export function Integration() {
     setIsSavingWebhook(true);
     setWebhookStatusMessage('');
     try {
-      await setDoc(doc(db, 'webhook_settings', user.uid), {
-        ownerId: user.uid,
-        webhookUrl,
-        webhookSecret,
-        updatedAt: Date.now()
-      });
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        await supabase
+          .from('webhook_settings')
+          .upsert({ ownerId: user.uid, webhookUrl, webhookSecret, updatedAt: Date.now() });
+      }
       setWebhookStatusMessage(language === 'ar' ? '✅ تم حفظ إعدادات الويب هوك بنجاح!' : '✅ Webhook settings saved successfully!');
     } catch (err) {
       console.error(err);
@@ -264,7 +287,15 @@ export function Integration() {
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        await supabase
+          .from('orders')
+          .update({ status: newStatus })
+          .eq('id', orderId);
+      }
     } catch (err) {
       console.error('Error updating order status:', err);
     }
@@ -273,7 +304,15 @@ export function Integration() {
   const handleDeleteOrder = async (orderId: string) => {
     if (!confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذا الطلب؟' : 'Are you sure you want to delete this order?')) return;
     try {
-      await deleteDoc(doc(db, 'orders', orderId));
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        await supabase
+          .from('orders')
+          .delete()
+          .eq('id', orderId);
+      }
     } catch (err) {
       console.error('Error deleting order:', err);
     }
@@ -297,7 +336,14 @@ export function Integration() {
       createdAt: Date.now()
     };
     try {
-      await setDoc(doc(db, 'orders', testOrderId), testOrder);
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        await supabase
+          .from('orders')
+          .insert(testOrder);
+      }
     } catch (err) {
       console.error('Failed to create test order:', err);
     }
