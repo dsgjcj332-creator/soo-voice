@@ -25,172 +25,69 @@ interface SeedItem {
 const seedTemplates: Record<BusinessType, SeedItem[]> = {
   restaurant: [
     {
-      nameAr: "برجر دبل لحم بالجبن السويسري",
-      nameEn: "Double Beef Swiss Burger",
-      price: 45,
-      categoryAr: "برجر / Burgers",
+      nameAr: "برجر دبل بيف تشيز فاخر",
+      nameEn: "Double Beef Cheese Burger",
+      price: 38,
+      categoryAr: "برجر ووجبات / Burgers",
       categoryEn: "Burgers",
-      descAr: "شريحتين من لحم البقر المشوي الفاخر مع الجبن السويسري الذائب والصلصة الخاصة",
-      descEn: "Two premium grilled beef patties with melted Swiss cheese and special chef sauce",
+      descAr: "شريحتين لحم بقري أنجوس مشوي على اللهب مع جبن شيدر ذائب وصوص سموكي خاص في خبز بريوش طازج",
+      descEn: "Two flame-grilled Angus beef patties with melted cheddar cheese and smoky chef sauce in a brioche bun",
       isAiOnly: false
     },
     {
-      nameAr: "وجبة دجاج مقرمش عائلية",
-      nameEn: "Crispy Chicken Family Meal",
-      price: 85,
+      nameAr: "وجبة كرسبي تشيكن ستريبس مقرمش",
+      nameEn: "Crispy Chicken Tenders Meal",
+      price: 34,
       categoryAr: "وجبات / Meals",
       categoryEn: "Meals",
-      descAr: "8 قطع من الدجاج المقرمش الذهبي تقدم مع البطاطس المقلية العائلية والخبز والثومية والبيبسي",
-      descEn: "8 pieces of golden crispy chicken served with family fries, garlic sauce and soft drink",
+      descAr: "أصابع دجاج مقرمشة بتتبيلة خاصة تقدم مع بطاطس مقلية ذهبية وخبز وصوص باربكيو وثومية",
+      descEn: "Crispy seasoned chicken tenders served with golden french fries, garlic dip, and BBQ sauce",
       isAiOnly: false
     },
     {
-      nameAr: "بيتزا مارغريتا إيطالية كلاسيكية",
-      nameEn: "Classic Italian Margherita Pizza",
-      price: 50,
+      nameAr: "بيتزا تروفل وموزاريلا إيطالية",
+      nameEn: "Italian Truffle Mozzarella Pizza",
+      price: 48,
       categoryAr: "بيتزا / Pizza",
       categoryEn: "Pizza",
-      descAr: "عجينة إيطالية رقيقة ومقرمشة مع صلصة الطماطم الغنية بالريحان وجبنة الموزاريلا الفاخرة",
-      descEn: "Thin Italian crust topped with rich tomato basil sauce and premium melted mozzarella cheese",
+      descAr: "عجينة نابولية مخمرة بحرارة الحطب مع صلصة التروفل البيضاء وجبنة موزاريلا طازجة وفطر بري",
+      descEn: "Wood-fired Neapolitan crust with rich white truffle crema, fresh mozzarella, and wild mushrooms",
       isAiOnly: false
     },
     {
-      nameAr: "برجر الشيف السري الحصري",
-      nameEn: "Secret Chef's Burger (Exclusive)",
-      price: 65,
-      categoryAr: "برجر / Burgers",
-      categoryEn: "Burgers",
-      descAr: "عرض حصري وخاص بالمساعد الصوتي فقط! برجر فاخر مغطى بجبنة الشيدر السائلة ورقائق لحم بقري مقرمشة ومغطى بحلقات البصل",
-      descEn: "Voice assistant exclusive! Premium beef burger smothered in liquid cheddar, crispy beef bacon, and onion rings",
+      nameAr: "سبانش لاتيه بارد ومثلج",
+      nameEn: "Iced Spanish Latte",
+      price: 18,
+      categoryAr: "مشروبات وقهوة / Coffee",
+      categoryEn: "Coffee & Drinks",
+      descAr: "إسبريسو غني مستخلص من حبوب بن مختصة مع الحليب المكثف المحلى ومكعبات الثلج المنعشة",
+      descEn: "Rich specialty espresso pulled over sweetened condensed milk and crisp crushed ice",
+      isAiOnly: false
+    },
+    {
+      nameAr: "كيكة تشيز كيك بالسان سباستيان",
+      nameEn: "San Sebastian Basque Cheesecake",
+      price: 24,
+      categoryAr: "حلويات / Desserts",
+      categoryEn: "Desserts",
+      descAr: "تشيز كيك كريمي محروق من الأطراف يذوب في الفم مع صوص الشوكولاتة البلجيكية الدافئة",
+      descEn: "Creamy crustless caramelized cheesecake served with warm Belgian chocolate ganache",
+      isAiOnly: false
+    },
+    {
+      nameAr: "وجبة الشيف السرية الحصرية (أوف منيو)",
+      nameEn: "Chef's Secret Off-Menu Special",
+      price: 55,
+      categoryAr: "أطباق سرية / Secret Menu",
+      categoryEn: "Secret Menu",
+      descAr: "طلب حصري لا يظهر بالمنيو البصري بل يعرفه المساعد الصوتي فقط! برجر واغيو مدخن بخلطة الشيف السرية ورقائق البطاطا المقرمشة",
+      descEn: "Exclusive off-menu item known only to your Voice AI Waiter! Smoked Wagyu burger with secret glaze and truffle fries",
       isAiOnly: true
     }
   ],
-  real_estate: [
-    {
-      nameAr: "شقة سكنية عصرية مفروشة بالكامل",
-      nameEn: "Modern Fully Furnished Apartment",
-      price: 1500,
-      categoryAr: "شقق / Apartments",
-      categoryEn: "Apartments",
-      descAr: "شقة سكنية حديثة مفروشة بالكامل مكونة من غرفتين وصالة واسعة وإطلالة مميزة في وسط المدينة",
-      descEn: "Modern 2-bedroom fully furnished apartment with a spacious living room and views in city center",
-      isAiOnly: false
-    },
-    {
-      nameAr: "فيلا عائلية راقية بمسبح خاص",
-      nameEn: "Luxurious Family Villa with Pool",
-      price: 4500,
-      categoryAr: "فلل / Villas",
-      categoryEn: "Villas",
-      descAr: "فيلا مستقلة راقية تحتوي على 4 غرف نوم، صالة ضيوف فخمة، مسبح خاص، وحديقة أمامية وخلفية واسعة",
-      descEn: "Premium detached villa featuring 4 bedrooms, luxury reception hall, private pool, and large gardens",
-      isAiOnly: false
-    },
-    {
-      nameAr: "مكتب مجهز للشركات والمشاريع",
-      nameEn: "Fully Equipped Corporate Office",
-      price: 2800,
-      categoryAr: "مكاتب وتجاري / Commercial",
-      categoryEn: "Commercial",
-      descAr: "مكتب مجهز بالكامل للعمل الفوري في برج تجاري مرموق مع إطلالة بانورامية ومواقف سيارات خاصة وسكرتارية مشتركة",
-      descEn: "Turnkey corporate office in a prestigious commercial tower with panoramic views and private parking",
-      isAiOnly: false
-    },
-    {
-      nameAr: "فيلا VIP ملكية على شاطئ البحر",
-      nameEn: "Royal VIP Seafront Villa",
-      price: 9500,
-      categoryAr: "فلل / Villas",
-      categoryEn: "Villas",
-      descAr: "عرض مخفي وحصري متوفر عبر المساعد الصوتي فقط! فيلا مستقلة على البحر مباشرة مع مرسى يخوت خاص وتشطيبات ملكية فاخرة جداً",
-      descEn: "Voice exclusive listing! Majestic seafront detached villa with private yacht dock and bespoke royal finishes",
-      isAiOnly: true
-    }
-  ],
-  automotive: [
-    {
-      nameAr: "سيارة سيدان اقتصادية وعائلية حديثة",
-      nameEn: "Modern Eco Family Sedan",
-      price: 85000,
-      categoryAr: "سيارات / Cars",
-      categoryEn: "Cars",
-      descAr: "سيارة سيدان مريحة موديل السنة، اقتصادية جداً في استهلاك الوقود ومزودة بأحدث أنظمة الأمان والترفيه والتحكم بالمسار",
-      descEn: "Modern fuel-efficient family sedan, equipped with lane-keep assist and advanced smart safety systems",
-      isAiOnly: false
-    },
-    {
-      nameAr: "سيارة دفع رباعي رياضية وقوية",
-      nameEn: "Sports Family SUV (4WD)",
-      price: 135000,
-      categoryAr: "سيارات / Cars",
-      categoryEn: "Cars",
-      descAr: "سيارة عائلية رياضية ذات دفع رباعي ومحرك قوي لجميع التضاريس مع سقف بانورامي ومقاعد جلدية فاخرة وأنظمة ذكية للقيادة الوعرة",
-      descEn: "Family sports SUV with robust 4WD, powerful all-terrain engine, panoramic sunroof and premium leather seats",
-      isAiOnly: false
-    },
-    {
-      nameAr: "باقة الصيانة الشاملة للمحرك والأنظمة",
-      nameEn: "Comprehensive Engine Maintenance Package",
-      price: 450,
-      categoryAr: "خدمات / Services",
-      categoryEn: "Services",
-      descAr: "باقة فحص وصيانة شاملة للمحرك تشمل تغيير الزيت والفلاتر والتحقق من الكمبيوتر وحالة المكابح والأنظمة الإلكترونية",
-      descEn: "Complete engine tune-up package: includes full synthetic oil, filter change, computer diagnostic, and brakes inspection",
-      isAiOnly: false
-    },
-    {
-      nameAr: "سيارة رياضية خارقة مستوردة (طلب حصري)",
-      nameEn: "Imported V8 Sports Supercar",
-      price: 420000,
-      categoryAr: "سيارات / Cars",
-      categoryEn: "Cars",
-      descAr: "إصدار رياضي محدود متوفر فقط للطلب والاستفسار الصوتي الحصري عبر المساعد! محرك V8 ثنائي التيربو بقوة حصانية فائقة",
-      descEn: "Limited custom supercar! Twin-turbocharged V8 engine with breathtaking acceleration available only via voice queries",
-      isAiOnly: true
-    }
-  ],
-  general: [
-    {
-      nameAr: "سماعة رأس لاسلكية ذكية مع إلغاء الضوضاء",
-      nameEn: "Smart ANC Wireless Headset",
-      price: 120,
-      categoryAr: "إلكترونيات / Electronics",
-      categoryEn: "Electronics",
-      descAr: "سماعة رأس لاسلكية مريحة مع ميزة إلغاء الضوضاء النشط الفائق وعمر بطارية طويل جداً يصل لـ 40 ساعة من الاستخدام المتواصل",
-      descEn: "Over-ear wireless headphones with active noise cancellation and up to 40 hours of continuous premium audio playback",
-      isAiOnly: false
-    },
-    {
-      nameAr: "محفظة رجالية من الجلد الطبيعي الفاخر",
-      nameEn: "Premium Handcrafted Leather Wallet",
-      price: 45,
-      categoryAr: "إكسسوارات / Accessories",
-      categoryEn: "Accessories",
-      descAr: "محفظة رجالية مصنوعة من الجلد الطبيعي المتين بتصميم كلاسيكي نحيف ومساحة تتسع لجميع البطاقات الشخصية والعملات الورقية",
-      descEn: "Slim handcrafted genuine leather wallet featuring dual bill compartments and 8 RFID-protected card slots",
-      isAiOnly: false
-    },
-    {
-      nameAr: "شاحن جداري ذكي سريع بقوة 35 واط",
-      nameEn: "Dual Port Smart Fast Charger 35W",
-      price: 25,
-      categoryAr: "إكسسوارات / Accessories",
-      categoryEn: "Accessories",
-      descAr: "شاحن جداري سريع بقدرة 35 واط متوافق مع كافة الهواتف والأجهزة الذكية مع حماية ذكية من التماس والجهد الزائد",
-      descEn: "Compact 35W fast wall charger featuring dual USB-C ports and advanced heat/surge protection logic",
-      isAiOnly: false
-    },
-    {
-      nameAr: "ساعة ذكية مطلية بالذهب (إصدار خاص)",
-      nameEn: "Limited 24K Gold Smartwatch",
-      price: 350,
-      categoryAr: "إلكترونيات / Electronics",
-      categoryEn: "Electronics",
-      descAr: "عرض حصري وخاص بالمساعد الذكي فقط! ساعة يد ذكية مطلية بماء الذهب عيار 24 مع مستشعر متقدم لقياس الصحة والتمارين والنبض",
-      descEn: "Exclusive voice-only premium offer! 24K gold plated luxury smartwatch featuring advanced health and sleep tracking sensors",
-      isAiOnly: true
-    }
-  ]
+  real_estate: [],
+  automotive: [],
+  general: []
 };
 
 export function OnboardingWizard() {
@@ -207,47 +104,52 @@ export function OnboardingWizard() {
   const [copied, setCopied] = useState(false);
   const [testActive, setTestActive] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [selectedConcept, setSelectedConcept] = useState(() => localStorage.getItem('restaurant_concept') || 'burgers_fast_casual');
 
-  // Business Types definitions
+  // Restaurant Concepts definitions
   const businessTypesList = [
     {
       id: 'restaurant' as BusinessType,
-      titleAr: 'مطعم ومقهى',
-      titleEn: 'Restaurant & Café',
-      descAr: 'للطلب الإلكتروني، حجز الطاولات، واستعراض الوجبات والأطباق اليومية.',
-      descEn: 'For online food ordering, table bookings, and daily dish details.',
+      conceptId: 'burgers_fast_casual',
+      titleAr: 'وجبات سريعة وبرجر',
+      titleEn: 'Fast Casual & Burgers',
+      descAr: 'للطلب السريع، الكومبو، البطاطس المقلية، الصوصات الإضافية، وإرسال الطلب للمطبخ فوراً.',
+      descEn: 'For fast ordering, combo meals, french fries, dips, and instant kitchen ticket dispatch.',
       icon: Store,
       color: 'from-orange-500 to-amber-500',
       bgLight: 'bg-orange-50/50'
     },
     {
-      id: 'real_estate' as BusinessType,
-      titleAr: 'عقارات وشقق',
-      titleEn: 'Real Estate & Properties',
-      descAr: 'لمعاينة الفلل، الشقق، حجز المواعيد واستعراض تفاصيل الاستثمار العقاري.',
-      descEn: 'For viewing villas, apartments, booking viewings, and property specs.',
-      icon: Home,
-      color: 'from-blue-500 to-indigo-500',
-      bgLight: 'bg-blue-50/50'
+      id: 'restaurant' as BusinessType,
+      conceptId: 'specialty_coffee_desserts',
+      titleAr: 'كافيه ومشروبات ومخبوزات',
+      titleEn: 'Specialty Café & Bakery',
+      descAr: 'لمشروبات القهوة الساخنة والباردة، أنواع الحليب، المخبوزات الطازجة والحلويات الفاخرة.',
+      descEn: 'For hot & iced specialty coffee, artisan pastries, desserts, and custom milk choices.',
+      icon: Store,
+      color: 'from-amber-600 to-yellow-500',
+      bgLight: 'bg-amber-50/50'
     },
     {
-      id: 'automotive' as BusinessType,
-      titleAr: 'سيارات وصيانة',
-      titleEn: 'Automotive & Parts',
-      descAr: 'لطلب قطع الغيار، حجز مواعيد الصيانة، واستعراض السيارات المعروضة للبيع.',
-      descEn: 'For ordering parts, booking maintenance slots, and car inventory.',
-      icon: Car,
-      color: 'from-red-500 to-rose-500',
-      bgLight: 'bg-red-50/50'
+      id: 'restaurant' as BusinessType,
+      conceptId: 'oriental_grills',
+      titleAr: 'مشاوي ومأكولات شرقية',
+      titleEn: 'Oriental Grill & Dining',
+      descAr: 'للمقبلات الباردة والساخنة، المشاوي العائلية، الطواجن، والمشروبات التقليدية المنعشة.',
+      descEn: 'For cold & hot mezze, mixed grill platters, casseroles, and authentic dining.',
+      icon: Store,
+      color: 'from-rose-500 to-red-600',
+      bgLight: 'bg-rose-50/50'
     },
     {
-      id: 'general' as BusinessType,
-      titleAr: 'متجر وتجارة عامة',
-      titleEn: 'General Retail & Services',
-      descAr: 'لخدمة عملاء المتاجر الإلكترونية، تتبع الشحنات، والرد على الاستفسارات المتنوعة.',
-      descEn: 'For general e-commerce customer support, shipping, and service queries.',
-      icon: Boxes,
-      color: 'from-emerald-500 to-teal-500',
+      id: 'restaurant' as BusinessType,
+      conceptId: 'italian_pizzeria',
+      titleAr: 'بيتزا وباستا إيطالية',
+      titleEn: 'Pizza & Italian Cuisine',
+      descAr: 'للبيتزا النابولية، الباستا، أطباق الريزوتو، والمقبلات والأجبان الإيطالية الأصيلة.',
+      descEn: 'For artisan wood-fired pizza, handmade pasta, risotto, and authentic appetizers.',
+      icon: Store,
+      color: 'from-emerald-500 to-teal-600',
       bgLight: 'bg-emerald-50/50'
     }
   ];
@@ -447,30 +349,34 @@ export function OnboardingWizard() {
             {step === 1 && (
               <div className="mt-4">
                 <h2 className="text-xl font-bold text-slate-800">
-                  {language === 'ar' ? 'ما هو مجال عملك أو نشاطك التجاري؟' : 'What is your business sector?'}
+                  {language === 'ar' ? 'ما هو طابع وقائمة مطعمك أو مقهاك؟' : 'What is your restaurant or café concept?'}
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
                   {language === 'ar' 
-                    ? 'سنقوم بتدريب الذكاء الاصطناعي وتجهيز قائمة منتجات مطابقة فوراً عند دخولك.'
-                    : 'We will initialize pre-configured menu schemas and standard responses for your sector.'}
+                    ? 'سنقوم بتدريب النادل الصوتي الذكي وتجهيز قائمة طعام افتراضية مطابقة فوراً لدخولك.'
+                    : 'We will configure your AI Voice Waiter and initialize ready-to-order menu items for your restaurant.'}
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                   {businessTypesList.map((item) => {
                     const Icon = item.icon;
-                    const isSelected = businessType === item.id;
+                    const isSelected = selectedConcept === item.conceptId;
                     return (
                       <div
-                        key={item.id}
-                        onClick={() => setBusinessType(item.id)}
+                        key={item.conceptId}
+                        onClick={() => {
+                          setBusinessType('restaurant');
+                          localStorage.setItem('restaurant_concept', item.conceptId);
+                          setSelectedConcept(item.conceptId);
+                        }}
                         className={`border rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md flex flex-col gap-3 relative overflow-hidden group ${
                           isSelected 
-                            ? 'border-indigo-500 bg-white shadow-sm ring-1 ring-indigo-500' 
+                            ? 'border-emerald-500 bg-white shadow-sm ring-1 ring-emerald-500' 
                             : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
                       >
                         {isSelected && (
-                          <div className="absolute top-3 right-3 text-indigo-600 bg-indigo-50 p-0.5 rounded-full">
+                          <div className="absolute top-3 right-3 text-emerald-600 bg-emerald-50 p-0.5 rounded-full">
                             <CheckCircle2 className="w-4 h-4" />
                           </div>
                         )}

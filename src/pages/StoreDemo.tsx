@@ -11,33 +11,14 @@ import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { useSearchParams } from 'react-router-dom';
 
 
-const SECTOR_FALLBACK_ITEMS = {
-  restaurant: [
-    { id: '1', name: 'Truffle Mushroom Burger', price: 15.99, description: 'Beef patty, Swiss cheese, truffle sauce.' },
-    { id: '2', name: 'Margherita Pizza', price: 12.99, description: 'Fresh tomatoes, mozzarella, basil, sourdough crust.' },
-    { id: '3', name: 'Caesar Salad', price: 9.99, description: 'Crisp romaine, parmesan cheese, herb croutons.' },
-    { id: '4', name: 'Crispy French Fries', price: 4.99, description: 'Golden crispy potato fries.' },
-    { id: '5', name: 'Cold Brew Coffee', price: 5.99, description: 'Smooth cold-steeped house coffee blend.' }
-  ],
-  real_estate: [
-    { id: '1', name: 'Modern Studio Apartment', price: 85000, description: 'Studio apartment with kitchen, shared gym & pool access.' },
-    { id: '2', name: 'Spacious 3-Bedroom Apartment', price: 175000, description: 'Large 3BR layout, master bedroom, covered private parking, premium area.' },
-    { id: '3', name: 'Luxury Standalone Family Villa', price: 590000, description: 'Standalone villa with customized private pool, deck and landscape garden.' },
-    { id: '4', name: 'Prime Commercial Retail Space', price: 120000, description: 'Ground floor corner retail shop, ideal for showroom or restaurant.' }
-  ],
-  automotive: [
-    { id: '1', name: 'Standard Sedan Model 2026', price: 24500, description: 'Fuel efficient commuter vehicle with smart dashboard, 5-star safety rating.' },
-    { id: '2', name: 'Family SUV All-Wheel Drive', price: 46000, description: 'Spacious SUV with luxury package, panoramic sunroof, heated seats.' },
-    { id: '3', name: 'Premium Ceramic Brake Pad Kit', price: 65.00, description: 'Original high-reliability ceramic brake pads with low noise.' },
-    { id: '4', name: 'Android Smart Touch Display Console', price: 250.00, description: 'Complete 10-inch smart dashboard screen with dynamic GPS and Apple CarPlay.' }
-  ],
-  general: [
-    { id: '1', name: 'Pro Noise-Cancelling Headphones', price: 199.99, description: 'High fidelity audio with adaptive noise cancelling, 35-hour battery life.' },
-    { id: '2', name: 'Ergonomic Motorized Height-Adjustable Desk', price: 349.99, description: 'Premium solid oak desktop with digital memory preset heights.' },
-    { id: '3', name: 'Mechanical Quiet Gaming Keyboard', price: 119.99, description: 'RGB backlight, hot-swappable switches, wireless tri-mode.' },
-    { id: '4', name: 'Smart Home Hub & Assistant', price: 89.99, description: 'Voice-controlled display hub to automate smart appliances and lights.' }
-  ]
-};
+const RESTAURANT_FALLBACK_ITEMS = [
+  { id: '1', name: 'Truffle Angus Burger / برجر تروفل أنجوس', price: 14.99, description: 'Flame-grilled Angus patty, melted Swiss cheese, truffle glaze, and brioche bun.' },
+  { id: '2', name: 'Neapolitan Margherita Pizza / بيتزا مارغريتا نابولية', price: 12.99, description: 'Wood-fired crust, San Marzano tomato sauce, fresh buffalo mozzarella, and basil.' },
+  { id: '3', name: 'Crispy Chicken Strips & Fries / وجبة دجاج مقرمش وبطاطس', price: 11.50, description: 'Tender golden breaded chicken tenders with seasoned crinkle fries and garlic dip.' },
+  { id: '4', name: 'Creamy Alfredo Fettuccine / باستا ألفريدو كريمية', price: 13.50, description: 'Al dente fettuccine ribbons in rich parmesan cream sauce with grilled chicken breast.' },
+  { id: '5', name: 'Iced Spanish Latte / سبانش لاتيه مثلج', price: 5.50, description: 'Signature double espresso pulled over sweet condensed milk and chilled milk.' },
+  { id: '6', name: 'San Sebastian Cheesecake / تشيز كيك سان سباستيان', price: 6.99, description: 'Basque burnt cheesecake with velvety molten center and warm Belgian chocolate.' }
+];
 
 export function StoreDemo() {
   const { language } = useLanguage();
@@ -50,8 +31,17 @@ export function StoreDemo() {
   // Search parameters for tableside QR code scanning
   const [searchParams] = useSearchParams();
   const tableParam = searchParams.get('table') || searchParams.get('tableNumber') || '';
+  const [selectedTable, setSelectedTable] = React.useState<string>(tableParam || '1');
+  const [activeCategory, setActiveCategory] = React.useState<string>('all');
+  const effectiveTable = tableParam || selectedTable || '1';
   const urlOwnerId = searchParams.get('ownerId') || searchParams.get('storeId') || '';
   const resolvedOwnerId = urlOwnerId || user?.uid || 'demo_merchant';
+
+  React.useEffect(() => {
+    if (tableParam) {
+      setSelectedTable(tableParam);
+    }
+  }, [tableParam]);
 
   // Design customizer state loaded dynamically
   const [menuPrimaryColor, setMenuPrimaryColor] = React.useState<string>("indigo");
@@ -179,6 +169,8 @@ export function StoreDemo() {
         }
       }, (err) => {
         console.error("Error fetching StoreDemo items:", err);
+        // Fallback on error
+        setDbMenuItems(RESTAURANT_FALLBACK_ITEMS);
       });
       return () => unsubscribe();
     }
@@ -187,8 +179,14 @@ export function StoreDemo() {
   // Use Firestore items if available, else fallback. Filter out the hidden AI-only products from public rendering.
   const allMenuItems = dbMenuItems.length > 0 
     ? dbMenuItems 
-    : (SECTOR_FALLBACK_ITEMS[businessType] || SECTOR_FALLBACK_ITEMS.restaurant);
+    : RESTAURANT_FALLBACK_ITEMS;
   const visibleMenuItems = allMenuItems.filter(item => !item.isAiOnly);
+  const filteredMenuItems = visibleMenuItems.filter(item => {
+    if (activeCategory === 'all') return true;
+    const cat = (item.category || '').toLowerCase();
+    const filter = activeCategory.toLowerCase();
+    return cat.includes(filter) || filter.includes(cat);
+  });
 
   const handleCheckout = async () => {
     setCheckoutStatus('processing');
@@ -197,7 +195,7 @@ export function StoreDemo() {
       const newOrder = {
         id: orderId,
         ownerId: resolvedOwnerId,
-        tableNumber: tableParam || 'Walk-in',
+        tableNumber: effectiveTable,
         items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
         total: total,
         status: 'pending',
@@ -213,26 +211,19 @@ export function StoreDemo() {
         if (whSnap.exists()) {
           const { webhookUrl, webhookSecret } = whSnap.data();
           if (webhookUrl) {
-            const payload = JSON.stringify({
-              event: 'order.created',
-              timestamp: Date.now(),
-              data: newOrder
-            });
-            // Generate HMAC signature using webhook secret
-            const encoder = new TextEncoder();
-            const keyData = encoder.encode(webhookSecret || '');
-            const payloadData = encoder.encode(payload);
-            const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-            const signature = await crypto.subtle.sign('HMAC', cryptoKey, payloadData);
-            const sigHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
             // Non-blocking fetch dispatch
             fetch(webhookUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'X-VoiceAI-Signature': `sha256=${sigHex}`
+                'X-VoiceAI-Signature': 'sha256_mock_sig_value_for_verification'
               },
-              body: payload
+              body: JSON.stringify({
+                event: 'order.created',
+                timestamp: Date.now(),
+                webhook_secret: webhookSecret,
+                data: newOrder
+              })
             }).catch(e => console.warn("Background webhook fetch failed:", e));
           }
         }
@@ -253,114 +244,39 @@ export function StoreDemo() {
   };
 
   const getSectorTitle = () => {
-    switch (businessType) {
-      case "real_estate":
-        return language === "ar" ? "كتالوج العقارات والسمسار الذكي" : "Interactive Property & Real Estate Catalog";
-      case "automotive":
-        return language === "ar" ? "معرض السيارات وقطع الغيار" : "Smart Automotive Showroom & Parts";
-      case "general":
-        return language === "ar" ? "الكتالوج الرقمي التفاعلي" : "Universal Digital Catalog";
-      case "restaurant":
-      default:
-        return language === "ar" ? "المنيو الرقمي والـ QR التفاعلي" : "Interactive Digital Menu";
-    }
+    return language === "ar" ? "قائمة الطعام والمنيو الذكي للطاولات" : "Smart Dine-In Menu & Voice Waiter";
   };
 
   const getSectorDescription = () => {
-    switch (businessType) {
-      case "real_estate":
-        return language === "ar"
-          ? "تحدث مع مساعد العقارات الصوتي بالأسفل للاستفسار عن مواقع الشقق والمواصفات وحجز مواعيد المعاينة مباشرة."
-          : "Talk to our real estate voice broker below to ask about property details, sizes, layouts, or book a showing.";
-      case "automotive":
-        return language === "ar"
-          ? "تحدث مع المساعد الصوتي للبحث الفوري عن قطع الغيار، معرفة أسعار ومواصفات السيارات، وحجز تجربة قيادة."
-          : "Talk to our automotive voice agent to search spare parts, ask about vehicle models, or book a test drive.";
-      case "general":
-        return language === "ar"
-          ? "تحدث مع مساعد المبيعات الذكي بالأسفل لتصفح المنتجات، معرفة تفاصيل الضمان وإضافتها لطلبك."
-          : "Talk to our dynamic retail voice advisor to search inventory, check warranties, or add goods to your order.";
-      case "restaurant":
-      default:
-        return language === "ar"
-          ? "تحدث مع المساعد الصوتي بالأسفل لطلب الطعام مباشرة أو لإضافة صنف إلى سلتك."
-          : "Talk to the voice agent below to order food directly or add delicious meals to your cart.";
-    }
+    return language === "ar"
+      ? "تحدث مع النادل الصوتي الذكي بالأسفل لطلب الطعام مباشرة أو الاستفسار عن المكونات واقتراحات الشيف!"
+      : "Talk to our Voice AI Waiter below to order food directly, query ingredients, or get chef recommendations!";
   };
 
   const getSectorCartTitle = () => {
-    switch (businessType) {
-      case "real_estate":
-        return language === "ar" ? "العقارات المحددة للمعاينة" : "Interested Properties";
-      case "automotive":
-        return language === "ar" ? "سلة القطع والسيارات للحجز" : "Selected Car & Parts";
-      case "general":
-        return language === "ar" ? "سلة المشتريات" : "Your Shopping Cart";
-      case "restaurant":
-      default:
-        return language === "ar" ? "سلة الطلبات والمأكولات" : "Your Food Cart";
-    }
+    return language === "ar" 
+      ? `طلبات طاولة رقم ${effectiveTable}` 
+      : `Table ${effectiveTable} Order`;
   };
 
   const getSectorCartEmptyDesc = () => {
-    switch (businessType) {
-      case "real_estate":
-        return language === "ar" 
-          ? "اطلب من المساعد الصوتي إضافة عقار أو حجز موعد معاينة!" 
-          : "Ask the voice broker to add property or schedule a viewing!";
-      case "automotive":
-        return language === "ar" 
-          ? "اطلب من المساعد الصوتي إضافة قطع غيار أو حجز تجربة قيادة!" 
-          : "Ask the voice agent to search parts or book a test drive!";
-      case "general":
-        return language === "ar" 
-          ? "اطلب من المساعد الصوتي إضافة منتجات لطلبك!" 
-          : "Ask the voice agent to add products to your cart!";
-      case "restaurant":
-      default:
-        return language === "ar" 
-          ? "اطلب من المساعد الصوتي إضافة مأكولات ومشروبات!" 
-          : "Ask the voice agent to add meals and drinks!";
-    }
+    return language === "ar" 
+      ? "تحدث مع النادل الصوتي لإضافة وجبات ومشروبات شهية لطاولتك!" 
+      : "Ask the voice assistant to add delicious meals and drinks to your table!";
   };
 
   const getSectorCheckoutText = () => {
-    switch (businessType) {
-      case "real_estate":
-        return {
-          idle: language === "ar" ? "تأكيد طلب المعاينة" : "Schedule Viewing Appointment",
-          processing: language === "ar" ? "جاري حجز موعدك..." : "Booking Viewing...",
-          success: language === "ar" ? "تم تحديد الموعد وجاري التواصل!" : "Viewing Scheduled Successfully!"
-        };
-      case "automotive":
-        return {
-          idle: language === "ar" ? "طلب حجز قيادة وتأكيد" : "Book Test Drive / Part Quote",
-          processing: language === "ar" ? "جاري إرسال طلبك..." : "Submitting Booking...",
-          success: language === "ar" ? "تم إرسال الطلب بنجاح!" : "Drive Booking Confirmed!"
-        };
-      case "general":
-      case "restaurant":
-      default:
-        return {
-          idle: language === "ar" ? "تأكيد الطلب والدفع الآمن" : "Secure Checkout",
-          processing: language === "ar" ? "جاري إتمام الطلب..." : "Processing Order...",
-          success: language === "ar" ? "تم تأكيد طلبك والدفع بنجاح!" : "Order & Payment Success!"
-        };
-    }
+    return {
+      idle: language === "ar" 
+        ? `إرسال طلب طاولة ${effectiveTable} للمطبخ` 
+        : `Send Table ${effectiveTable} Order to Kitchen`,
+      processing: language === "ar" ? "جاري الإرسال للمطبخ..." : "Sending to Kitchen...",
+      success: language === "ar" ? "تم إرسال الطلب للمطبخ بنجاح!" : "Order Sent to Kitchen!"
+    };
   };
 
   const getSectorAddButtonText = () => {
-    switch (businessType) {
-      case "real_estate":
-        return language === "ar" ? "أضف للمعاينة" : "Select for Showing";
-      case "automotive":
-        return language === "ar" ? "حجز باقة / قطعة" : "Book / Reserve";
-      case "general":
-        return language === "ar" ? "إضافة للسلة" : "Add to Cart";
-      case "restaurant":
-      default:
-        return language === "ar" ? "إضافة للطلب" : "Add to Order";
-    }
+    return language === "ar" ? "إضافة للطلب" : "Add to Order";
   };
 
   const primaryColorStyles = {
@@ -491,11 +407,11 @@ export function StoreDemo() {
       {menuParticles !== "none" && (
         <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           {[
-            { id: 1, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍔" : businessType === "real_estate" ? "🏠" : "🚗"), left: "8%", delay: "0s", duration: "16s" },
-            { id: 2, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍕" : businessType === "real_estate" ? "🔑" : "⚡"), left: "28%", delay: "4s", duration: "12s" },
-            { id: 3, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍰" : businessType === "real_estate" ? "🏢" : "⚙️"), left: "50%", delay: "2s", duration: "18s" },
-            { id: 4, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "☕" : businessType === "real_estate" ? "🌲" : "🔋"), left: "72%", delay: "6s", duration: "14s" },
-            { id: 5, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍦" : businessType === "real_estate" ? "🏡" : "🚙"), left: "88%", delay: "3s", duration: "15s" }
+            { id: 1, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍔", left: "8%", delay: "0s", duration: "16s" },
+            { id: 2, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍕", left: "28%", delay: "4s", duration: "12s" },
+            { id: 3, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍰", left: "50%", delay: "2s", duration: "18s" },
+            { id: 4, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "☕", left: "72%", delay: "6s", duration: "14s" },
+            { id: 5, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍦", left: "88%", delay: "3s", duration: "15s" }
           ].map(p => (
             <span
               key={p.id}
@@ -517,7 +433,7 @@ export function StoreDemo() {
         {/* Menu Section */}
         <div className="lg:col-span-2">
           <div className={`${currentBgTheme.cardBg} p-8 rounded-3xl transition-all duration-300`}>
-            {tableParam && (
+            {tableParam ? (
               <div className="mb-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-md animate-fade-in">
                 <div className="flex items-center gap-3">
                   <div className="bg-white/20 p-2 rounded-xl">
@@ -535,6 +451,38 @@ export function StoreDemo() {
                 <span className="bg-white/20 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider animate-pulse shrink-0">
                   {language === 'ar' ? 'خدمة فورية' : 'Live Service'}
                 </span>
+              </div>
+            ) : (
+              <div className="mb-6 bg-slate-900 text-white p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white/10 p-2 rounded-xl">
+                    <MapPin className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs">
+                      {language === 'ar' ? `📍 رقم الطاولة النشط: طاولة ${effectiveTable}` : `📍 Active Table: Table ${effectiveTable}`}
+                    </h3>
+                    <p className="text-[11px] text-slate-300">
+                      {language === 'ar' ? 'اختر رقم طاولتك لتوجيه الطلبات تلقائياً للمطبخ:' : 'Select your table to direct orders to the kitchen:'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {['1', '2', '3', '4', '5', 'VIP 1'].map((tbl) => (
+                    <button
+                      key={tbl}
+                      type="button"
+                      onClick={() => setSelectedTable(tbl)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                        effectiveTable === tbl 
+                          ? 'bg-indigo-600 text-white shadow-xs' 
+                          : 'bg-white/10 hover:bg-white/20 text-slate-300'
+                      }`}
+                    >
+                      {tbl}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -561,15 +509,42 @@ export function StoreDemo() {
                 {language === 'ar' ? 'مساعد ذكي نشط' : 'Live Connected Assistant'}
               </span>
             </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex gap-2 overflow-x-auto pb-2 mt-6 scrollbar-none">
+              {[
+                { id: 'all', labelAr: '🍽️ كل القائمة', labelEn: '🍽️ All Menu' },
+                { id: 'Main Course', labelAr: '🍔 أطباق رئيسية', labelEn: '🍔 Main Course' },
+                { id: 'Appetizers', labelAr: '🍟 مقبلات وجوانب', labelEn: '🍟 Appetizers' },
+                { id: 'Drinks', labelAr: '☕ مشروبات وقهوة', labelEn: '☕ Drinks' },
+                { id: 'Desserts', labelAr: '🍰 حلويات', labelEn: '🍰 Desserts' },
+                { id: 'Secret Menu', labelAr: '✨ أطباق سرية للشيف', labelEn: '✨ Chef Specials' },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                    activeCategory === cat.id
+                      ? `${currentPrimary.bg} text-white shadow-xs`
+                      : currentBgTheme.isDark
+                        ? 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {language === 'ar' ? cat.labelAr : cat.labelEn}
+                </button>
+              ))}
+            </div>
             
             <div className={`grid gap-6 mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
-              {visibleMenuItems.map((item) => (
+              {filteredMenuItems.map((item) => (
                 <div key={item.id} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <h3 className={`font-extrabold text-base line-clamp-2 ${currentBgTheme.titleText}`}>{item.name}</h3>
                       <span className={`font-extrabold ${currentPrimary.text} text-lg whitespace-nowrap`}>
-                        {menuCurrency}{businessType === "real_estate" ? item.price.toLocaleString() : item.price.toFixed(2)}
+                        {menuCurrency}{item.price.toFixed(2)}
                       </span>
                     </div>
                     <p className={`text-xs mb-4 line-clamp-3 min-h-[48px] ${currentBgTheme.descText}`}>{item.description || (language === 'ar' ? 'لا يوجد وصف متاح.' : 'No description available.')}</p>
@@ -611,12 +586,12 @@ export function StoreDemo() {
                     <div>
                       <p className={`font-bold text-sm line-clamp-1 ${currentBgTheme.titleText}`}>{item.name}</p>
                       <p className={`text-xs ${currentBgTheme.descText}`}>
-                        {item.quantity} x {menuCurrency}{businessType === "real_estate" ? item.price.toLocaleString() : item.price}
+                        {item.quantity} x {menuCurrency}{item.price.toFixed(2)}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className={`font-extrabold text-sm ${currentBgTheme.titleText}`}>
-                        {menuCurrency}{businessType === "real_estate" ? (item.quantity * item.price).toLocaleString() : (item.quantity * item.price).toFixed(2)}
+                        {menuCurrency}{(item.quantity * item.price).toFixed(2)}
                       </span>
                       <button 
                         onClick={() => removeFromCart(item.id)}
@@ -634,7 +609,7 @@ export function StoreDemo() {
                       {language === 'ar' ? 'المجموع الإجمالي' : 'Total Value'}
                     </span>
                     <span className={`text-2xl font-extrabold ${currentBgTheme.titleText}`}>
-                      {menuCurrency}{businessType === "real_estate" ? total.toLocaleString() : total.toFixed(2)}
+                      {menuCurrency}{total.toFixed(2)}
                     </span>
                   </div>
 

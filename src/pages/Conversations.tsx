@@ -13,10 +13,14 @@ export function Conversations() {
 
   useEffect(() => {
     if (!user) return;
+    if (user.provider === 'local') {
+      setLoading(false);
+      return;
+    }
     const unsubscribe = subscribeToConversations(user.uid, (data) => {
       setConversationsList(data);
       setLoading(false);
-    }, user.provider === 'local');
+    });
     return () => unsubscribe();
   }, [user]);
 
@@ -25,7 +29,7 @@ export function Conversations() {
     : conversationsList.filter(c => c.status === filter);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-800">
@@ -87,8 +91,8 @@ export function Conversations() {
                     </div>
   
                     {/* Right Side: Status and Actions */}
-                    <div className="mt-4 flex items-center sm:mt-0 sm:ms-6 gap-3 sm:gap-6 justify-between">
-                      <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="mt-4 flex items-center sm:mt-0 sm:ms-6 gap-6 justify-between">
+                      <div className="flex items-center gap-3">
                         <span
                           className={`px-2.5 py-1 rounded-md text-xs font-bold ${
                             conv.isSuccess
@@ -98,12 +102,12 @@ export function Conversations() {
                         >
                           {conv.status}
                         </span>
-                        <span className="text-xs sm:text-sm text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded">
+                        <span className="text-sm text-slate-500 font-mono bg-slate-50 px-2 py-1 rounded">
                           {conv.duration}
                         </span>
                       </div>
   
-                      <div className="flex items-center gap-2 sm:gap-3 border-s border-slate-200 ps-3 sm:ps-4">
+                      <div className="flex items-center gap-3 border-s border-slate-200 ps-4">
                         <button
                           className="text-slate-400 hover:text-indigo-600 transition-colors"
                           title="Play recording"
@@ -111,13 +115,13 @@ export function Conversations() {
                           <PlayCircle className="w-5 h-5" />
                         </button>
                         <button
-                          className="text-slate-400 hover:text-indigo-600 transition-colors hidden sm:block"
+                          className="text-slate-400 hover:text-indigo-600 transition-colors"
                           title="View Transcript"
                         >
                           <ExternalLink className="w-5 h-5" />
                         </button>
                         <button
-                          className="text-slate-400 hover:text-indigo-600 transition-colors hidden sm:block"
+                          className="text-slate-400 hover:text-indigo-600 transition-colors"
                           title="Download Audio"
                         >
                           <Download className="w-5 h-5" />

@@ -1,43 +1,20 @@
 <div align="center">
-<img width="1200" height="475" alt="SooVoice Banner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
 </div>
 
-# SooVoice - AI Voice Agent Platform
+# Run and deploy your AI Studio app
 
-AI-powered voice assistant for merchants — handle customer calls, orders, and analytics with a customizable voice agent.
+This contains everything you need to run your app locally.
 
-## Features
-
-- **Voice AI Agent** — Gemini-powered real-time voice interactions
-- **Dashboard** — Analytics, conversations, and order management
-- **Integrations** — Shopify, Salla, Zid, WooCommerce, custom webhooks
-- **Knowledge Base** — Upload documents to train your AI agent
-- **Digital Menu** — QR-based tableside ordering system
-- **Multi-language** — Arabic & English support
-- **Super Admin Panel** — Merchant management, voice studio, system settings
+View your app in AI Studio: https://ai.studio/apps/94c8c46a-4e33-41e2-bd24-c93a457b2834
 
 ## Run Locally
 
-**Prerequisites:** Node.js
+**Prerequisites:**  Node.js
+
 
 1. Install dependencies:
    `npm install`
-2. Copy `.env.example` to `.env.local` and fill in your keys:
-   - `GEMINI_API_KEY` — Required for Gemini AI
-   - `API_KEY` — For backend API authentication
-   - `WEBHOOK_SECRET` — For webhook signature verification
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
-
-## Build
-
-   `npm run build`
-
-## Tech Stack
-
-- React 19 + TypeScript + Vite
-- Firebase (Auth + Firestore)
-- Supabase (optional backend)
-- Tailwind CSS v4
-- Express.js (API server)
-- Recharts (analytics)

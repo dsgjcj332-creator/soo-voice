@@ -39,10 +39,8 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-
     if (user.provider === 'local') {
-      const localDocs = JSON.parse(localStorage.getItem(`local_docs_${user.uid}`) || '[]');
-      setDocuments(localDocs);
+      setDocuments([]);
       setLoading(false);
       return;
     }
@@ -106,7 +104,6 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }, (error) => {
          console.error("Knowledge base fetch error:", error);
-         setDocuments([]);
          setLoading(false);
       });
 
@@ -116,6 +113,7 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
 
   const addDocument = async (name: string, content: string) => {
     if (!user) return;
+    if (user.provider === 'local') return; // Skip for local demo users
     const docId = Math.random().toString(36).substring(2, 15);
     const newDoc: KnowledgeDocument = {
        id: docId,
@@ -156,6 +154,7 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
 
   const addOrUpdateDocument = async (id: string, name: string, type: string, content: string) => {
     if (!user) return;
+    if (user.provider === 'local') return; // Skip for local demo users
     
     const updatedDoc: KnowledgeDocument = {
        id,
@@ -198,6 +197,7 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
 
   const removeDocument = async (id: string) => {
     if (!user) return;
+    if (user.provider === 'local') return; // Skip for local demo users
     
     const supabase = getSupabase();
     if (isConfigured && supabase) {

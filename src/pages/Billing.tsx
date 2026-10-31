@@ -14,9 +14,11 @@ import {
   Users
 } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useSettings } from "../contexts/SettingsContext";
 
 export function Billing() {
   const { language } = useLanguage();
+  const { currency } = useSettings();
   const [copied, setCopied] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("pro");
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -26,6 +28,17 @@ export function Billing() {
   const [monthlyVisitors, setMonthlyVisitors] = useState(10000);
   const [averageOrderValue, setAverageOrderValue] = useState(50);
   const [integrationTab, setIntegrationTab] = useState("shopify");
+
+  // Currency symbol map
+  const currencySymbols: Record<string, string> = {
+    EGP: 'E£',
+    SAR: '﷼',
+    USD: '$',
+    AED: 'د.إ',
+    KWD: 'د.ك',
+    QAR: '﷼'
+  };
+  const symbol = currencySymbols[currency] || '$';
 
   // Calculate simulated ROI
   const adoptionRate = 0.08; // 8% of visitors use the AI Voice assistant
@@ -173,7 +186,7 @@ export function Billing() {
                       </p>
                       
                       <div className="my-4">
-                        <span className="text-3xl font-extrabold text-slate-800">${plan.price}</span>
+                        <span className="text-3xl font-extrabold text-slate-800">{symbol}{plan.price}</span>
                         <span className="text-slate-400 text-xs font-semibold"> / {language === "ar" ? "شهرياً" : "mo"}</span>
                       </div>
 
@@ -384,7 +397,7 @@ export function Billing() {
                     <DollarSign className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs font-bold text-slate-200">{language === "ar" ? "زيادة الأرباح الشهرية المتوقعة" : "Extra Monthly Revenue"}</span>
                   </div>
-                  <span className="text-lg font-black font-mono text-emerald-400">+${extraRevenue.toLocaleString()}</span>
+                  <span className="text-lg font-black font-mono text-emerald-400">+{symbol}{extraRevenue.toLocaleString()}</span>
                 </div>
               </div>
 

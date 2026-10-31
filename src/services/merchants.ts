@@ -22,7 +22,6 @@ export function subscribeToMerchants(callback: (merchants: Merchant[]) => void) 
     callback(merchants);
   }, (error) => {
     console.error("Error fetching merchants:", error);
-    callback([]);
   });
 }
 

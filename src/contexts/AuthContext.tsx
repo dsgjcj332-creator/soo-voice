@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 
 export interface UnifiedUser {
   uid: string;
@@ -17,43 +15,32 @@ interface AuthContextType {
   user: UnifiedUser | null;
   loading: boolean;
   logout: () => Promise<void>;
-  isSuperAdmin: boolean;
-  superAdminLogout: () => void;
-  demoLogin: () => void;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUpWithEmail: (name: string, email: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
   user: null, 
   loading: true, 
-  logout: async () => {},
-  isSuperAdmin: false,
-  superAdminLogout: () => {},
-  demoLogin: () => {},
-  signInWithEmail: async () => {},
-  signUpWithEmail: async () => {},
+  logout: async () => {} 
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UnifiedUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(() => localStorage.getItem('superadmin_session') === 'true');
   const { isConfigured } = getSupabaseConfig();
 
-  // Check for local demo session on mount
   useEffect(() => {
-    const localUser = localStorage.getItem('local_demo_user');
-    if (localUser) {
+    const localDemo = localStorage.getItem('local_demo_user');
+    if (localDemo) {
       try {
-        setUser(JSON.parse(localUser));
-      } catch {
-        localStorage.removeItem('local_demo_user');
-      }
+        const parsed = JSON.parse(localDemo);
+        if (parsed && parsed.uid && parsed.provider === 'local') {
+          setUser(parsed);
+          setLoading(false);
+          return;
+        }
+      } catch {}
     }
-  }, []);
 
-  useEffect(() => {
     const supabase = getSupabase();
     
     if (isConfigured && supabase) {
@@ -86,7 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             provider: 'supabase'
           });
         } else {
-          setUser(null);
+          const localDemo = localStorage.getItem('local_demo_user');
+          if (!localDemo) {
+            setUser(null);
+          }
         }
         setLoading(false);
       });
@@ -114,52 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isConfigured]);
 
-  const signInWithEmail = async (email: string, password: string) => {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    const usr = cred.user;
-    const userDoc = await getDoc(doc(db, 'users', usr.uid));
-    const profileData = userDoc.exists() ? userDoc.data() : {};
-    setUser({
-      uid: usr.uid,
-      email: usr.email,
-      displayName: profileData.displayName || usr.displayName || usr.email?.split('@')[0] || 'User',
-      photoURL: usr.photoURL,
-      provider: 'firebase',
-    });
-  };
-
-  const signUpWithEmail = async (name: string, email: string, password: string) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const usr = cred.user;
-    await updateProfile(usr, { displayName: name });
-    await setDoc(doc(db, 'users', usr.uid), {
-      uid: usr.uid,
-      email: usr.email,
-      displayName: name,
-      createdAt: Date.now(),
-      plan: 'free',
-    });
-    setUser({
-      uid: usr.uid,
-      email: usr.email,
-      displayName: name,
-      photoURL: null,
-      provider: 'firebase',
-    });
-  };
-
-  const demoLogin = () => {
-    const demoUser: UnifiedUser = {
-      uid: 'demo-merchant-local',
-      email: 'demo@voiceai.com',
-      displayName: 'Demo Merchant',
-      photoURL: null,
-      provider: 'local',
-    };
-    localStorage.setItem('local_demo_user', JSON.stringify(demoUser));
-    setUser(demoUser);
-  };
-
   const logout = async () => {
     localStorage.removeItem('local_demo_user');
     const supabase = getSupabase();
@@ -171,14 +115,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
-  const superAdminLogout = () => {
-    localStorage.removeItem('superadmin_session');
-    localStorage.removeItem('superadmin_login_time');
-    setIsSuperAdmin(false);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, logout, isSuperAdmin, superAdminLogout, demoLogin, signInWithEmail, signUpWithEmail }}>
+    <AuthContext.Provider value={{ user, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );

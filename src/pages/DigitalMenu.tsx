@@ -17,14 +17,70 @@ import {
   Upload,
   FileText,
   X,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  ExternalLink
 } from "lucide-react";
+import QRCode from "qrcode";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSettings } from "../contexts/SettingsContext";
-import { collection, query, where, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
+
+const COLOR_VARIANTS: Record<string, { bg: string; text: string; border: string; bgLight: string; ring: string }> = {
+  indigo: { bg: "bg-indigo-600", text: "text-indigo-600", border: "border-indigo-600", bgLight: "bg-indigo-50", ring: "ring-indigo-500" },
+  rose: { bg: "bg-rose-600", text: "text-rose-600", border: "border-rose-600", bgLight: "bg-rose-50", ring: "ring-rose-500" },
+  emerald: { bg: "bg-emerald-600", text: "text-emerald-600", border: "border-emerald-600", bgLight: "bg-emerald-50", ring: "ring-emerald-500" },
+  amber: { bg: "bg-amber-500", text: "text-amber-500", border: "border-amber-500", bgLight: "bg-amber-50", ring: "ring-amber-500" },
+  violet: { bg: "bg-violet-600", text: "text-violet-600", border: "border-violet-600", bgLight: "bg-violet-50", ring: "ring-violet-500" },
+  gold: { bg: "bg-yellow-700", text: "text-yellow-700", border: "border-yellow-700", bgLight: "bg-yellow-50", ring: "ring-yellow-500" },
+};
+
+// Local-first persistence helpers for demo mode
+const getLocalCollection = (collectionName: string, ownerId?: string) => {
+  const key = ownerId ? `local_${collectionName}_${ownerId}` : `local_${collectionName}`;
+  return JSON.parse(localStorage.getItem(key) || '[]');
+};
+
+const setLocalCollection = (collectionName: string, data: any[], ownerId?: string) => {
+  const key = ownerId ? `local_${collectionName}_${ownerId}` : `local_${collectionName}`;
+  localStorage.setItem(key, JSON.stringify(data));
+};
+
+const addLocalDoc = (collectionName: string, doc: any, ownerId?: string) => {
+  const items = getLocalCollection(collectionName, ownerId);
+  items.push(doc);
+  setLocalCollection(collectionName, items, ownerId);
+  return doc;
+};
+
+const updateLocalDoc = (collectionName: string, docId: string, updates: any, ownerId?: string) => {
+  const items = getLocalCollection(collectionName, ownerId);
+  const idx = items.findIndex((d: any) => d.id === docId);
+  if (idx >= 0) {
+    items[idx] = { ...items[idx], ...updates };
+    setLocalCollection(collectionName, items, ownerId);
+    return items[idx];
+  }
+  return null;
+};
+
+const deleteLocalDoc = (collectionName: string, docId: string, ownerId?: string) => {
+  const items = getLocalCollection(collectionName, ownerId);
+  const filtered = items.filter((d: any) => d.id !== docId);
+  setLocalCollection(collectionName, filtered, ownerId);
+};
+
+const QR_STAND_COLORS: Record<string, { bg: string; border: string; text: string; hex: string }> = {
+  indigo: { bg: "bg-indigo-600", border: "border-indigo-600", text: "text-indigo-600", hex: "#4338ca" },
+  emerald: { bg: "bg-emerald-600", border: "border-emerald-600", text: "text-emerald-600", hex: "#047857" },
+  amber: { bg: "bg-amber-500", border: "border-amber-500", text: "text-amber-500", hex: "#b45309" },
+  rose: { bg: "bg-rose-600", border: "border-rose-600", text: "text-rose-600", hex: "#be123c" },
+  violet: { bg: "bg-violet-600", border: "border-violet-600", text: "text-violet-600", hex: "#6d28d9" },
+  gold: { bg: "bg-yellow-700", border: "border-yellow-700", text: "text-yellow-700", hex: "#854d0e" },
+};
 
 
 interface MenuItem {
@@ -56,18 +112,10 @@ export function DigitalMenu() {
   const [isAiOnly, setIsAiOnly] = useState(false);
   const [notification, setNotification] = useState("");
 
-  // Sync category default when business type changes
+  // Default category for restaurants
   useEffect(() => {
-    if (businessType === "real_estate") {
-      setCategory("Apartments");
-    } else if (businessType === "automotive") {
-      setCategory("Cars");
-    } else if (businessType === "general") {
-      setCategory("Electronics");
-    } else {
-      setCategory("Main Course");
-    }
-  }, [businessType]);
+    setCategory("Main Course");
+  }, []);
 
   // File Import States
   const [showImportModal, setShowImportModal] = useState(false);
@@ -267,16 +315,16 @@ export function DigitalMenu() {
   // Template generators
   const downloadCSVTemplate = () => {
     const csvContent = "name,price,category,description,isAiOnly\n" +
-      "Toyota Brake Pads,45.00,Spare Parts,Original brake pads for Corolla,true\n" +
-      "Chocolate Fudge Cake,6.50,Desserts,Rich hot chocolate double fudge cake,false\n" +
-      "iPhone Leather Case,25.00,Accessories,Premium genuine leather cover,false\n" +
-      "Engine Oil Filter,12.00,Spare Parts,Synthetic oil high flow filter,true";
+      "Double Angus Cheeseburger,14.50,Main Course,Flame-grilled prime beef patty with cheddar cheese and brioche bun,false\n" +
+      "San Sebastian Cheesecake,6.50,Desserts,Rich molten Basque cheesecake with warm chocolate ganache,false\n" +
+      "Iced Spanish Latte,5.00,Drinks,Specialty double espresso pulled over sweet milk and crushed ice,false\n" +
+      "Chef Secret Wagyu Truffle Sliders,18.00,Secret Menu,Off-menu special sliders with black truffle butter (Voice AI Exclusive),true";
       
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "min_makanak_import_template.csv");
+    link.setAttribute("download", "restaurant_menu_template.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -285,17 +333,17 @@ export function DigitalMenu() {
   const downloadJSONTemplate = () => {
     const jsonContent = JSON.stringify([
       {
-        name: "Classic Cheeseburger",
-        price: 9.99,
+        name: "Double Angus Cheeseburger",
+        price: 14.50,
         category: "Main Course",
-        description: "Juicy prime beef patty with cheddar cheese",
+        description: "Flame-grilled prime beef patty with cheddar cheese and brioche bun",
         isAiOnly: false
       },
       {
-        name: "Spark Plugs Set",
-        price: 32.50,
-        category: "Spare Parts",
-        description: "Laser iridium high performance spark plugs",
+        name: "Chef Secret Wagyu Truffle Sliders",
+        price: 18.00,
+        category: "Secret Menu",
+        description: "Off-menu special sliders with black truffle butter (Voice AI Exclusive)",
         isAiOnly: true
       }
     ], null, 2);
@@ -304,7 +352,7 @@ export function DigitalMenu() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "min_makanak_import_template.json");
+    link.setAttribute("download", "restaurant_menu_template.json");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -326,8 +374,9 @@ export function DigitalMenu() {
   const [menuCurrency, setMenuCurrency] = useState("$");
   const [menuLayout, setMenuLayout] = useState("grid");
   const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success">("idle");
+  const activePrimary = COLOR_VARIANTS[menuPrimaryColor] || COLOR_VARIANTS.indigo;
 
-  // Load design config on mount
+  // Load design config on mount (from local storage + Firestore)
   useEffect(() => {
     if (!user) return;
     const localKey = `menu_design_config_${user.uid}`;
@@ -346,11 +395,33 @@ export function DigitalMenu() {
         console.error("Error parsing saved design config:", e);
       }
     }
+
+    // Also fetch latest cloud design from Firestore
+    const fetchCloudDesign = async () => {
+      try {
+        const docRef = doc(db, "menu_customizer", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const config = docSnap.data();
+          if (config.primaryColor) setMenuPrimaryColor(config.primaryColor);
+          if (config.bgStyle) setMenuBgStyle(config.bgStyle);
+          if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
+          if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
+          if (config.particles) setMenuParticles(config.particles);
+          if (config.currency) setMenuCurrency(config.currency);
+          if (config.layout) setMenuLayout(config.layout);
+          localStorage.setItem(localKey, JSON.stringify(config));
+        }
+      } catch (err) {
+        console.warn("Could not load menu design from Firestore:", err);
+      }
+    };
+
+    fetchCloudDesign();
   }, [user]);
 
   const handleSaveDesign = async () => {
     if (!user) return;
-    setDesignSaveStatus("saving");
 
     const config = {
       primaryColor: menuPrimaryColor,
@@ -367,6 +438,17 @@ export function DigitalMenu() {
     localStorage.setItem(localKey, JSON.stringify(config));
     localStorage.setItem('menu_design_config_global', JSON.stringify(config));
 
+    if (user.provider === 'local') {
+      setDesignSaveStatus("success");
+      triggerNotification(
+        language === "ar" ? "تم حفظ التصميم محلياً بنجاح!" : "Design saved locally!"
+      );
+      setTimeout(() => setDesignSaveStatus("idle"), 3000);
+      return;
+    }
+
+    setDesignSaveStatus("saving");
+
     try {
       await setDoc(doc(db, "menu_customizer", user.uid), {
         ownerId: user.uid,
@@ -375,55 +457,40 @@ export function DigitalMenu() {
       
       setDesignSaveStatus("success");
       triggerNotification(
-        language === "ar" ? "تم حفظ تصميم ومظهر المنيو بنجاح!" : "Menu design saved successfully!"
+        language === "ar" ? "تم حفظ تصميم ومظهر المنيو بنجاح في السحابة!" : "Menu design saved successfully to cloud!"
       );
       setTimeout(() => setDesignSaveStatus("idle"), 3000);
     } catch (err) {
       console.error("Failed to save design to Firestore, fallback to local:", err);
       setDesignSaveStatus("success");
+      triggerNotification(
+        language === "ar" ? "تم حفظ التصميم محلياً بنجاح!" : "Design saved locally!"
+      );
       setTimeout(() => setDesignSaveStatus("idle"), 3000);
     }
   };
 
-  // Dynamic Categories based on Business Vertical
+  // Categories dedicated for Restaurant & Cafes
   const getCategoriesForSector = () => {
-    switch (businessType) {
-      case "real_estate":
-        return [
-          { value: "Apartments", labelAr: "شقق سكنية", labelEn: "Apartments" },
-          { value: "Villas", labelAr: "فيلات وقصور", labelEn: "Villas" },
-          { value: "Lands", labelAr: "أراضي ومزارع", labelEn: "Lands" },
-          { value: "Commercial", labelAr: "عقارات تجارية", labelEn: "Commercial Properties" },
-        ];
-      case "automotive":
-        return [
-          { value: "Cars", labelAr: "السيارات والمركبات", labelEn: "Cars & Vehicles" },
-          { value: "Spare Parts", labelAr: "قطع غيار السيارات", labelEn: "Spare Parts" },
-          { value: "Accessories", labelAr: "إكسسوارات زينة", labelEn: "Car Accessories" },
-          { value: "Maintenance", labelAr: "باقات صيانة وخدمات", labelEn: "Maintenance Services" },
-        ];
-      case "general":
-        return [
-          { value: "Electronics", labelAr: "إلكترونيات وأجهزة", labelEn: "Electronics" },
-          { value: "Fashion", labelAr: "أزياء وملابس", labelEn: "Fashion & Apparel" },
-          { value: "Home", labelAr: "مستلزمات منزلية", labelEn: "Home Goods" },
-          { value: "Services", labelAr: "خدمات عامة", labelEn: "Services" },
-        ];
-      case "restaurant":
-      default:
-        return [
-          { value: "Main Course", labelAr: "أطباق رئيسية", labelEn: "Main Course" },
-          { value: "Appetizers", labelAr: "مقبلات شهية", labelEn: "Appetizers" },
-          { value: "Drinks", labelAr: "مشروبات باردة وساخنة", labelEn: "Drinks" },
-          { value: "Desserts", labelAr: "حلويات فاخرة", labelEn: "Desserts" },
-        ];
-    }
+    return [
+      { value: "Main Course", labelAr: "أطباق رئيسية وسندوتشات", labelEn: "Main Course & Sandwiches" },
+      { value: "Appetizers", labelAr: "مقبلات وبطاطس وصوصات", labelEn: "Appetizers & Sides" },
+      { value: "Drinks", labelAr: "مشروبات وقهوة وعصائر", labelEn: "Drinks & Specialty Coffee" },
+      { value: "Desserts", labelAr: "حلويات ومخبوزات", labelEn: "Desserts & Bakery" },
+      { value: "Secret Menu", labelAr: "أطباق سرية للشيف (أوف منيو)", labelEn: "Chef Secret Menu (Off-Menu)" }
+    ];
   };
 
   const categories = getCategoriesForSector();
 
   useEffect(() => {
     if (!user) return;
+    if (user.provider === 'local') {
+      const localItems = getLocalCollection('menu_items', user.uid);
+      setItems(localItems);
+      setLoading(false);
+      return;
+    }
 
     const { isConfigured } = getSupabaseConfig();
     const supabase = getSupabase();
@@ -496,8 +563,6 @@ export function DigitalMenu() {
     e.preventDefault();
     if (!user || !name || !price) return;
 
-    const { isConfigured } = getSupabaseConfig();
-    const supabase = getSupabase();
     const defaultCat = categories[0]?.value || "Main Course";
     const itemId = "item_" + Math.random().toString(36).substring(2, 11);
     
@@ -513,24 +578,32 @@ export function DigitalMenu() {
     };
 
     try {
-      if (isConfigured && supabase) {
-        try {
-          const { error } = await supabase
-            .from('menu_items')
-            .insert([newItem]);
-            
-          if (error) throw error;
-          
-          setItems(prev => [newItem, ...prev].sort((a, b) => b.createdAt - a.createdAt));
-        } catch (err) {
-          console.warn("Failed to insert into Supabase menu_items. Saving to local test buffer:", err);
-          const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
-          const updated = [newItem, ...localItems];
-          localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
-          setItems(updated);
-        }
+      if (user.provider === 'local') {
+        addLocalDoc('menu_items', newItem, user.uid);
+        setItems((prev: MenuItem[]) => [newItem, ...prev].sort((a, b) => b.createdAt - a.createdAt));
       } else {
-        await setDoc(doc(db, "menu_items", itemId), newItem);
+        const { isConfigured } = getSupabaseConfig();
+        const supabase = getSupabase();
+        
+        if (isConfigured && supabase) {
+          try {
+            const { error } = await supabase
+              .from('menu_items')
+              .insert([newItem]);
+            
+            if (error) throw error;
+            
+            setItems((prev: MenuItem[]) => [newItem, ...prev].sort((a, b) => b.createdAt - a.createdAt));
+          } catch (err) {
+            console.warn("Failed to insert into Supabase menu_items. Saving to local test buffer:", err);
+            const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
+            const updated = [newItem, ...localItems];
+            localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
+            setItems(updated);
+          }
+        } else {
+          await setDoc(doc(db, "menu_items", itemId), newItem);
+        }
       }
       
       // Reset form
@@ -551,29 +624,34 @@ export function DigitalMenu() {
   const handleDeleteItem = async (itemId: string) => {
     if (!window.confirm(language === "ar" ? "هل أنت متأكد من الحذف؟" : "Are you sure you want to delete this item?")) return;
     
-    const { isConfigured } = getSupabaseConfig();
-    const supabase = getSupabase();
-
     try {
-      if (isConfigured && supabase) {
-        try {
-          const { error } = await supabase
-            .from('menu_items')
-            .delete()
-            .eq('id', itemId);
-            
-          if (error) throw error;
-          
-          setItems(prev => prev.filter(d => d.id !== itemId));
-        } catch (err) {
-          console.warn("Failed to delete from Supabase menu_items. Syncing local test buffer:", err);
-          const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
-          const updated = localItems.filter((d: any) => d.id !== itemId);
-          localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
-          setItems(updated);
-        }
+      if (user?.provider === 'local') {
+        deleteLocalDoc('menu_items', itemId, user?.uid);
+        setItems((prev: MenuItem[]) => prev.filter(d => d.id !== itemId));
       } else {
-        await deleteDoc(doc(db, "menu_items", itemId));
+        const { isConfigured } = getSupabaseConfig();
+        const supabase = getSupabase();
+
+        if (isConfigured && supabase) {
+          try {
+            const { error } = await supabase
+              .from('menu_items')
+              .delete()
+              .eq('id', itemId);
+            
+            if (error) throw error;
+            
+            setItems((prev: MenuItem[]) => prev.filter(d => d.id !== itemId));
+          } catch (err) {
+            console.warn("Failed to delete from Supabase menu_items. Syncing local test buffer:", err);
+            const localItems = JSON.parse(localStorage.getItem(`sb_items_${user?.uid}`) || '[]');
+            const updated = localItems.filter((d: any) => d.id !== itemId);
+            localStorage.setItem(`sb_items_${user?.uid}`, JSON.stringify(updated));
+            setItems(updated);
+          }
+        } else {
+          await deleteDoc(doc(db, "menu_items", itemId));
+        }
       }
       
       triggerNotification(
@@ -596,59 +674,18 @@ export function DigitalMenu() {
     try {
       setLoading(true);
       
-      let samplePrefixes: string[] = [];
-      let parts: { name: string; price: number; category: string; desc: string }[] = [];
+      const samplePrefixes = ["Signature Gourmet", "Artisan Chef", "La Piazza", "Smoky Kitchen", "Organic Blend"];
+      const parts = [
+        { name: "Truffle Mushroom Angus Burger / برجر المشروم والترافل الفاخر", price: 16, category: "Main Course", desc: "Prime Black Angus beef, melted Swiss cheese, caramelized onions & authentic black truffle sauce." },
+        { name: "Buffalo Crispy Wings / أجنحة دجاج بافلو مقرمشة", price: 11, category: "Appetizers", desc: "Crispy wings glazed in spicy buffalo sauce, served with cool ranch dip." },
+        { name: "Double Chocolate Fudge Lava Cake / كيكة شوكولاتة دبل فدج لافا", price: 8, category: "Desserts", desc: "Indulgent warm chocolate cake with a rich molten center, topped with vanilla ice cream." },
+        { name: "Pistachio Milkshake / ميلك شيك فستق حلبي فاخر", price: 7, category: "Drinks", desc: "Rich ice cream milkshake blended with organic Greek pistachios." },
+        { name: "Avocado Mozzarella Salad / سلطة أفوكادو بالموزاريلا", price: 12, category: "Appetizers", desc: "Fresh organic avocado slices with buffalo mozzarella and cherry tomatoes." },
+        { name: "Wood-Fired Pepperoni Pizza / بيتزا بيبيروني حطب", price: 18, category: "Main Course", desc: "Authentic Neapolitan sourdough topped with spicy pepperoni and hot honey drizzle." },
+        { name: "Organic Iced Matcha Latte / ماتشا لاتيه مثلج عضوي", price: 6, category: "Drinks", desc: "Ceremonial grade matcha whisked with organic oat milk over ice." },
+        { name: "Chef Wagyu Secret Truffle Slider / سلايدر واغيو الشيف السري", price: 21, category: "Secret Menu", desc: "Off-menu gourmet slider with black truffle cream and caramelized glaze (AI exclusive)." }
+      ];
 
-      if (businessType === "real_estate") {
-        samplePrefixes = ["Damac Hills", "New Cairo", "Riyadh Boulevard", "Dubai Marina", "October City"];
-        parts = [
-          { name: "Apartment with Terrace / شقة أرضي بتراس", price: 150000, category: "Apartments", desc: "3 Bedrooms, 2 Bathrooms, luxurious layout with a master suite." },
-          { name: "Luxury Penthouse / روف بنتهاوس فاخر", price: 290000, category: "Apartments", desc: "Modern duplex penthouse with private roof pool and open views." },
-          { name: "Modern Standalone Villa / فيلا مستقلة فاخرة", price: 620000, category: "Villas", desc: "Spacious standalone villa with landscape garden and private deck." },
-          { name: "Fully Equipped Corporate Office / مكتب إداري مجهز بالكامل", price: 95000, category: "Commercial", desc: "Premium commercial space with conference rooms and fiber optic." },
-          { name: "Prime Commercial Retail Shop / محل تجاري بموقع مميز", price: 180000, category: "Commercial", desc: "Ground floor retail shop with wide double frontage." },
-          { name: "Agricultural Farm / أرض زراعية مستصلحة", price: 220000, category: "Lands", desc: "Rich fertile agricultural land with active water wells." },
-          { name: "Residential Plot / أرض سكنية مرخصة", price: 140000, category: "Lands", desc: "Permitted for immediate G+4 residential building construction." }
-        ];
-      } else if (businessType === "automotive") {
-        samplePrefixes = ["Toyota Camry", "Ford Territory", "Hyundai Tucson", "Tesla Model Y", "Mercedes C-Class"];
-        parts = [
-          { name: "Ceramic Brake Pads / قماش فرامل سيراميك", price: 75, category: "Spare Parts", desc: "Ultra-quiet premium ceramic brake pads with long lifespan." },
-          { name: "Laser Spark Plugs / بواجي ليزر إيريديوم", price: 45, category: "Spare Parts", desc: "High performance spark plugs for superior ignition efficiency." },
-          { name: "Engine Air Filter / فلتر هواء الماكينة", price: 22, category: "Spare Parts", desc: "High density fiber engine air intake filter." },
-          { name: "Android Smart Console Screen / شاشة أندرويد ذكية", price: 280, category: "Accessories", desc: "Full-HD 10-inch capacitive touch screen with Apple CarPlay & Android Auto." },
-          { name: "LED Headlight Kit / طقم لمبات ليد أمامية", price: 110, category: "Accessories", desc: "Super bright 6000K white headlights, plug-and-play." },
-          { name: "Synthetic Engine Oil 10W-40 / زيت ماكينة تخليقي بالكامل", price: 35, category: "Maintenance", desc: "Premium 10,000km protection synthetic engine lubricant." },
-          { name: "Comprehensive Brake Service / باقة صيانة الفرامل الشاملة", price: 150, category: "Maintenance", desc: "Brake pad replacement, rotor resurfacing, and fluid flush." }
-        ];
-      } else if (businessType === "general") {
-        samplePrefixes = ["Sony Alpha", "MacBook Pro M3", "Logitech Master", "Ergonomic Setup", "Dior Luxury"];
-        parts = [
-          { name: "Mechanical Tactile Keyboard / كيبورد ميكانيكي مريح", price: 120, category: "Electronics", desc: "Tactile red switches with silent damping and customizable RGB backlighting." },
-          { name: "Active Noise Cancelling Headset / سماعة بلوتوث عازلة للضوضاء", price: 195, category: "Electronics", desc: "Over-ear high fidelity wireless sound system with 40-hour battery life." },
-          { name: "Ergonomic Hydraulic Office Chair / كرسي مكتب هيدروليك مريح للظهر", price: 165, category: "Home", desc: "Orthopedic back support with flexible height, headrest, and armrests." },
-          { name: "Scented Premium Cologne / عطر رجالي فاخر", price: 85, category: "Fashion", desc: "Earthy woody fragrance with long-lasting scent notes." },
-          { name: "Cotton Oversized Hoodie / هودي قطن ثقيل", price: 45, category: "Fashion", desc: "High-quality heavy French terry cotton designer comfort wear." },
-          { name: "Smart Robot Vacuum / مكنسة روبوت ذكية", price: 240, category: "Home", desc: "Self-charging smart robotic vacuum with LIDAR mapping and app control." },
-          { name: "Custom Web Development / تصميم وبرمجة موقع متكامل", price: 900, category: "Services", desc: "Fully responsive business website design with SEO-optimized setup." }
-        ];
-      } else {
-        // Restaurants
-        samplePrefixes = ["Classic Gourmet", "La Piazza", "Sweet Tooth", "Organic Fresh", "Burgers & Co"];
-        parts = [
-          { name: "Truffle Mushroom Burger / برجر المشروم والترافل الفاخر", price: 16, category: "Main Course", desc: "Prime Black Angus beef, melted Swiss cheese, caramelized onions & authentic black truffle sauce." },
-          { name: "Buffalo Crispy Wings / أجنحة دجاج بافلو حارة", price: 11, category: "Appetizers", desc: "Stunningly crispy wings glazed in spicy buffalo sauce, served with cool ranch sauce." },
-          { name: "Double Chocolate Fudge Lava Cake / كيكة شوكولاتة دبل فدج لافا", price: 8, category: "Desserts", desc: "Indulgent warm chocolate cake with a rich molten center, topped with vanilla ice cream." },
-          { name: "Pistachio Milkshake / ميلك شيك فستق حلبي", price: 7, category: "Drinks", desc: "Rich ice cream milkshake blended with organic Greek pistachios." },
-          { name: "Avocado Mozzarella Salad / سلطة أفوكادو بالموزاريلا", price: 12, category: "Appetizers", desc: "Fresh organic avocado slices with buffalo mozzarella and cherry tomatoes." },
-          { name: "Wood-Fired Pepperoni Pizza / بيتزا بيبيروني حطب", price: 18, category: "Main Course", desc: "Authentic Neapolitan sourdough topped with spicy pepperoni and hot honey drizzle." },
-          { name: "Organic Iced Matcha Latte / ماتشا لاتيه مثلج عضوي", price: 6, category: "Drinks", desc: "Ceremonial grade matcha whisked with organic oat milk over ice." }
-        ];
-      }
-
-      // We seed a rich representational sample of 15 high-quality unlisted items
-      const { isConfigured } = getSupabaseConfig();
-      const supabase = getSupabase();
       const seededItemsList: MenuItem[] = [];
 
       for (let i = 0; i < 15; i++) {
@@ -669,25 +706,39 @@ export function DigitalMenu() {
         
         seededItemsList.push(bulkItem);
 
-        if (isConfigured && supabase) {
-          try {
-            await supabase
-              .from('menu_items')
-              .insert([bulkItem]);
-          } catch (sbErr) {
-            console.warn("Failed to insert seeded item in Supabase table:", sbErr);
-          }
+        if (user.provider === 'local') {
+          addLocalDoc('menu_items', bulkItem, user.uid);
         } else {
-          await setDoc(doc(db, "menu_items", itemId), bulkItem);
+          const { isConfigured } = getSupabaseConfig();
+          const supabase = getSupabase();
+          
+          if (isConfigured && supabase) {
+            try {
+              await supabase
+                .from('menu_items')
+                .insert([bulkItem]);
+            } catch (sbErr) {
+              console.warn("Failed to insert seeded item in Supabase table:", sbErr);
+            }
+          } else {
+            await setDoc(doc(db, "menu_items", itemId), bulkItem);
+          }
         }
       }
 
-      if (isConfigured && supabase) {
-        // Update local buffer and states
-        const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
+      if (user.provider === 'local') {
+        const localItems = getLocalCollection('menu_items', user.uid);
         const updated = [...seededItemsList, ...localItems];
-        localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
-        setItems(prev => [...seededItemsList, ...prev].sort((a, b) => b.createdAt - a.createdAt));
+        setLocalCollection('menu_items', updated, user.uid);
+        setItems((prev: MenuItem[]) => [...seededItemsList, ...prev].sort((a, b) => b.createdAt - a.createdAt));
+      } else {
+        const { isConfigured } = getSupabaseConfig();
+        if (isConfigured) {
+          const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
+          const updated = [...seededItemsList, ...localItems];
+          localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
+          setItems((prev: MenuItem[]) => [...seededItemsList, ...prev].sort((a, b) => b.createdAt - a.createdAt));
+        }
       }
 
       setLoading(false);
@@ -707,34 +758,133 @@ export function DigitalMenu() {
     setTimeout(() => setNotification(""), 3500);
   };
 
-  // Color mappings for the QR acrylic stand
-  const colorSchemes: Record<string, { bg: string, border: string, text: string, accent: string }> = {
-    indigo: { bg: "bg-indigo-600", border: "border-indigo-600", text: "text-indigo-600", accent: "indigo" },
-    emerald: { bg: "bg-emerald-600", border: "border-emerald-600", text: "text-emerald-600", accent: "emerald" },
-    amber: { bg: "bg-amber-500", border: "border-amber-500", text: "text-amber-500", accent: "amber" },
-    rose: { bg: "bg-rose-600", border: "border-rose-600", text: "text-rose-600", accent: "rose" }
-  };
+  // Real dynamic QR code generation state
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
 
-  const currentScheme = colorSchemes[qrColor] || colorSchemes.indigo;
+  // QR Code management for tables
+  const [qrCodes, setQrCodes] = useState<any[]>([]);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [editingQr, setEditingQr] = useState<any>(null);
+  const [qrForm, setQrForm] = useState({ tableNumber: '', color: 'indigo', label: '' });
 
-  // Custom QR Code Generator SVG Mockup
-  const renderQRCodeSVG = () => {
-    return (
-      <svg className={`w-36 h-36 mx-auto ${currentScheme.text}`} viewBox="0 0 100 100" fill="currentColor">
-        <path d="M5,5 h30 v30 h-30 z M10,10 h20 v20 h-20 z M15,15 h10 v10 h-10 z" />
-        <path d="M65,5 h30 v30 h-30 z M70,10 h20 v20 h-20 z M75,15 h10 v10 h-10 z" />
-        <path d="M5,65 h30 v30 h-30 z M10,70 h20 v20 h-20 z M15,75 h10 v10 h-10 z" />
-        <path d="M45,10 h10 v10 h-10 z M45,25 h10 v10 h-10 z M55,45 h10 v10 h-10 z" />
-        <path d="M35,45 h10 v10 h-10 z M45,55 h10 v10 h-10 z M55,35 h10 v10 h-10 z" />
-        <path d="M75,45 h10 v10 h-10 z M85,55 h10 v10 h-10 z M65,75 h10 v10 h-10 z" />
-        <path d="M45,75 h10 v10 h-10 z M75,65 h10 v10 h-10 z M85,85 h10 v10 h-10 z" />
-        <path d="M45,45 h5 v5 h-5 z M50,50 h5 v5 h-5 z M40,60 h10 v5 h-10 z" />
-      </svg>
+  const resolvedOwnerId = user?.uid || "demo_merchant";
+  const tableTargetUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/store?ownerId=${resolvedOwnerId}&table=${encodeURIComponent(tableNumber || "1")}`
+    : `/store?ownerId=${resolvedOwnerId}&table=${encodeURIComponent(tableNumber || "1")}`;
+
+  const currentScheme = QR_STAND_COLORS[qrColor] || QR_STAND_COLORS.indigo;
+
+  // Load QR codes from local storage for local users
+  useEffect(() => {
+    if (!user) return;
+    if (user.provider === 'local') {
+      const localQrCodes = getLocalCollection('qr_codes', user.uid);
+      setQrCodes(localQrCodes);
+    }
+  }, [user]);
+
+  // Save QR codes to local storage when they change (for local users)
+  useEffect(() => {
+    if (user?.provider === 'local' && qrCodes.length >= 0) {
+      setLocalCollection('qr_codes', qrCodes, user.uid);
+    }
+  }, [qrCodes, user]);
+
+  useEffect(() => {
+    let isMounted = true;
+    QRCode.toDataURL(tableTargetUrl, {
+      width: 320,
+      margin: 2,
+      color: {
+        dark: currentScheme.hex || "#4338ca",
+        light: "#ffffff"
+      }
+    })
+      .then((url) => {
+        if (isMounted) setQrCodeDataUrl(url);
+      })
+      .catch((err) => {
+        console.error("QR Code generation error:", err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [tableTargetUrl, qrColor, currentScheme.hex]);
+
+  const handleDownloadQR = () => {
+    if (!qrCodeDataUrl) return;
+    const link = document.createElement("a");
+    link.href = qrCodeDataUrl;
+    link.download = `table-${tableNumber || "1"}-qr.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerNotification(
+      language === "ar" ? "تم تحميل رمز QR عالي الدقة بنجاح!" : "High-res QR Code downloaded successfully!"
     );
   };
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // QR Code CRUD operations
+  const handleCreateQr = () => {
+    if (!qrForm.tableNumber) return;
+    const newQr = {
+      id: 'qr_' + Math.random().toString(36).substring(2, 9),
+      tableNumber: qrForm.tableNumber,
+      color: qrForm.color,
+      label: qrForm.label || `Table ${qrForm.tableNumber}`,
+      ownerId: resolvedOwnerId,
+      createdAt: Date.now()
+    };
+    setQrCodes(prev => [...prev, newQr]);
+    setQrForm({ tableNumber: '', color: 'indigo', label: '' });
+    setShowQrModal(false);
+    triggerNotification(
+      language === "ar" ? `تم إنشاء QR للطاولة ${newQr.tableNumber} بنجاح!` : `QR for table ${newQr.tableNumber} created!`
+    );
+  };
+
+  const handleEditQr = (qr: any) => {
+    setEditingQr(qr);
+    setQrForm({
+      tableNumber: qr.tableNumber,
+      color: qr.color,
+      label: qr.label || ''
+    });
+    setShowQrModal(true);
+  };
+
+  const handleUpdateQr = () => {
+    if (!editingQr || !qrForm.tableNumber) return;
+    setQrCodes(prev => prev.map(qr => 
+      qr.id === editingQr.id 
+        ? { ...qr, tableNumber: qrForm.tableNumber, color: qrForm.color, label: qrForm.label || `Table ${qrForm.tableNumber}` }
+        : qr
+    ));
+    setEditingQr(null);
+    setQrForm({ tableNumber: '', color: 'indigo', label: '' });
+    setShowQrModal(false);
+    triggerNotification(
+      language === "ar" ? "تم تحديث QR بنجاح!" : "QR updated successfully!"
+    );
+  };
+
+  const handleDeleteQr = (qrId: string) => {
+    if (!window.confirm(language === "ar" ? "هل أنت متأكد من حذف هذا QR؟" : "Are you sure you want to delete this QR?")) return;
+    setQrCodes(prev => prev.filter(qr => qr.id !== qrId));
+    triggerNotification(
+      language === "ar" ? "تم حذف QR بنجاح!" : "QR deleted successfully!"
+    );
+  };
+
+  const openCreateQrModal = () => {
+    setEditingQr(null);
+    setQrForm({ tableNumber: '', color: 'indigo', label: '' });
+    setShowQrModal(true);
   };
 
   return (
@@ -837,12 +987,12 @@ export function DigitalMenu() {
             </div>
             <div>
               <h3 className="font-extrabold text-indigo-900 text-sm md:text-base">
-                {language === "ar" ? "فكرة رقمنة الكتالوج المخفي (2000 منتج)" : "The Hidden AI Catalog Concept (2,000 Products)"}
+                {language === "ar" ? "فكرة منيو المطاعم الذكي والأطباق السرية (Off-Menu)" : "Smart Restaurant Menu & Hidden Chef Dishes (Off-Menu)"}
               </h3>
               <p className="text-xs md:text-sm text-indigo-800/80 mt-1.5 leading-relaxed">
                 {language === "ar"
-                  ? "لست مضطراً لعرض كافة الـ 2000 منتج على واجهة منيو العميل البصري المزدحم! يمكنك إضافة 200 منتج أساسي في المنيو البصري، وتفعيل خيار 'للذكاء الاصطناعي فقط' على بقية الـ 1800 منتج (مثل تفاصيل قطع غيار السيارات النادرة أو النكهات الجانبية). العميل عندما يستعمل مساعد الصوت سيبحث الذكاء الاصطناعي فوراً في كامل الـ 2000 منتج ويجيبه بالأسعار والخصائص!"
-                  : "Keep your public store menu clean by showing only 200 core items, while marking the other 1,800 complex items (e.g. rare spare parts) as 'AI-Only / Hidden'. When customers speak to the AI Assistant, the AI will automatically fetch pricing and availability from the full database!"}
+                  ? "لست مضطراً لجعل المنيو البصري للعميل مزدحماً! يمكنك إبقاء الوجبات الأكثر طلباً ظاهرة للعين في المنيو، وتفعيل خيار 'للذكاء الاصطناعي فقط' على الأطباق السرية الخاصة، الإضافات المخصصة، أو تفاصيل المكونات والنكهات والحساسية. عندما يتحدث الزبون مع النادل الصوتي الذكي على الطاولة، سيبحث الذكاء الاصطناعي فوراً في كامل الأصناف ويقترحها عليه أو يضيفها لسلة طاولته!"
+                  : "Keep your visual table menu clean and elegant while marking secret chef specials, dietary allergen details, or special modifications as 'AI-Only / Hidden'. When dining guests talk with the Voice AI Waiter at their table, the AI will recommend these items and effortlessly add them to their bill!"}
               </p>
             </div>
           </div>
@@ -1256,10 +1406,10 @@ export function DigitalMenu() {
                   {menuParticles !== "none" && (
                     <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
                       {[
-                        { id: 1, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍔" : businessType === "real_estate" ? "🏠" : "🚗"), left: "10%", delay: "0s", duration: "7s", px: "20px" },
-                        { id: 2, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍕" : businessType === "real_estate" ? "🔑" : "⚡"), left: "30%", delay: "2s", duration: "5s", px: "-15px" },
-                        { id: 3, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "🍰" : businessType === "real_estate" ? "🏢" : "⚙️"), left: "60%", delay: "1s", duration: "8s", px: "30px" },
-                        { id: 4, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : (businessType === "restaurant" ? "☕" : businessType === "real_estate" ? "🌲" : "🔋"), left: "80%", delay: "3s", duration: "6s", px: "-25px" }
+                        { id: 1, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍔", left: "10%", delay: "0s", duration: "7s", px: "20px" },
+                        { id: 2, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍕", left: "30%", delay: "2s", duration: "5s", px: "-15px" },
+                        { id: 3, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "🍰", left: "60%", delay: "1s", duration: "8s", px: "30px" },
+                        { id: 4, char: menuParticles === "sparkles" ? "✨" : menuParticles === "dust" ? "⭐" : "☕", left: "80%", delay: "3s", duration: "6s", px: "-25px" }
                       ].map(p => (
                         <span
                           key={p.id}
@@ -1295,12 +1445,10 @@ export function DigitalMenu() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none relative z-10">
                     <div className="text-center py-2">
                       <h4 className="font-extrabold text-xs">
-                        {businessType === "real_estate" ? (language === "ar" ? "كتالوج العقارات التفاعلي" : "Interactive Properties") :
-                         businessType === "automotive" ? (language === "ar" ? "معرض قطع الغيار والسيارات" : "Vehicle Catalog") :
-                         (language === "ar" ? "منيو المأكولات الرقمي" : "Fresh Digital Menu")}
+                        {language === "ar" ? "منيو المأكولات والمشروبات الرقمي" : "Fresh Digital Dining Menu"}
                       </h4>
                       <p className="text-[9px] opacity-70 mt-0.5">
-                        {language === "ar" ? "تصفح واطلب وسلّم الذكاء الاصطناعي!" : "Browse and ask our voice AI!"}
+                        {language === "ar" ? "تصفح واطلب وسلّم النادل الصوتي الذكي!" : "Browse and order with our Voice AI Waiter!"}
                       </p>
                     </div>
 
@@ -1311,7 +1459,7 @@ export function DigitalMenu() {
                           key={cat.value}
                           className={`px-2 py-1 rounded-full text-[8px] font-bold whitespace-nowrap shrink-0 ${
                             i === 0
-                              ? `bg-${menuPrimaryColor}-600 text-white`
+                              ? `${activePrimary.bg} text-white`
                               : "bg-black/5"
                           }`}
                         >
@@ -1324,18 +1472,14 @@ export function DigitalMenu() {
                     <div className={`grid gap-3 ${menuLayout === "grid" ? "grid-cols-2" : "grid-cols-1"}`}>
                       {[
                         {
-                          name: businessType === "real_estate" ? (language === "ar" ? "شقة سكنية بفيو حمام سباحة" : "Poolside Apartment") :
-                                businessType === "automotive" ? (language === "ar" ? "فحمات فرامل ليزر سيراميك" : "Ceramic Brake Pads") :
-                                (language === "ar" ? "برجر اللحم الكلاسيكي الفاخر" : "Angus Classic Burger"),
-                          price: businessType === "real_estate" ? 180000 : businessType === "automotive" ? 75 : 15.99,
-                          desc: businessType === "real_estate" ? "3 غرف، تشطيب لوكس" : businessType === "automotive" ? "طرازات كوري وياباني" : "جبنة تشيدر، صوص بيتي"
+                          name: language === "ar" ? "برجر اللحم الكلاسيكي الفاخر" : "Angus Classic Burger",
+                          price: 14.99,
+                          desc: "جبنة تشيدر، صوص بيتي، خبز بريوش طازج"
                         },
                         {
-                          name: businessType === "real_estate" ? (language === "ar" ? "روف بنتهاوس بحديقة خاصة" : "Luxury Penthouse") :
-                                businessType === "automotive" ? (language === "ar" ? "شاشة أندرويد 10 إنش ذكية" : "Smart Android Display") :
-                                (language === "ar" ? "كعكة الشوكولاتة الذائبة" : "Molten Chocolate Lava"),
-                          price: businessType === "real_estate" ? 290000 : businessType === "automotive" ? 220 : 8.50,
-                          desc: businessType === "real_estate" ? "دوبلكس بإطلالة بانوراما" : businessType === "automotive" ? "واي فاي، جي بي إس مدمج" : "شوكولاتة بلجيكية فاخرة"
+                          name: language === "ar" ? "كعكة الشوكولاتة الذائبة" : "Molten Chocolate Lava",
+                          price: 7.50,
+                          desc: "شوكولاتة بلجيكية فاخرة مع آيس كريم فانيلا"
                         }
                       ].map((card, idx) => (
                         <div
@@ -1356,10 +1500,10 @@ export function DigitalMenu() {
                             <p className="text-[7px] opacity-60 leading-tight line-clamp-2 mb-2">{card.desc}</p>
                           </div>
                           <div className="flex items-center justify-between mt-1">
-                            <span className={`font-bold text-[9px] text-${menuPrimaryColor}-600`}>
+                            <span className={`font-bold text-[9px] ${activePrimary.text}`}>
                               {menuCurrency}{card.price.toLocaleString()}
                             </span>
-                            <button className={`w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] bg-${menuPrimaryColor}-600 flex items-center justify-center hover:scale-105 transition-transform`}>
+                            <button className={`w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] ${activePrimary.bg} flex items-center justify-center hover:scale-105 transition-transform`}>
                               +
                             </button>
                           </div>
@@ -1374,7 +1518,7 @@ export function DigitalMenu() {
                       <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" />
                       <span>{language === "ar" ? "اسأل المساعد الصوتي..." : "Talk to voice agent..."}</span>
                     </div>
-                    <div className={`w-6 h-6 rounded-full bg-${menuPrimaryColor}-600 flex items-center justify-center text-white text-[10px] animate-pulse`}>
+                    <div className={`w-6 h-6 rounded-full ${activePrimary.bg} flex items-center justify-center text-white text-[10px] animate-pulse`}>
                       🎙️
                     </div>
                   </div>
@@ -1383,6 +1527,19 @@ export function DigitalMenu() {
 
                 {/* Home Indicator bar */}
                 <div className="w-24 h-1 bg-slate-800 rounded-full mx-auto mt-2.5 mb-1" />
+              </div>
+
+              {/* Direct Full-Page Storefront Button */}
+              <div className="flex justify-center mt-3">
+                <a
+                  href={`/store?ownerId=${resolvedOwnerId}&table=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 px-4 py-2.5 rounded-xl shadow-xs transition-all hover:scale-105"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
+                  {language === "ar" ? "معاينة المنيو الحي في صفحة كاملة" : "Open Live Dining Menu (Full Page)"}
+                </a>
               </div>
             </div>
           </div>
@@ -1407,7 +1564,7 @@ export function DigitalMenu() {
                     {language === "ar" ? "لون الستاند البصري" : "Stand Acrylic Theme Color"}
                   </label>
                   <div className="flex gap-3">
-                    {Object.keys(colorSchemes).map((color) => (
+                    {Object.keys(QR_STAND_COLORS).map((color) => (
                       <button
                         key={color}
                         onClick={() => setQrColor(color)}
@@ -1416,7 +1573,9 @@ export function DigitalMenu() {
                         } ${
                           color === "indigo" ? "bg-indigo-600" :
                           color === "emerald" ? "bg-emerald-600" :
-                          color === "amber" ? "bg-amber-500" : "bg-rose-600"
+                          color === "amber" ? "bg-amber-500" :
+                          color === "rose" ? "bg-rose-600" :
+                          color === "violet" ? "bg-violet-600" : "bg-yellow-700"
                         } transition-all`}
                       />
                     ))}
@@ -1474,28 +1633,38 @@ export function DigitalMenu() {
               </div>
 
               {/* Simulated Stand */}
-              <div className={`w-64 bg-white rounded-2xl p-6 text-slate-800 shadow-2xl border-t-8 ${currentScheme.border} flex flex-col items-center`}>
+              <div className={`w-72 bg-white rounded-2xl p-6 text-slate-800 shadow-2xl border-t-8 ${currentScheme.border} flex flex-col items-center`}>
                 {/* Restaurant Header */}
                 <div className="text-center mb-4">
-                  <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white text-xs font-extrabold mb-1">
-                    MN
+                  <div className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${currentScheme.bg} text-white text-xs font-extrabold mb-1 shadow-sm`}>
+                    🍽️
                   </div>
                   <h3 className="font-extrabold text-sm text-slate-800">
-                    {user?.displayName || "Min Makanak Store / من مكانك"}
+                    {user?.displayName || (language === "ar" ? "مطعم الأصالة الفاخر" : "Gourmet Restaurant")}
                   </h3>
-                  <div className={`text-[10px] font-bold ${currentScheme.text} uppercase tracking-wider`}>
-                    {language === "ar" ? `طاولة رقم ${tableNumber}` : `Table No. ${tableNumber}`}
+                  <div className={`text-[11px] font-extrabold ${currentScheme.text} uppercase tracking-wider mt-0.5`}>
+                    {language === "ar" ? `📍 طاولة رقم ${tableNumber || "1"}` : `📍 Table No. ${tableNumber || "1"}`}
                   </div>
                 </div>
 
-                {/* SVG QR CODE */}
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 mb-4 shadow-inner">
-                  {renderQRCodeSVG()}
+                {/* REAL DYNAMIC SCANNABLE QR CODE */}
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200 mb-4 shadow-xs">
+                  {qrCodeDataUrl ? (
+                    <img
+                      src={qrCodeDataUrl}
+                      alt={`Table ${tableNumber} QR`}
+                      className="w-40 h-40 object-contain rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-40 h-40 flex items-center justify-center text-slate-400 text-xs">
+                      {language === "ar" ? "جاري إنشاء الـ QR..." : "Generating QR..."}
+                    </div>
+                  )}
                 </div>
 
                 {/* Instructions */}
                 <div className="text-center space-y-1.5 px-2">
-                  <p className="text-[10px] font-bold text-slate-700 leading-tight">
+                  <p className="text-[11px] font-bold text-slate-800 leading-tight">
                     {ctaTextAr}
                   </p>
                   <p className="text-[9px] text-slate-500 font-medium leading-tight">
@@ -1506,12 +1675,41 @@ export function DigitalMenu() {
                 {/* NFC Logo or Help Note */}
                 <div className="mt-4 pt-3 border-t border-slate-100 w-full flex items-center justify-center gap-1.5 text-[8px] text-slate-400 font-bold uppercase tracking-wider">
                   <Sparkles className="w-3 h-3 text-indigo-500" />
-                  {language === "ar" ? "مدعوم بالذكاء الاصطناعي الصوتي" : "Powered by Voice AI"}
+                  {language === "ar" ? "مدعوم بنادل صوتي ذكي للمأكولات" : "Powered by Voice AI Dining Assistant"}
                 </div>
               </div>
 
+              {/* Destination URL & Live Test Link */}
+              <div className="w-full mt-5 bg-white/5 border border-white/10 rounded-2xl p-3.5 flex flex-col gap-2 text-left">
+                <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span className="font-bold">{language === "ar" ? "رابط الطاولة الحقيقي (QR Target):" : "Live Table Destination:"}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(tableTargetUrl);
+                      triggerNotification(language === "ar" ? "تم نسخ الرابط!" : "Link copied!");
+                    }}
+                    className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 text-[10px] font-bold"
+                  >
+                    <Copy className="w-3 h-3" />
+                    {language === "ar" ? "نسخ" : "Copy"}
+                  </button>
+                </div>
+                <div className="bg-black/40 px-3 py-1.5 rounded-lg text-[10px] text-slate-300 font-mono truncate text-left dir-ltr">
+                  {tableTargetUrl}
+                </div>
+                <a
+                  href={tableTargetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2 px-3 text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {language === "ar" ? `اختبار تجربة الزبون (فتح طاولة ${tableNumber || "1"})` : `Test Dine-in (Open Table ${tableNumber || "1"})`}
+                </a>
+              </div>
+
               {/* Print and Export Buttons */}
-              <div className="flex gap-4 mt-6 w-full">
+              <div className="flex gap-3 mt-4 w-full">
                 <button
                   onClick={handlePrint}
                   className="flex-1 bg-white/10 hover:bg-white/20 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-white/5"
@@ -1520,15 +1718,141 @@ export function DigitalMenu() {
                   {language === "ar" ? "طباعة الستاند" : "Print Stand"}
                 </button>
                 <button
-                  onClick={() => {
-                    triggerNotification(language === "ar" ? "تم تحميل كود QR بنجاح!" : "QR stand exported successfully!");
-                  }}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2"
+                  onClick={handleDownloadQR}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md text-white"
                 >
                   <Download className="w-4 h-4" />
-                  {language === "ar" ? "تحميل الصورة" : "Download PNG"}
+                  {language === "ar" ? "تحميل QR PNG" : "Download QR PNG"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Codes Management */}
+      <div className="mt-8 bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <QrCode className="w-5 h-5 text-slate-400" />
+            {language === "ar" ? "إدارة أكواد QR للطاولات" : "Manage Table QR Codes"}
+          </h2>
+          <button
+            onClick={openCreateQrModal}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            {language === "ar" ? "إضافة QR" : "Add QR"}
+          </button>
+        </div>
+        
+        {qrCodes.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            {language === "ar" ? "لا توجد أكواد QR بعد. أضف أول QR للطاولة." : "No QR codes yet. Add your first table QR."}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {qrCodes.map((qr) => (
+              <div key={qr.id} className="border border-slate-200 rounded-2xl p-4 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm">{qr.label || `Table ${qr.tableNumber}`}</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">{language === "ar" ? "طاولة" : "Table"} {qr.tableNumber}</p>
+                  </div>
+                  <div className={`w-6 h-6 rounded-full ${QR_STAND_COLORS[qr.color]?.bg || 'bg-indigo-600'}`} />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEditQr(qr)}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    {language === "ar" ? "تعديل" : "Edit"}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteQr(qr.id)}
+                    className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    {language === "ar" ? "حذف" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* QR Create/Edit Modal */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800">
+                {editingQr 
+                  ? (language === "ar" ? "تعديل QR" : "Edit QR Code")
+                  : (language === "ar" ? "إضافة QR جديد" : "Add New QR Code")}
+              </h3>
+              <button
+                onClick={() => { setShowQrModal(false); setEditingQr(null); }}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
+                  {language === "ar" ? "رقم الطاولة" : "Table Number"}
+                </label>
+                <input
+                  type="text"
+                  value={qrForm.tableNumber}
+                  onChange={(e) => setQrForm({...qrForm, tableNumber: e.target.value})}
+                  placeholder="e.g. 5, A, Counter 1"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
+                  {language === "ar" ? "اللون" : "Color"}
+                </label>
+                <div className="flex gap-3">
+                  {Object.keys(QR_STAND_COLORS).map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => setQrForm({...qrForm, color})}
+                      className={`w-8 h-8 rounded-full border-2 ${
+                        qrForm.color === color ? "border-slate-800 scale-110" : "border-transparent"
+                      } ${
+                        color === "indigo" ? "bg-indigo-600" :
+                        color === "emerald" ? "bg-emerald-600" :
+                        color === "amber" ? "bg-amber-500" :
+                        color === "rose" ? "bg-rose-600" :
+                        color === "violet" ? "bg-violet-600" : "bg-yellow-700"
+                      } transition-all`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
+                  {language === "ar" ? "الاسم/التسمية" : "Label"}
+                </label>
+                <input
+                  type="text"
+                  value={qrForm.label}
+                  onChange={(e) => setQrForm({...qrForm, label: e.target.value})}
+                  placeholder={language === "ar" ? "مثال: طاولة 5" : "e.g. Table 5"}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              <button
+                onClick={editingQr ? handleUpdateQr : handleCreateQr}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl text-sm font-bold transition-colors shadow-md"
+              >
+                {editingQr 
+                  ? (language === "ar" ? "تحديث QR" : "Update QR Code")
+                  : (language === "ar" ? "إنشاء QR" : "Create QR Code")}
+              </button>
             </div>
           </div>
         </div>
@@ -1540,11 +1864,7 @@ export function DigitalMenu() {
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="text-lg font-bold text-slate-800">
-                {businessType === "real_estate" 
-                  ? (language === "ar" ? "إضافة عقار جديد للكتالوج" : "Add New Property Listing")
-                  : businessType === "automotive"
-                  ? (language === "ar" ? "إضافة سيارة أو قطعة غيار" : "Add Vehicle or Spare Part")
-                  : (language === "ar" ? "إضافة منتج جديد للمحل" : "Add New Store Product")}
+                {language === "ar" ? "إضافة وجبة أو صنف جديد للمنيو" : "Add New Dish or Drink to Menu"}
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -1558,24 +1878,14 @@ export function DigitalMenu() {
               {/* Name */}
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-400 mb-1.5">
-                  {businessType === "real_estate"
-                    ? (language === "ar" ? "عنوان العقار / الاسم" : "Property Title / Name")
-                    : businessType === "automotive"
-                    ? (language === "ar" ? "اسم الموديل / القطعة" : "Model or Part Name")
-                    : (language === "ar" ? "اسم المنتج" : "Product Name")} *
+                  {language === "ar" ? "اسم الوجبة / المشروب" : "Dish / Drink Name"} *
                 </label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={
-                    businessType === "real_estate"
-                      ? (language === "ar" ? "مثال: شقة 3 غرف في التجمع الخامس" : "e.g. 3BR Apartment in Damac Hills")
-                      : businessType === "automotive"
-                      ? (language === "ar" ? "مثال: طقم فرامل تويوتا كورولا 2020" : "e.g. Toyota Corolla Brake Pads")
-                      : (language === "ar" ? "مثال: برجر كلاسيك أو شاحن سريع" : "e.g. Classic Burger or Fast Charger")
-                  }
+                  placeholder={language === "ar" ? "مثال: برجر دبل بيف تشيز مع بطاطس" : "e.g. Double Beef Cheeseburger with Fries"}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
@@ -1584,9 +1894,7 @@ export function DigitalMenu() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-400 mb-1.5">
-                    {businessType === "real_estate"
-                      ? (language === "ar" ? "القيمة الإجمالية ($)" : "Value / Price ($)")
-                      : (language === "ar" ? "السعر ($)" : "Price ($)")} *
+                    {language === "ar" ? "السعر" : "Price"} *
                   </label>
                   <input
                     type="number"
@@ -1594,7 +1902,7 @@ export function DigitalMenu() {
                     required
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
-                    placeholder={businessType === "real_estate" ? "150000" : "9.99"}
+                    placeholder="12.50"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   />
                 </div>
