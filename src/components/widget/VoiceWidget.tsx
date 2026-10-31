@@ -90,20 +90,7 @@ export function VoiceWidget() {
             if (data.businessType) setActiveBusinessType(data.businessType as BusinessType);
           }
         } catch (err) {
-          console.error("Error loading external settings from Supabase:", err);
-        }
-      } else {
-        try {
-          const docRef = doc(db, "merchant_settings", urlOwnerId);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.dialect) setActiveDialect(data.dialect as Dialect);
-            if (data.voiceTone) setActiveVoiceTone(data.voiceTone as VoiceTone);
-            if (data.businessType) setActiveBusinessType(data.businessType as BusinessType);
-          }
-        } catch (err) {
-          console.error("Error loading external settings from Firestore:", err);
+          console.error("Error loading external settings:", err);
         }
       }
     };
@@ -133,22 +120,7 @@ export function VoiceWidget() {
             setActiveDocuments(data);
           }
         } catch (err) {
-          console.error("Error loading external knowledge from Supabase:", err);
-        }
-      } else {
-        try {
-          const q = query(
-            collection(db, 'knowledge_documents'), 
-            where('ownerId', '==', urlOwnerId)
-          );
-          const snap = await getDocs(q);
-          const docs = snap.docs.map(d => ({
-            id: d.id,
-            ...d.data()
-          }));
-          setActiveDocuments(docs);
-        } catch (err) {
-          console.error("Error loading external knowledge from Firestore:", err);
+          console.error("Error loading external knowledge:", err);
         }
       }
     };
@@ -177,31 +149,11 @@ export function VoiceWidget() {
             setDbMenuItems(data);
           }
         } catch (err) {
-          console.error("Failed to fetch menu items from Supabase:", err);
+          console.error("Failed to fetch menu items:", err);
         }
       };
       
       fetchSupabaseItems();
-    } else {
-      let q = query(collection(db, "menu_items"));
-      if (urlOwnerId) {
-        q = query(collection(db, "menu_items"), where("ownerId", "==", urlOwnerId));
-      }
-      
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const docs = snapshot.docs.map(d => ({
-          id: d.id,
-          name: d.data().name,
-          price: d.data().price,
-          description: d.data().description || "",
-          category: d.data().category || "",
-          isAiOnly: d.data().isAiOnly || false,
-        }));
-        setDbMenuItems(docs);
-      }, (err) => {
-        console.error("Error fetching widget items from firestore:", err);
-      });
-      return () => unsubscribe();
     }
   }, [urlOwnerId]);
 
@@ -584,48 +536,11 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                         createdAt: Date.now()
                       };
 
-                      // 1. Save in Firestore
-                      setDoc(doc(db, "orders", orderId), newOrder).then(async () => {
-                        // 2. Load webhook and dispatch
-                        try {
-                          const whSnap = await getDoc(doc(db, "webhook_settings", finalOwnerId));
-                          if (whSnap.exists()) {
-                            const { webhookUrl, webhookSecret } = whSnap.data();
-                            if (webhookUrl) {
-                              fetch(webhookUrl, {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                  'X-VoiceAI-Signature': 'sha256_mock_sig_value_for_verification'
-                                },
-                                body: JSON.stringify({
-                                  event: 'order.created',
-                                  timestamp: Date.now(),
-                                  webhook_secret: webhookSecret,
-                                  data: newOrder
-                                })
-                              }).catch(e => console.warn("Widget background webhook dispatch failed:", e));
-                            }
-                          }
-                        } catch (err) {
-                          console.warn(err);
-                        }
+                      const widgetSupabase = getSupabase();
 
+                      if (!widgetSupabase) {
                         clearCart();
-                        setTranscript(language === "ar" ? `تم إرسال طلبك بنجاح من طاولة رقم ${tableParam || "سفري"}` : `Order confirmed successfully for Table ${tableParam || "Walk-in"}`);
-
-                        sessionPromise.then(session => {
-                          session.sendToolResponse({
-                            functionResponses: [{
-                              name,
-                              id,
-                              response: { status: "success", message: language === "ar" ? `تم تسجيل طلبك بنجاح للمطبخ. رقم طلبك هو: ${orderId}` : `Order sent successfully to the kitchen. Your order ID is: ${orderId}` }
-                            }]
-                          });
-                        });
-                      }).catch(err => {
-                        console.error("Firestore voice checkout error:", err);
-                        clearCart();
+                        setTranscript(language === "ar" ? "تم تسجيل طلبك بنجاح!" : "Order placed successfully!");
                         sessionPromise.then(session => {
                           session.sendToolResponse({
                             functionResponses: [{
@@ -635,7 +550,51 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                             }]
                           });
                         });
-                      });
+                      } else {
+                        widgetSupabase.from('orders').insert(newOrder)
+                          .then(async ({ error: orderError }) => {
+                            if (!orderError) {
+                              try {
+                                const { data: whSettings } = await widgetSupabase
+                                  .from('webhook_settings')
+                                  .select('*')
+                                  .eq('ownerId', finalOwnerId)
+                                  .single();
+
+                                if (whSettings?.webhookUrl) {
+                                  fetch(whSettings.webhookUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      'X-VoiceAI-Signature': 'sha256_mock_sig_value_for_verification'
+                                    },
+                                    body: JSON.stringify({
+                                      event: 'order.created',
+                                      timestamp: Date.now(),
+                                      webhook_secret: whSettings.webhookSecret,
+                                      data: newOrder
+                                    })
+                                  }).catch(e => console.warn("Widget background webhook dispatch failed:", e));
+                                }
+                              } catch (err) {
+                                console.warn(err);
+                              }
+
+                              clearCart();
+                              setTranscript(language === "ar" ? `تم إرسال طلبك بنجاح من طاولة رقم ${tableParam || "سفري"}` : `Order confirmed successfully for Table ${tableParam || "Walk-in"}`);
+
+                              sessionPromise.then(session => {
+                                session.sendToolResponse({
+                                  functionResponses: [{
+                                    name,
+                                    id,
+                                    response: { status: "success", message: language === "ar" ? `تم تسجيل طلبك بنجاح للمطبخ. رقم طلبك هو: ${orderId}` : `Order sent successfully to the kitchen. Your order ID is: ${orderId}` }
+                                  }]
+                                });
+                              });
+                            }
+                          });
+                      }
                     }
                   }
                 }

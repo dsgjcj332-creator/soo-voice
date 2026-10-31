@@ -16,8 +16,6 @@ import {
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useAuth } from "../../contexts/AuthContext";
-// Firebase auth removed for Supabase-only mode
-import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 
 const getNavigation = (t: (k: string) => string, language: string) => [
   { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
@@ -30,7 +28,7 @@ const getNavigation = (t: (k: string) => string, language: string) => [
 
 export function Sidebar() {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigation = getNavigation(t, language);
   const navigate = useNavigate();
   const [clickCount, setClickCount] = useState(0);
@@ -52,12 +50,8 @@ export function Sidebar() {
   };
 
   const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      navigate('/auth');
-    } catch (e) {
-      // Ignored
-    }
+    await logout();
+    navigate('/auth');
   };
 
   return (

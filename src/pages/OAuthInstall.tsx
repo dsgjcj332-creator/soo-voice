@@ -24,15 +24,22 @@ export function OAuthInstall() {
     
     try {
       const merchantId = Math.random().toString(36).substring(2, 12);
-      await setDoc(doc(db, "merchants", merchantId), {
-        id: merchantId,
-        store: shopName,
-        platform: platform,
-        status: "Active",
-        ownerId: currentUser.uid,
-        email: currentUser.email || "",
-        createdAt: Date.now()
-      });
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        await supabase
+          .from('merchants')
+          .insert({
+            id: merchantId,
+            store: shopName,
+            platform: platform,
+            status: "Active",
+            ownerId: currentUser.uid,
+            email: currentUser.email || "",
+            createdAt: Date.now()
+          });
+      }
 
       setStatus("success");
       setTimeout(() => {
@@ -55,9 +62,18 @@ export function OAuthInstall() {
 
   const handleGoogleLogin = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      await finalizeInstall(result.user);
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin + '/app/integration?success=true'
+          }
+        });
+        if (error) throw error;
+      }
     } catch (err: any) {
       console.error(err);
       setStatus("error");

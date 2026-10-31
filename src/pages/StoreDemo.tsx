@@ -71,24 +71,32 @@ export function StoreDemo() {
       }
     }
 
-    // 2. Fetch live config from Firestore
+    // 2. Fetch live config from Supabase
     const fetchLiveDesign = async () => {
       try {
-        const docRef = doc(db, "menu_customizer", resolvedOwnerId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const config = docSnap.data();
-          if (config.primaryColor) setMenuPrimaryColor(config.primaryColor);
-          if (config.bgStyle) setMenuBgStyle(config.bgStyle);
-          if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
-          if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
-          if (config.particles) setMenuParticles(config.particles);
-          if (config.currency) setMenuCurrency(config.currency);
-          if (config.layout) setMenuLayout(config.layout);
-          
-          // Sync back to local storage
-          localStorage.setItem(`menu_design_config_${resolvedOwnerId}`, JSON.stringify(config));
-          localStorage.setItem('menu_design_config_global', JSON.stringify(config));
+        const supabase = getSupabase();
+        const { isConfigured } = getSupabaseConfig();
+
+        if (isConfigured && supabase) {
+          const { data, error } = await supabase
+            .from('menu_customizer')
+            .select('*')
+            .eq('ownerId', resolvedOwnerId)
+            .single();
+
+          if (!error && data) {
+            if (data.primaryColor) setMenuPrimaryColor(data.primaryColor);
+            if (data.bgStyle) setMenuBgStyle(data.bgStyle);
+            if (data.logoEmoji) setMenuLogoEmoji(data.logoEmoji);
+            if (data.borderRadius) setMenuBorderRadius(data.borderRadius);
+            if (data.particles) setMenuParticles(data.particles);
+            if (data.currency) setMenuCurrency(data.currency);
+            if (data.layout) setMenuLayout(data.layout);
+            
+            // Sync back to local storage
+            localStorage.setItem(`menu_design_config_${resolvedOwnerId}`, JSON.stringify(data));
+            localStorage.setItem('menu_design_config_global', JSON.stringify(data));
+          }
         }
       } catch (err) {
         console.error("Error loading live store design:", err);
@@ -144,34 +152,6 @@ export function StoreDemo() {
       return () => {
         supabase.removeChannel(channel);
       };
-    } else {
-      console.log("[StoreDemo] Fetching catalog items from Firebase Firestore for owner:", resolvedOwnerId);
-      const q = query(collection(db, "menu_items"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const docs = snapshot.docs.map(d => ({
-          id: d.id,
-          name: d.data().name,
-          price: d.data().price,
-          description: d.data().description || "",
-          category: d.data().category || "",
-          isAiOnly: d.data().isAiOnly || false,
-          ownerId: d.data().ownerId || "",
-        }));
-        
-        // Filter by resolved owner ID
-        const filteredDocs = docs.filter(item => item.ownerId === resolvedOwnerId);
-        if (filteredDocs.length > 0) {
-          setDbMenuItems(filteredDocs);
-        } else {
-          // Fallback to demo items or general items
-          setDbMenuItems(docs.filter(item => !item.ownerId || item.ownerId === 'demo_merchant' || item.ownerId === 'demo'));
-        }
-      }, (err) => {
-        console.error("Error fetching StoreDemo items:", err);
-        // Fallback on error
-        setDbMenuItems(RESTAURANT_FALLBACK_ITEMS);
-      });
-      return () => unsubscribe();
     }
   }, [resolvedOwnerId]);
 
@@ -201,17 +181,28 @@ export function StoreDemo() {
         createdAt: Date.now()
       };
 
-      // 1. Save order in Firestore "orders" collection
-      await setDoc(doc(db, "orders", orderId), newOrder);
+      // 1. Save order
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (isConfigured && supabase) {
+        await supabase
+          .from('orders')
+          .insert(newOrder);
+      }
 
       // 2. Load merchant webhook settings and dispatch event
-      try {
-        const whSnap = await getDoc(doc(db, "webhook_settings", resolvedOwnerId));
-        if (whSnap.exists()) {
-          const { webhookUrl, webhookSecret } = whSnap.data();
-          if (webhookUrl) {
+      if (isConfigured && supabase) {
+        try {
+          const { data: whSettings } = await supabase
+            .from('webhook_settings')
+            .select('*')
+            .eq('ownerId', resolvedOwnerId)
+            .single();
+
+          if (whSettings?.webhookUrl) {
             // Non-blocking fetch dispatch
-            fetch(webhookUrl, {
+            fetch(whSettings.webhookUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -220,14 +211,14 @@ export function StoreDemo() {
               body: JSON.stringify({
                 event: 'order.created',
                 timestamp: Date.now(),
-                webhook_secret: webhookSecret,
+                webhook_secret: whSettings.webhookSecret,
                 data: newOrder
               })
             }).catch(e => console.warn("Background webhook fetch failed:", e));
           }
+        } catch (whErr) {
+          console.warn("Non-blocking Webhook loading error:", whErr);
         }
-      } catch (whErr) {
-        console.warn("Non-blocking Webhook loading error:", whErr);
       }
 
       setCheckoutStatus('success');
