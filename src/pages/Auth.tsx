@@ -43,7 +43,12 @@ export function Auth() {
       if (err.code === 'auth/popup-closed-by-user') {
         errorMessage = language === 'ar' ? 'تم إغلاق نافذة تسجيل الدخول. يرجى المحاولة مرة أخرى.' : 'Sign-in popup was closed. Please try again.';
       } else if (err.code === 'auth/popup-blocked') {
-        errorMessage = language === 'ar' ? 'تم حظر نافذة منبثقة بواسطة المتصفح. يرجى السماح بالنوافذ المنبثقة.' : 'Popup disabled by browser. Please allow popups for this site.';
+        errorMessage = language === 'ar' ? 'تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة للموقع.' : 'Popup blocked by browser. Please allow popups.';
+      } else if (err.code === 'auth/unauthorized-domain') {
+        const domain = window.location.hostname;
+        errorMessage = language === 'ar'
+          ? `النطاق "${domain}" غير مسجل في Firebase. يرجى إضافته في Firebase Console > Authentication > Settings > Authorized domains. أو استخدم الدخول السريع.`
+          : `Domain "${domain}" is not authorized in Firebase. Please add it in Firebase Console > Authentication > Settings > Authorized domains. Or use Quick Demo Sign-In.`;
       } else if (err.message) {
         errorMessage = err.message;
       }
@@ -114,6 +119,19 @@ export function Auth() {
           </p>
 
           <div className="w-full space-y-3">
+            {/* Quick Demo Login - Primary for local/dev */}
+            <button
+              onClick={handleDemoLogin}
+              disabled={loading}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors shadow-lg cursor-pointer ring-2 ring-amber-400/50"
+            >
+              <Sparkles className="w-5 h-5 text-amber-400" />
+              {loading 
+                ? (language === 'ar' ? 'جاري الدخول...' : 'Signing in...') 
+                : (language === 'ar' ? 'دخول سريع للتجربة والمراجعة' : 'Quick Demo Sign-In')}
+            </button>
+
+            {/* Google Login - Secondary, may require Firebase domain setup */}
             <button
               onClick={handleGoogleLogin}
               disabled={loading}
@@ -128,16 +146,6 @@ export function Auth() {
               {loading 
                 ? (language === 'ar' ? 'جاري تسجيل الدخول...' : 'Signing in...') 
                 : (language === 'ar' ? 'المتابعة باستخدام Google' : 'Continue with Google')}
-            </button>
-
-            {/* Quick Demo Login Button */}
-            <button
-              onClick={handleDemoLogin}
-              disabled={loading}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors shadow-sm cursor-pointer"
-            >
-              <Sparkles className="w-5 h-5 text-amber-400" />
-              {language === 'ar' ? 'دخول سريع للتجربة والمراجعة' : 'Quick Demo Sign-In'}
             </button>
           </div>
 
