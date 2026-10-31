@@ -6,8 +6,6 @@ import {
   Store, Home, Car, Boxes, Languages, Volume2, Mic, ArrowRight, ArrowLeft, 
   CheckCircle2, Copy, Sparkles, HelpCircle, Code, Loader2
 } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { getSupabase, getSupabaseConfig } from '../../lib/supabase';
 import { VoiceWidget } from '../widget/VoiceWidget';
 
@@ -206,15 +204,6 @@ export function OnboardingWizard() {
         if (error) throw error;
       } catch (err) {
         console.error("Supabase seed error:", err);
-      }
-    } else {
-      try {
-        console.log("[Seeder] Inserting seeded products to Firebase Firestore...");
-        for (const item of itemsToInsert) {
-          await setDoc(doc(db, "menu_items", item.id), item);
-        }
-      } catch (err) {
-        console.error("Firestore seed error:", err);
       }
     }
   };

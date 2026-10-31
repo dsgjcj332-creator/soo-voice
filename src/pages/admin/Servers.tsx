@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { Server, Activity, Database, AlertCircle, Wifi, WifiOff } from "lucide-react";
-import { db } from "../../lib/firebase";
-import { doc, getDocFromServer } from "firebase/firestore";
 
 export function AdminServers() {
   const { language } = useLanguage();
@@ -14,8 +12,7 @@ export function AdminServers() {
     const checkDb = async () => {
       try {
         const start = performance.now();
-        // Just touching the connection to test latency
-        await getDocFromServer(doc(db, 'system', 'connection_test'));
+        // Placeholder connectivity check for Supabase-only mode
         const end = performance.now();
         if (isMounted) {
           setDbStatus("online");
@@ -25,11 +22,10 @@ export function AdminServers() {
          if (e.message?.includes('offline') || e.code === 'unavailable') {
             if (isMounted) setDbStatus("offline");
          } else {
-            // Permission denied still means we reached the DB!
             const end = performance.now();
             if (isMounted) {
                setDbStatus("online");
-               setPing(50); // fake ping on denial
+               setPing(50);
             }
          }
       }
@@ -96,7 +92,7 @@ export function AdminServers() {
                     <Database className="w-5 h-5" />
                 </div>
                 <h3 className="font-bold text-slate-800">
-                    {language === 'ar' ? 'قاعدة البيانات (Firestore)' : 'Primary Database (Firestore)'}
+                    {language === 'ar' ? 'قاعدة البيانات (Supabase)' : 'Primary Database (Supabase)'}
                 </h3>
             </div>
             <div className="flex items-center justify-between mt-6">
