@@ -86,21 +86,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     } else {
       console.log("[Auth] Initializing with Firebase Auth provider...");
-      const unsubscribe = onAuthStateChanged(auth, (usr) => {
-        if (usr) {
-          setUser({
-            uid: usr.uid,
-            email: usr.email,
-            displayName: usr.displayName,
-            photoURL: usr.photoURL,
-            provider: 'firebase'
-          });
-        } else {
-          setUser(null);
-        }
+      try {
+        const unsubscribe = onAuthStateChanged(auth, (usr) => {
+          if (usr) {
+            setUser({
+              uid: usr.uid,
+              email: usr.email,
+              displayName: usr.displayName,
+              photoURL: usr.photoURL,
+              provider: 'firebase'
+            });
+          } else {
+            setUser(null);
+          }
+          setLoading(false);
+        });
+        return unsubscribe;
+      } catch (e) {
+        console.warn("[Auth] Firebase auth init failed, staying unauthenticated", e);
+        setUser(null);
         setLoading(false);
-      });
-      return unsubscribe;
+        return () => {};
+      }
     }
   }, [isConfigured]);
 
