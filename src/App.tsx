@@ -22,8 +22,6 @@ import { StoreDemo } from "./pages/StoreDemo";
 import { CartProvider } from "./contexts/CartContext";
 import { Auth } from "./pages/Auth";
 import { Integration } from "./pages/Integration";
-import { Analytics } from "./pages/Analytics";
-import { Notifications } from "./pages/Notifications";
 import { DigitalMenu } from "./pages/DigitalMenu";
 import { Billing } from "./pages/Billing";
 import { WidgetStandalone } from "./pages/WidgetStandalone";
@@ -35,11 +33,10 @@ import { TermsOfService } from "./pages/TermsOfService";
 import { Security } from "./pages/Security";
 import { AboutUs } from "./pages/AboutUs";
 import { SuperAdminLayout } from "./components/layout/SuperAdminLayout";
-import { SuperAdminAuth } from "./pages/SuperAdminAuth";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 function AppRoutes() {
-  const { user, loading, isSuperAdmin } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return <div className="h-screen w-full flex items-center justify-center bg-slate-50 text-slate-400">Loading...</div>;
@@ -59,12 +56,12 @@ function AppRoutes() {
 
         <Route path="/auth" element={user ? <Navigate to="/app" /> : <Auth />} />
         <Route path="/store" element={<StoreDemo />} />
+        <Route path="/store-demo" element={<StoreDemo />} />
         <Route path="/widget-standalone" element={<WidgetStandalone />} />
         <Route path="/oauth/authorize" element={<OAuthInstall />} />
-        <Route path="/admin-auth" element={isSuperAdmin ? <Navigate to="/admin" /> : <SuperAdminAuth />} />
         
         {/* Independent Admin Layout */}
-        <Route path="/admin" element={isSuperAdmin ? <SuperAdminLayout /> : <Navigate to="/admin-auth" />}>
+        <Route path="/admin" element={user ? <SuperAdminLayout /> : <Navigate to="/auth" />}>
           <Route index element={<SuperAdminDashboard />} />
           <Route path="merchants" element={<AdminMerchants />} />
           <Route path="voices" element={<AdminVoices />} />
@@ -78,8 +75,6 @@ function AppRoutes() {
           <Route path="conversations" element={<Conversations />} />
           <Route path="settings" element={<Settings />} />
           <Route path="integration" element={<Integration />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="notifications" element={<Notifications />} />
           <Route path="digital-menu" element={<DigitalMenu />} />
           <Route path="billing" element={<Billing />} />
           <Route path="*" element={<Navigate to="/app" replace />} />

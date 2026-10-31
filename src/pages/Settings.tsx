@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useSettings, Dialect, VoiceTone, BusinessType } from '../contexts/SettingsContext';
-import { Mic, Globe, Settings2, Sparkles, Star, Home, Car, Utensils, Briefcase, Building, Database, Check, Copy, RotateCcw, Key, AlertCircle } from 'lucide-react';
+import { useSettings, Dialect, VoiceTone, BusinessType, Currency } from '../contexts/SettingsContext';
+import { Mic, Globe, Settings2, Sparkles, Star, Home, Car, Utensils, Briefcase, Building, Database, Check, Copy, RotateCcw, Key, AlertCircle, DollarSign } from 'lucide-react';
 import { subscribeToGlobalVoices, GlobalVoice } from '../services/globalVoices';
 import { getSupabaseConfig, resetSupabaseClient } from '../lib/supabase';
 
 
 export function Settings() {
   const { language } = useLanguage();
-  const { dialect, setDialect, voiceTone, setVoiceTone, businessType, setBusinessType } = useSettings();
+  const { dialect, setDialect, voiceTone, setVoiceTone, currency, setCurrency } = useSettings();
   const [globalVoices, setGlobalVoices] = useState<GlobalVoice[]>([]);
   
   const [sbUrl, setSbUrl] = useState('');
@@ -36,7 +36,7 @@ export function Settings() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto font-sans">
+    <div className="p-8 max-w-4xl mx-auto font-sans">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800">
           {language === 'ar' ? 'إعدادات المساعد الصوتي' : 'Voice Agent Settings'}
@@ -147,18 +147,70 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Business Sector / Vertical Selector Card */}
+      {/* Currency Selection Card */}
       <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-          <div className="h-10 w-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
-            <Building className="h-5 w-5" />
+          <div className="h-10 w-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
+            <DollarSign className="h-5 w-5" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {language === 'ar' ? 'نوع النشاط التجاري (Business Sector)' : 'Business Sector & Vertical'}
+              {language === 'ar' ? 'العملة الافتراضية' : 'Default Currency'}
             </h2>
             <p className="text-sm text-slate-500">
-              {language === 'ar' ? 'تخصيص كامل للنظام والذكاء الاصطناعي ليناسب قطاع عملك' : 'Customize the system & AI catalog to match your business model'}
+              {language === 'ar' ? 'اختر العملة التي ستظهر في الفواتير والمنيو' : 'Select the currency used across billing, invoices, and menu pricing'}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { value: 'EGP', labelAr: 'جنيه مصري (EGP)', labelEn: 'Egyptian Pound (EGP)', symbol: 'E£' },
+              { value: 'SAR', labelAr: 'ريال سعودي (SAR)', labelEn: 'Saudi Riyal (SAR)', symbol: '﷼' },
+              { value: 'USD', labelAr: 'دولار أمريكي (USD)', labelEn: 'US Dollar (USD)', symbol: '$' },
+              { value: 'AED', labelAr: 'درهم إماراتي (AED)', labelEn: 'UAE Dirham (AED)', symbol: 'د.إ' },
+              { value: 'KWD', labelAr: 'دينار كويتي (KWD)', labelEn: 'Kuwaiti Dinar (KWD)', symbol: 'د.ك' },
+              { value: 'QAR', labelAr: 'ريال قطري (QAR)', labelEn: 'Qatari Riyal (QAR)', symbol: '﷼' },
+            ].map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all ${
+                  currency === opt.value ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-slate-200 hover:border-amber-300'
+                }`}
+              >
+                <div>
+                  <span className="font-bold text-slate-800 text-sm block">
+                    {language === 'ar' ? opt.labelAr : opt.labelEn}
+                  </span>
+                  <span className="text-[11px] text-slate-400">{opt.symbol}</span>
+                </div>
+                <input
+                  type="radio"
+                  name="currency"
+                  value={opt.value}
+                  checked={currency === opt.value}
+                  onChange={(e) => setCurrency(e.target.value as any)}
+                  className="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Restaurant Concept & Dine-in Experience Card */}
+      <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
+          <div className="h-10 w-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
+            <Utensils className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">
+              {language === 'ar' ? 'طابع المطعم والضيافة الصوتية (Restaurant Concept)' : 'Restaurant Concept & Hospitality'}
+            </h2>
+            <p className="text-sm text-slate-500">
+              {language === 'ar' ? 'تخصيص سلوك النادل الصوتي الذكي ونوع الضيافة وخدمة الطاولات' : 'Configure smart voice waiter persona, cuisine type, and table service'}
             </p>
           </div>
         </div>
@@ -167,92 +219,82 @@ export function Settings() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               {
-                value: 'restaurant',
-                icon: <Utensils className="w-5 h-5 text-emerald-600" />,
-                titleAr: 'المطاعم والكافيهات',
-                titleEn: 'Restaurants & Cafes',
-                descAr: 'رقمنة الوجبات والمشروبات وسلة التسوق مع مساعدة الذكاء الاصطناعي لاقتراح الأطباق وتلقي الطلبات.',
-                descEn: 'Digitalize meals, drinks & cart checkout with AI food recommendations and seamless ordering.',
-                bgColor: 'bg-emerald-50/60',
-                borderColor: 'border-emerald-100',
-                activeColor: 'border-emerald-600 ring-2 ring-emerald-100'
+                id: 'fast_food',
+                titleAr: 'وجبات سريعة وبرجر (Fast Casual & Burgers)',
+                titleEn: 'Fast Casual & Burgers',
+                descAr: 'اقتراح الوجبات، الكومبو، البطاطس، الصوصات الإضافية والمشروبات بسرعة فائقة وسلاسة.',
+                descEn: 'Ultra-fast ordering with combos, extra sauces, fries, and beverage upsells.',
+                icon: '🍔'
               },
               {
-                value: 'real_estate',
-                icon: <Home className="w-5 h-5 text-blue-600" />,
-                titleAr: 'العقارات والخدمات العقارية',
-                titleEn: 'Real Estate & Properties',
-                descAr: 'عرض الشقق، الفيلات، الأراضي والمكاتب. يتيح للعملاء حجز مواعيد معاينة والاستفسار عن الأسعار والمساحات مع السمسار الذكي.',
-                descEn: 'List apartments, villas, lands & offices. Allows clients to book viewings and query sizes/budgets with our AI broker.',
-                bgColor: 'bg-blue-50/60',
-                borderColor: 'border-blue-100',
-                activeColor: 'border-blue-600 ring-2 ring-blue-100'
+                id: 'cafe_bakery',
+                titleAr: 'كافيه ومخبوزات وحلويات (Café & Specialty Coffee)',
+                titleEn: 'Café & Specialty Coffee',
+                descAr: 'تفاصيل درجات تحميص البن، أنواع الحليب (شوفان/لوز)، اقتراح الحلويات المرافقة للقهوة.',
+                descEn: 'Roast profiles, milk options, and pairing desserts with hot & iced specialty drinks.',
+                icon: '☕'
               },
               {
-                value: 'automotive',
-                icon: <Car className="w-5 h-5 text-amber-600" />,
-                titleAr: 'السيارات وقطع الغيار والصيانة',
-                titleEn: 'Automotive & Spare Parts',
-                descAr: 'عرض ومقارنة السيارات، قطع الغيار، والإكسسوارات. مساعدة العملاء في البحث الذكي وجدولة تجربة قيادة أو حجز صيانة.',
-                descEn: 'List cars, parts & accessories. Helps clients with parts search, quote queries, and scheduling a test drive.',
-                bgColor: 'bg-amber-50/60',
-                borderColor: 'border-amber-100',
-                activeColor: 'border-amber-600 ring-2 ring-amber-100'
+                id: 'oriental_grill',
+                titleAr: 'مشاوي ومأكولات شرقية (Grill & Traditional Dining)',
+                titleEn: 'Grill & Traditional Dining',
+                descAr: 'ضيافة عربية دافئة، اقتراح المقبلات الباردة والساخنة، السلطات، وطواجن اللحوم والمشاوي.',
+                descEn: 'Warm traditional hospitality, hot/cold mezze, premium meats, and family platters.',
+                icon: '🥩'
               },
               {
-                value: 'general',
-                icon: <Briefcase className="w-5 h-5 text-purple-600" />,
-                titleAr: 'التجارة والخدمات العامة',
-                titleEn: 'General Retail & Services',
-                descAr: 'مبيعات المنتجات المتنوعة، الخدمات المنزلية، الإلكترونيات والملابس. سلة تسوق مرنة ومستشار مبيعات صوتي متكامل.',
-                descEn: 'Sell retail products, household services, electronics or fashion. Features dynamic checkout and shopping AI.',
-                bgColor: 'bg-purple-50/60',
-                borderColor: 'border-purple-100',
-                activeColor: 'border-purple-600 ring-2 ring-purple-100'
+                id: 'italian_pizza',
+                titleAr: 'بيتزا وباستا إيطالية (Pizzeria & Italian Trattoria)',
+                titleEn: 'Pizzeria & Italian Trattoria',
+                descAr: 'شرح المكونات الطازجة، أنواع الأجبان، الإضافات المخصصة، والمقبلات الإيطالية الأصيلة.',
+                descEn: 'Fresh doughs, cheese types, pasta sauces, and classic Italian appetizers.',
+                icon: '🍕'
               }
-            ].map((sect) => {
-              const isSelected = businessType === sect.value;
+            ].map((cuisine) => {
+              const [selectedCuisine, setSelectedCuisine] = useState(() => localStorage.getItem('restaurant_cuisine') || 'fast_food');
+              const isSelected = selectedCuisine === cuisine.id;
               return (
                 <div
-                  key={sect.value}
-                  onClick={() => setBusinessType(sect.value as BusinessType)}
+                  key={cuisine.id}
+                  onClick={() => {
+                    localStorage.setItem('restaurant_cuisine', cuisine.id);
+                    setSelectedCuisine(cuisine.id);
+                  }}
                   className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col gap-3 relative ${
-                    isSelected ? sect.activeColor + ' bg-white' : sect.bgColor + ' ' + sect.borderColor + ' opacity-75 hover:opacity-100'
+                    isSelected ? 'border-emerald-600 bg-white ring-2 ring-emerald-100 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-75 hover:opacity-100'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 bg-white rounded-xl shadow-xs border border-slate-100">
-                        {sect.icon}
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{cuisine.icon}</span>
                       <h3 className="font-bold text-slate-800 text-sm">
-                        {language === 'ar' ? sect.titleAr : sect.titleEn}
+                        {language === 'ar' ? cuisine.titleAr : cuisine.titleEn}
                       </h3>
                     </div>
                     {isSelected && (
-                      <span className="text-[10px] bg-indigo-600 text-white px-2.5 py-1 rounded-full font-bold">
-                        {language === 'ar' ? 'نشط الآن' : 'Active'}
+                      <span className="text-[10px] bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold">
+                        {language === 'ar' ? 'طابع نشط' : 'Active Concept'}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    {language === 'ar' ? sect.descAr : sect.descEn}
+                    {language === 'ar' ? cuisine.descAr : cuisine.descEn}
                   </p>
                 </div>
               );
             })}
           </div>
           
-          <div className="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div className="mt-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-bold text-xs text-indigo-900">
-                {language === 'ar' ? 'سحر الرقمنة التلقائية' : 'Automated Sector Synchronization'}
+              <h4 className="font-bold text-xs text-emerald-900">
+                {language === 'ar' ? 'تكامل الطاولات والمنيو الذكي' : 'Integrated Restaurant Dine-in Architecture'}
               </h4>
-              <p className="text-[11px] text-indigo-700 mt-1 leading-relaxed">
+              <p className="text-[11px] text-emerald-800 mt-1 leading-relaxed">
                 {language === 'ar' 
-                  ? 'بمجرد تبديل النشاط، سيتغير شكل لوحة المنتجات، المنيو الرقمي للزوار، وصانع الباركود، والوكيل الصوتي ليفهم المصطلحات الفنية ويقترح المنتجات المناسبة لنفس النشاط تلقائياً!'
-                  : 'Once you switch the sector, the product manager, customer digital catalog, QR stand, and Voice Agent will instantly synchronize to understand industry jargon, specific listings, and custom actions automatically!'}
+                  ? 'تم تخصيص هذا التطبيق بالكامل كمنيو مطاعم وكافيهات صوتي. يقوم الزبون بالجلوس على الطاولة، مسح كود الـ QR، والتحدث مباشرة مع النادل الذكي لاختيار وجبته وإرسال الطلب فوراً إلى طابعة المطبخ أو نظام الكاشير (POS).'
+                  : 'This application is exclusively architected for restaurant QR table ordering and digital voice menus. Guests scan the QR on their table, speak directly to the AI waiter, and submit orders straight to your kitchen/POS.'}
               </p>
             </div>
           </div>

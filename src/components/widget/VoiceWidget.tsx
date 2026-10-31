@@ -30,59 +30,19 @@ const MENU_ITEMS = [
   { id: '5', name: 'Cola', price: 2.99, description: 'Refreshing cold soda.' },
 ];
 
-const SECTOR_PROMPTS_AR = {
-  restaurant: [
-    { label: "🍔 إضافة برجر للطلب", text: "أريد إضافة برجر لافا بالمشروم إلى طلبي" },
-    { label: "🍰 اقترح تحلية لذيذة", text: "ما هي التحلية المميزة التي تنصحني بها اليوم؟" },
-    { label: "🥤 إضافة مشروب بارد", text: "أريد إضافة ميلك شيك فستق حلبي وعصير ماتشا مثلج" },
-    { label: "🌿 خيارات نباتية؟", text: "هل لديكم سلطات أو وجبات صحية نباتية متوفرة؟" }
-  ],
-  real_estate: [
-    { label: "🏠 شقة 3 غرف نوم؟", text: "هل لديكم شقق ثلاث غرف نوم مميزة معروضة للبيع حالياً؟" },
-    { label: "🔑 حجز موعد معاينة", text: "أريد حجز موعد لمعاينة فيلا مستقلة في أقرب وقت" },
-    { label: "🏢 عقار إداري ومكتبي", text: "هل تتوفر مكاتب إدارية أو محلات تجارية بمواقع حيوية؟" },
-    { label: "🌳 أرض زراعية أو سكنية", text: "ابحث عن أرض زراعية مستصلحة أو أرض سكنية مرخصة للبناء" }
-  ],
-  automotive: [
-    { label: "🚗 سيارات عائلية متوفرة", text: "ما هي السيارات العائلية الدفع الرباعي SUV المتوفرة لديكم؟" },
-    { label: "🔧 فرامل وقطع غيار مخفية", text: "أريد شراء قماش فرامل سيراميك لسيارة تويوتا كورولا" },
-    { label: "📺 شاشة أندرويد ذكية", text: "هل يتوفر لديكم شاشة أندرويد ذكية للسيارة مع تركيبها؟" },
-    { label: "📅 حجز تجربة قيادة", text: "أود حجز تجربة قيادة لسيارة سيدان طراز 2026" }
-  ],
-  general: [
-    { label: "🎧 سماعات عازلة للضوضاء", text: "هل تتوفر سماعات بلوتوث عازلة للضوضاء وما هي مواصفاتها؟" },
-    { label: "🪑 كرسي مكتب هيدروليك", text: "أبحث عن كرسي مكتب طبي مريح للظهر ومكتب متحرك" },
-    { label: "🛡️ سياسة الضمان والاسترجاع", text: "ما هي سياسات الضمان على الأجهزة الإلكترونية والاسترجاع؟" },
-    { label: "💡 ترشيح أفضل العروض", text: "ما هي أفضل العروض والمنتجات الأكثر مبيعاً لديكم اليوم؟" }
-  ]
-};
+const RESTAURANT_PROMPTS_AR = [
+  { label: "🍔 إضافة برجر للطلب", text: "أريد إضافة برجر دبل تشيز وبطاطس مقلية إلى طلبي" },
+  { label: "🍕 بيتزا تروفل إيطالية", text: "ما هي مكونات بيتزا التروفل الإيطالية وسعرها؟" },
+  { label: "🍰 تحلية ومشروب بارد", text: "اقترح لي حلى لذيذ مع مشروب بارد منعش" },
+  { label: "🧑‍🍳 طبق الشيف السري", text: "هل يتوفر طبق سري خاص بالشيف غير معروض بالمنيو؟" }
+];
 
-const SECTOR_PROMPTS_EN = {
-  restaurant: [
-    { label: "🍔 Add Burger", text: "Please add a Truffle Mushroom Burger to my order." },
-    { label: "🍰 Suggest Dessert", text: "What is your best dessert recommendation today?" },
-    { label: "🥤 Add Iced Matcha", text: "I want to add an Organic Iced Matcha Latte to my cart." },
-    { label: "🌿 Vegetarian options?", text: "Do you have any fresh healthy salads or vegan items?" }
-  ],
-  real_estate: [
-    { label: "🏠 3-Bedroom Apartment?", text: "Do you have any 3-bedroom apartments with high-end finishing?" },
-    { label: "🔑 Book a Viewing", text: "I would like to book a physical viewing for the Luxury Standalone Villa." },
-    { label: "🏢 Commercial Office", text: "What commercial properties or corporate offices are currently available?" },
-    { label: "🌳 Lands & Plots", text: "Do you have any agriculture farms or residential plots for sale?" }
-  ],
-  automotive: [
-    { label: "🚗 Family SUVs", text: "Can you recommend a spacious family SUV with AWD?" },
-    { label: "🔧 Brake Pads & Parts", text: "I want to purchase premium ceramic brake pads for a Corolla." },
-    { label: "📺 Android Smart Console", text: "Do you have a smart Android console screen in stock?" },
-    { label: "📅 Book Test Drive", text: "I would like to schedule a test drive for the Sedan 2026." }
-  ],
-  general: [
-    { label: "🎧 Noise-Cancelling Audio", text: "Tell me about your pro noise-cancelling headphones." },
-    { label: "🪑 Office Ergonomics", text: "I need an ergonomic office setup with a height-adjustable desk." },
-    { label: "🛡️ Warranty & Return", text: "What are your product warranty guidelines and return policies?" },
-    { label: "💡 Best Tech Suggestions", text: "Can you suggest some of your best-selling electronics products?" }
-  ]
-};
+const RESTAURANT_PROMPTS_EN = [
+  { label: "🍔 Add Burger & Fries", text: "Please add a Double Cheese Burger and fries to my order." },
+  { label: "🍕 Truffle Pizza info", text: "What are the ingredients and price of your Truffle Pizza?" },
+  { label: "🍰 Suggest Dessert & Drink", text: "What is your best dessert paired with an iced drink?" },
+  { label: "🧑‍🍳 Chef's Secret Special", text: "Do you have any secret off-menu specials available today?" }
+];
 
 export function VoiceWidget() {
   const { t, language } = useLanguage();
@@ -469,27 +429,21 @@ STRICT SYSTEM GUARDRAILS:
         activeDialect === 'levantine' ? 'أنت تتحدث باللهجة الشامية اللطيفة.' :
         'أنت تتحدث باللغة العربية الفصحى المبسطة.';
 
-      let baseInstructionAr = "";
-      let baseInstructionEn = "";
+      const baseInstructionAr = `أنت نادل ومساعد ضيافة ذكي ومضياف لمطعمنا وكافيهنا. هذه قائمة الأطعمة والمشروبات والحلويات المتاحة للطلب:
+${JSON.stringify(allMenuItems)}
+${structuredProfilePromptAr}
+${structuredFaqsPromptAr}
+${standardDocsPromptAr}
+${strictGuardrailsAr}
+أجب بوضوح وإيجاز ولباقة بناءً على المعلومات المتاحة لك فقط. وجّه العميل للأطباق المميزة واجعل تجربته ممتعة وجذابة. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على أطباق سرية أو وجبات خاصة للشيف (isAiOnly = true)، إذا سألك العميل عنها، أكد له توفرها فوراً وأخبره بسعرها ومكوناتها ويمكنك إضافتها لطلب طاولته! إذا طلب العميل إضافة شيء، استخدم أداة add_to_cart باستخدام ID الخاص بالعنصر. إذا قال العميل أنه انتهى من الاختيار أو يريد تأكيد الطلب أو إرساله للمطبخ أو الدفع، استخدم أداة place_order لإرسال وتأكيد الطلب بالكامل.`;
 
-      if (activeBusinessType === "real_estate") {
-        baseInstructionAr = `أنت سمسار عقارات ذكي، محترف ومساعد ممتاز لشركتنا العقارية. هذه قائمة العقارات، الشقق، الفلل والأراضي المتاحة للبيع أو المعاينة:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptAr}\n${structuredFaqsPromptAr}\n${standardDocsPromptAr}\n${strictGuardrailsAr}\nأجب بوضوح وإيجاز بناءً على المعلومات المتاحة لك فقط. العميل هنا يبحث عن السكن أو الاستثمار أو حجز موعد معاينة. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على عقارات أو عروض مميزة مخفية (isAiOnly = true)، إذا سألك العميل عنها، أكد له توفرها فوراً وأخبره بتفاصيلها وقيمتها ويمكنك إضافتها لقائمة المعاينة! إذا طلب العميل إضافة عقار للمعاينة أو الحجز، استخدم أداة add_to_cart باستخدام ID الخاص بالعنصر.`;
-        baseInstructionEn = `You are an expert AI real estate broker for our property firm. Here is our properties catalog including apartments, villas, and lands:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptEn}\n${structuredFaqsPromptEn}\n${standardDocsPromptEn}\n${strictGuardrailsEn}\nAnswer briefly and clearly based ONLY on the provided information. Keep it highly professional and premium. Note: Some high-value properties in this catalog are marked 'isAiOnly = true' (exclusive unlisted properties). If the client asks about exclusive or unlisted properties, confirm we have them, explain their specs and value, and offer to add them to their viewing portfolio! If the client wants to schedule a viewing or add a property, use the add_to_cart tool with the item's ID.`;
-      } else if (activeBusinessType === "automotive") {
-        baseInstructionAr = `أنت مهندس ومستشار مبيعات سيارات وقطع غيار ذكي ومحترف. هذه قائمة السيارات، قطع الغيار، باقات الصيانة والإكسسوارات المتاحة للبيع:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptAr}\n${structuredFaqsPromptAr}\n${standardDocsPromptAr}\n${strictGuardrailsAr}\nأجب بوضوح وإيجاز بناءً على المعلومات المتاحة لك فقط. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على قطع غيار أو إكسسوارات مخفية بداخل المخزن (isAiOnly = true)، إذا سألك العميل عن قطع معينة أو توافر قطعة غيار، أكد له توفرها فوراً وأخبره بسعرها ومواصفاتها ويمكنك إضافتها لطلب الحجز الخاص به! إذا طلب العميل إضافة شيء، استخدم أداة add_to_cart باستخدام ID الخاص بالعنصر.`;
-        baseInstructionEn = `You are an expert automotive sales consultant and parts advisor. Here is the catalog of vehicles, parts, and maintenance packages:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptEn}\n${structuredFaqsPromptEn}\n${standardDocsPromptEn}\n${strictGuardrailsEn}\nAnswer briefly and clearly based ONLY on the provided information. Note: Some rare parts are marked 'isAiOnly = true' (hidden warehouse items). If the customer asks for a part or check availability, confirm we have it, state the price, and offer to add it to their order! If the customer asks to order or add to cart, use the add_to_cart tool with the item's ID.`;
-      } else if (activeBusinessType === "general") {
-        baseInstructionAr = `أنت مستشار مبيعات ذكي ومساعد متميز لمتجرنا التجاري. هذه قائمة المنتجات والخدمات المتاحة للبيع:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptAr}\n${structuredFaqsPromptAr}\n${standardDocsPromptAr}\n${strictGuardrailsAr}\nأجب بوضوح وإيجاز بناءً على المعلومات المتاحة لك فقط. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على عروض خاصة أو منتجات مخفية بالمستودع (isAiOnly = true)، إذا سألك العميل عن توفرها، أكد له توفرها فوراً وأخبره بسعرها ومواصفاتها ويمكنك إضافتها لسلة تسوقه! إذا طلب العميل إضافة شيء، استخدم أداة add_to_cart باستخدام ID الخاص بالعنصر.`;
-        baseInstructionEn = `You are a professional retail and services sales advisor for our shop. Here is our product and services catalog:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptEn}\n${structuredFaqsPromptEn}\n${standardDocsPromptEn}\n${strictGuardrailsEn}\nAnswer briefly and clearly based ONLY on the provided information. Note: Some products in this catalog are marked 'isAiOnly = true' (exclusive backend inventory). If the customer asks for them, confirm we have them, state the price, and offer to add them to their cart! If the customer asks to order or add to cart, use the add_to_cart tool with the item's ID.`;
-      } else {
-        // Restaurant
-        baseInstructionAr = `أنت مساعد ذكي ومضياف لمطعم وكافيه. هذه قائمة الأطعمة والمشروبات والحلويات المتاحة للطلب:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptAr}\n${structuredFaqsPromptAr}\n${standardDocsPromptAr}\n${strictGuardrailsAr}\nأجب بوضوح وإيجاز بناءً على المعلومات المتاحة لك فقط. وجّه العميل للأطباق المميزة واجعل تجربته ممتعة وجذابة. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على أطباق سرية أو وجبات خاصة مخفية (isAiOnly = true)، إذا سألك العميل عن وجبات خاصة أو عروض حصرية، أكد له توفرها فوراً وأخبره بسعرها ومكوناتها ويمكنك إضافتها لطلب الطعام الخاص به! إذا طلب العميل إضافة شيء، استخدم أداة add_to_cart باستخدام ID الخاص بالعنصر.`;
-        baseInstructionEn = `You are a friendly and smart restaurant host and order assistant. Here is our menu catalog including main courses, drinks, and desserts:\n${JSON.stringify(allMenuItems)}\n${structuredProfilePromptEn}\n${structuredFaqsPromptEn}\n${standardDocsPromptEn}\n${strictGuardrailsEn}\nAnswer briefly and clearly based ONLY on the provided information. Guide the user to popular meals and provide dynamic mouth-watering recommendations. Note: Some dishes are marked 'isAiOnly = true' (secret menu items). If the customer asks for a special dish, confirm we have it, state the price, and offer to add it to their order! If the customer asks to order or add to cart, use the add_to_cart tool with the item's ID.`;
-      }
-
-      // Append checkout instruction
-      baseInstructionAr += " إذا قال العميل أنه انتهى من الاختيار أو يريد تأكيد الطلب أو إرساله للمطبخ أو الدفع، استخدم أداة place_order لإرسال وتأكيد الطلب بالكامل.";
-      baseInstructionEn += " If the customer says they are ready to finalize their selection, confirm their order, or checkout, use the place_order tool to submit their entire order directly to the kitchen/POS.";
+      const baseInstructionEn = `You are a friendly and smart restaurant host and table ordering assistant. Here is our menu catalog including main courses, drinks, and desserts:
+${JSON.stringify(allMenuItems)}
+${structuredProfilePromptEn}
+${structuredFaqsPromptEn}
+${standardDocsPromptEn}
+${strictGuardrailsEn}
+Answer briefly, courteously and clearly based ONLY on the provided information. Guide the guest to popular meals and provide mouth-watering recommendations. Note: Some dishes are marked 'isAiOnly = true' (secret chef menu items). If the customer asks for special off-menu dishes, confirm we have them, state the price, and offer to add it to their order! If the customer asks to order or add to cart, use the add_to_cart tool with the item's ID. If the customer says they are ready to finalize their selection, confirm their order, or checkout, use the place_order tool to submit their entire order directly to the kitchen/POS.`;
 
       const sessionPromise = ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
@@ -828,10 +782,7 @@ STRICT SYSTEM GUARDRAILS:
                   
                   {/* Suggestions Grid */}
                   <div className="grid grid-cols-2 gap-1.5 w-full pt-1 z-10">
-                    {(language === "ar" 
-                      ? (SECTOR_PROMPTS_AR[activeBusinessType as keyof typeof SECTOR_PROMPTS_AR] || SECTOR_PROMPTS_AR.restaurant) 
-                      : (SECTOR_PROMPTS_EN[activeBusinessType as keyof typeof SECTOR_PROMPTS_EN] || SECTOR_PROMPTS_EN.restaurant)
-                    ).map((p, idx) => (
+                    {(language === "ar" ? RESTAURANT_PROMPTS_AR : RESTAURANT_PROMPTS_EN).map((p, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleSuggestionClick(p.text)}

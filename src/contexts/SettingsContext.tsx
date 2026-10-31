@@ -55,6 +55,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export type Dialect = 'standard' | 'egyptian' | 'gulf' | 'levantine';
 export type VoiceTone = 'Zephyr' | 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Aoede';
 export type BusinessType = 'restaurant' | 'real_estate' | 'automotive' | 'general';
+export type Currency = 'EGP' | 'SAR' | 'USD' | 'AED' | 'KWD' | 'QAR';
 
 interface SettingsContextType {
   dialect: Dialect;
@@ -63,6 +64,8 @@ interface SettingsContextType {
   setVoiceTone: (v: VoiceTone) => void;
   businessType: BusinessType;
   setBusinessType: (b: BusinessType) => void;
+  currency: Currency;
+  setCurrency: (c: Currency) => void;
   hasCompletedOnboarding: boolean;
   setHasCompletedOnboarding: (h: boolean) => void;
   loadingSettings: boolean;
@@ -84,6 +87,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [businessType, setBusinessTypeState] = useState<BusinessType>(() => {
     return (localStorage.getItem('businessType') as BusinessType) || 'restaurant';
   });
+  const [currency, setCurrencyState] = useState<Currency>(() => {
+    return (localStorage.getItem('currency') as Currency) || 'EGP';
+  });
   const [hasCompletedOnboarding, setHasCompletedOnboardingState] = useState<boolean>(() => {
     return localStorage.getItem('hasCompletedOnboarding') === 'true';
   });
@@ -102,6 +108,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setBusinessType = (b: BusinessType) => {
     setBusinessTypeState(b);
     localStorage.setItem('businessType', b);
+  };
+
+  const setCurrency = (c: Currency) => {
+    setCurrencyState(c);
+    localStorage.setItem('currency', c);
   };
 
   const setHasCompletedOnboarding = (h: boolean) => {
@@ -136,6 +147,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             if (data.dialect) setDialectState(data.dialect as Dialect);
             if (data.voiceTone) setVoiceToneState(data.voiceTone as VoiceTone);
             if (data.businessType) setBusinessTypeState(data.businessType as BusinessType);
+            if (data.currency) setCurrencyState(data.currency as Currency);
             setHasCompletedOnboardingState(true);
           }
         } catch (err) {
@@ -150,10 +162,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             if (data.dialect) setDialectState(data.dialect as Dialect);
             if (data.voiceTone) setVoiceToneState(data.voiceTone as VoiceTone);
             if (data.businessType) setBusinessTypeState(data.businessType as BusinessType);
+            if (data.currency) setCurrencyState(data.currency as Currency);
             setHasCompletedOnboardingState(true);
           }
         } catch (err) {
           console.error("Error fetching settings from Firestore:", err);
+          handleFirestoreError(err, OperationType.GET, `merchant_settings/${user.uid}`);
         }
       }
       setLoadingSettings(false);
@@ -173,6 +187,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         dialect,
         voiceTone,
         businessType,
+        currency,
         updatedAt: Date.now()
       };
 

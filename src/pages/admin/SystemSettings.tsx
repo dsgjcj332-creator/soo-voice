@@ -44,14 +44,14 @@ export function AdminSystemSettings() {
 
   if (loading || !settings) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto flex justify-center items-center h-full">
+      <div className="p-8 max-w-4xl mx-auto flex justify-center items-center h-full">
          <p className="text-slate-500">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</p>
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto h-full flex flex-col">
+    <div className="p-8 max-w-4xl mx-auto h-full flex flex-col">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800">
           {language === 'ar' ? 'إعدادات النظام العامة' : 'Global System Settings'}

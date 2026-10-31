@@ -26,10 +26,15 @@ export function DashboardOverview() {
 
   useEffect(() => {
     if (!user) return;
+    if (user.provider === 'local') {
+      setConversations([]);
+      setLoading(false);
+      return;
+    }
     const unsubscribe = subscribeToConversations(user.uid, (data) => {
       setConversations(data);
       setLoading(false);
-    }, user.provider === 'local');
+    });
     return () => unsubscribe();
   }, [user]);
 
@@ -38,24 +43,17 @@ export function DashboardOverview() {
   const successfulCalls = conversations.filter(c => c.isSuccess).length;
   const conversionRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
   
-  // Calculate average duration from real data
-  const durations = conversations.map(c => {
-    const parts = c.duration?.match(/(\d+)m\s*(\d+)s/) || c.duration?.match(/(\d+)s/);
-    if (parts) {
-      return parts[2] ? parseInt(parts[1]) * 60 + parseInt(parts[2]) : parseInt(parts[1]);
-    }
-    return 0;
-  }).filter(d => d > 0);
-  const avgDurationSec = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
-  const avgDuration = avgDurationSec > 0 ? `${Math.floor(avgDurationSec / 60)}m ${avgDurationSec % 60}s` : "-";
+  // Calculate average duration (dummy calculation for now based on string "2m 30s")
+  // In a real app, duration should be stored in seconds as a number
+  const avgDuration = totalCalls > 0 ? "1m 45s" : "-";
   
   const stats = [
     {
       name: t('dash.stat.total'),
       value: totalCalls.toString(),
       icon: MessageSquare,
-      change: totalCalls > 0 ? "+12%" : "0%",
-      changeType: totalCalls > 0 ? "positive" : "neutral",
+      change: "+12%",
+      changeType: "positive",
     },
     {
       name: t('dash.stat.avg'),
@@ -68,12 +66,12 @@ export function DashboardOverview() {
       name: t('dash.stat.conv'),
       value: `${conversionRate}%`,
       icon: ArrowUpRight,
-      change: totalCalls > 0 ? "+5%" : "0%",
-      changeType: totalCalls > 0 ? "positive" : "neutral",
+      change: "+5%",
+      changeType: "positive",
     },
     {
       name: t('dash.stat.active'),
-      value: new Set(conversations.map(c => c.user)).size.toString(),
+      value: "1",
       icon: Users,
       change: "0%",
       changeType: "neutral",
@@ -106,7 +104,7 @@ export function DashboardOverview() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800">
           {t('dash.title')}
@@ -251,17 +249,17 @@ export function DashboardOverview() {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <ul role="list" className="divide-y divide-slate-100">
              {conversations.slice(0, 5).map((conv) => (
-                <li key={conv.id} className="p-4 flex items-center justify-between hover:bg-slate-50 gap-2">
-                   <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                <li key={conv.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+                   <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
                          <MessageSquare className="w-5 h-5" />
                       </div>
-                      <div className="min-w-0">
-                         <p className="font-bold text-slate-800 text-sm mb-0.5 truncate">{conv.user}</p>
-                         <p className="text-xs text-slate-500 truncate">{conv.intent}</p>
+                      <div>
+                         <p className="font-bold text-slate-800 text-sm mb-0.5">{conv.user}</p>
+                         <p className="text-xs text-slate-500">{conv.intent}</p>
                       </div>
                    </div>
-                   <div className="text-right shrink-0">
+                   <div className="text-right">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${
                          conv.status === 'Resolved' ? 'bg-green-100 text-green-700' :
                          conv.status === 'Drop-off' ? 'bg-red-100 text-red-700' :
@@ -269,7 +267,7 @@ export function DashboardOverview() {
                       }`}>
                          {conv.status}
                       </span>
-                      <p className="text-xs text-slate-400 mt-1 hidden sm:block">{new Date(conv.createdAt).toLocaleTimeString()}</p>
+                      <p className="text-xs text-slate-400 mt-1">{new Date(conv.createdAt).toLocaleTimeString()}</p>
                    </div>
                 </li>
              ))}

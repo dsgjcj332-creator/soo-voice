@@ -1,20 +1,13 @@
-import { Bell, Search, Globe, Menu } from "lucide-react";
+import { Bell, Search, Globe } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 
-export function Header({ onMenuClick }: { onMenuClick: () => void }) {
+export function Header() {
   const { language, setLanguage, t } = useLanguage();
 
   return (
     <header className="h-16 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 lg:px-8 flex shrink-0">
-      <div className="flex flex-1 items-center">
-        <button
-          type="button"
-          onClick={onMenuClick}
-          className="lg:hidden p-2 -ms-2 me-3 text-slate-500 hover:text-slate-700 rounded-md"
-        >
-          <Menu className="h-6 w-6" />
-        </button>
-        <form className="hidden sm:flex w-full md:ms-0" action="#" method="GET">
+      <div className="flex flex-1">
+        <form className="flex w-full md:ms-0" action="#" method="GET">
           <label htmlFor="search-field" className="sr-only">
             Search
           </label>
@@ -32,7 +25,7 @@ export function Header({ onMenuClick }: { onMenuClick: () => void }) {
           </div>
         </form>
       </div>
-      <div className="ms-4 flex items-center md:ms-6 gap-2 sm:gap-4">
+      <div className="ms-4 flex items-center md:ms-6 gap-4">
         <button
           type="button"
           onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}

@@ -11,8 +11,7 @@ import {
   ExternalLink,
   LogOut,
   QrCode,
-  BarChart3,
-  Bell
+  Utensils
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -22,14 +21,14 @@ import { signOut } from "firebase/auth";
 
 const getNavigation = (t: (k: string) => string, language: string) => [
   { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
-  { name: t("nav.conversations"), href: "/app/conversations", icon: MessageSquare },
-  { name: language === 'ar' ? 'التحليلات' : 'Analytics', href: "/app/analytics", icon: BarChart3 },
-  { name: t("nav.kb"), href: "/app/knowledge-base", icon: Book },
+  { name: language === 'ar' ? 'طلبات المطبخ الحية (KDS)' : 'Live Kitchen Orders (KDS)', href: "/app/integration", icon: Utensils },
   { name: language === 'ar' ? 'المنيو والـ QR' : 'Digital Menu & QR', href: "/app/digital-menu", icon: QrCode },
+  { name: t("nav.conversations"), href: "/app/conversations", icon: MessageSquare },
+  { name: t("nav.kb"), href: "/app/knowledge-base", icon: Book },
   { name: t("nav.settings"), href: "/app/settings", icon: Settings },
 ];
 
-export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function Sidebar() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const navigation = getNavigation(t, language);
@@ -48,33 +47,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     setClickCount(newCount);
     if (newCount >= 5) {
       setClickCount(0); // Reset after triggering
-      navigate('/admin-auth');
+      navigate('/admin');
     }
   };
 
   const handleSignOut = async () => {
     try {
-      if (user?.provider === 'local') {
-        localStorage.removeItem('local_demo_user');
-        navigate('/auth');
-        return;
-      }
       await signOut(auth);
       navigate('/auth');
     } catch (e) {
-      navigate('/auth');
+      // Ignored
     }
   };
 
   return (
-    <React.Fragment>
-      {/* Mobile drawer */}
-      <div
-        className={cn(
-          "fixed inset-y-0 start-0 z-40 w-64 flex flex-col border-e border-slate-200 bg-white transition-transform duration-300 lg:static lg:!translate-x-0 lg:z-auto",
-          open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
-        )}
-      >
+    <div className="flex h-full w-64 flex-col border-e border-slate-200 bg-white">
       <div className="flex h-16 shrink-0 items-center justify-between px-6">
         <div 
           className="flex items-center gap-2 cursor-pointer select-none" 
@@ -88,15 +75,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             VoiceAI
           </span>
         </div>
-        {/* Mobile close button */}
-        <button
-          onClick={onClose}
-          className="lg:hidden p-2 text-slate-400 hover:text-slate-600 rounded-md"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
       </div>
       <nav className="flex flex-1 flex-col px-4 py-4 space-y-4">
         
@@ -107,7 +85,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               key={item.name}
               to={item.href}
               end={item.href === '/app'}
-              onClick={onClose}
               className={({ isActive }) =>
                 cn(
                   "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
@@ -138,13 +115,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         {/* Demo Store Link */}
         <div className="pt-4 border-t border-slate-100">
           <NavLink
-            to="/store"
+            to={user?.uid ? `/store?ownerId=${user.uid}&table=1` : "/store"}
             target="_blank"
-            onClick={onClose}
             className="group flex items-center px-2 py-2 text-sm font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
-            <Store className="me-3 h-5 w-5 text-emerald-500" />
-            <span className="flex-1">{language === 'ar' ? 'متجر التجربة' : 'Demo Store'}</span>
+            <Utensils className="me-3 h-5 w-5 text-emerald-500" />
+            <span className="flex-1">{language === 'ar' ? 'معاينة المنيو للطاولات' : 'Live Dine-In Menu'}</span>
             <ExternalLink className="h-4 w-4 opacity-50" />
           </NavLink>
         </div>
@@ -156,7 +132,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <div className="mt-2 space-y-1">
             <NavLink
               to="/app/integration"
-              onClick={onClose}
               className={({ isActive }) =>
                 cn(
                   "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
@@ -174,27 +149,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               )}
             </NavLink>
             <NavLink
-              to="/app/notifications"
-              onClick={onClose}
-              className={({ isActive }) =>
-                cn(
-                  "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-indigo-600",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Bell className={cn("me-3 h-5 w-5", isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-500")} />
-                  {language === 'ar' ? 'الإشعارات' : 'Notifications'}
-                </>
-              )}
-            </NavLink>
-            <NavLink
               to="/app/billing"
-              onClick={onClose}
               className={({ isActive }) =>
                 cn(
                   "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
@@ -244,7 +199,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </button>
         </div>
       </div>
-      </div>
-    </React.Fragment>
+    </div>
   );
 }

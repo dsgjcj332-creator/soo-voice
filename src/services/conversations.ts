@@ -14,13 +14,7 @@ export interface Conversation {
   createdAt: number;
 }
 
-export function subscribeToConversations(ownerId: string, callback: (convs: Conversation[]) => void, isLocal: boolean = false) {
-  if (isLocal) {
-    const localConvs = JSON.parse(localStorage.getItem(`local_convs_${ownerId}`) || '[]');
-    callback(localConvs);
-    return () => {};
-  }
-
+export function subscribeToConversations(ownerId: string, callback: (convs: Conversation[]) => void) {
   const q = query(
     collection(db, 'conversations'), 
     where('ownerId', '==', ownerId), 
@@ -35,6 +29,5 @@ export function subscribeToConversations(ownerId: string, callback: (convs: Conv
     callback(convs);
   }, (error) => {
     console.error("Error fetching conversations:", error);
-    callback([]);
   });
 }

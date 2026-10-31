@@ -23,7 +23,7 @@ export function PublicLayout() {
     
     if (newCount >= 5) {
       setClickCount(0);
-      navigate('/admin-auth');
+      navigate('/admin');
     } else if (newCount === 1 && location.pathname !== '/') {
       navigate('/');
     }
@@ -46,7 +46,7 @@ export function PublicLayout() {
           <div className="bg-indigo-600 p-2 rounded-xl shadow-indigo-200 shadow-lg">
             <Mic className="h-5 w-5 text-white" />
           </div>
-          <span className="font-bold text-xl tracking-tight">SooVoice</span>
+          <span className="font-bold text-xl tracking-tight">VoiceAI</span>
         </Link>
         
         <nav className="hidden md:flex items-center gap-8 font-medium text-sm text-slate-600">
@@ -90,7 +90,7 @@ export function PublicLayout() {
               <div className="bg-indigo-500 p-2 rounded-xl">
                 <Mic className="h-5 w-5 text-white" />
               </div>
-              <span className="font-bold text-xl text-white tracking-tight">SooVoice</span>
+              <span className="font-bold text-xl text-white tracking-tight">VoiceAI</span>
             </Link>
             <p className="text-slate-400 text-sm leading-relaxed mb-6">
               {language === 'ar' 
@@ -127,7 +127,7 @@ export function PublicLayout() {
 
         <div className="max-w-6xl mx-auto px-6 pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-slate-500 text-sm">
-            © {new Date().getFullYear()} SooVoice SaaS. {language === 'ar' ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}
+            © {new Date().getFullYear()} VoiceAI SaaS. {language === 'ar' ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}
           </p>
           <div className="flex items-center gap-4 text-slate-400">
              <a href="#" className="hover:text-white transition-colors"><Github className="w-5 h-5" /></a>

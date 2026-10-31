@@ -23,10 +23,15 @@ export function Analytics() {
       setLoading(false);
       return;
     }
+    if (user.provider === 'local') {
+      setConversations([]);
+      setLoading(false);
+      return;
+    }
     const unsubscribe = subscribeToConversations(user.uid, (data) => {
       setConversations(data);
       setLoading(false);
-    }, user.provider === 'local');
+    });
     return () => unsubscribe();
   }, [user]);
 

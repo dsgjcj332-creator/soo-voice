@@ -20,9 +20,6 @@ export function subscribeToGlobalVoices(callback: (voices: GlobalVoice[]) => voi
       ...doc.data()
     } as GlobalVoice));
     callback(voices.sort((a, b) => b.createdAt - a.createdAt));
-  }, (error) => {
-    console.error("Error fetching global voices:", error);
-    callback([]);
   });
 }
 
