@@ -4,8 +4,7 @@ import { ShoppingBag, Plus, Trash2, CreditCard, Sparkles, Key, Home, Car, MapPin
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
-import { collection, query, onSnapshot, doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+// Firebase imports removed for Supabase-only mode
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { useSearchParams } from 'react-router-dom';

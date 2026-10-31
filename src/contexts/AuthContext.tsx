@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../lib/firebase';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export interface UnifiedUser {
@@ -8,7 +6,7 @@ export interface UnifiedUser {
   email: string | null;
   displayName: string | null;
   photoURL?: string | null;
-  provider: 'supabase' | 'firebase' | 'local';
+  provider: 'supabase' | 'local';
 }
 
 interface AuthContextType {
@@ -42,82 +40,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const supabase = getSupabase();
-    
-    if (isConfigured && supabase) {
-      console.log("[Auth] Initializing with Supabase Auth provider...");
-      
-      // Get current session
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          setUser({
-            uid: session.user.id,
-            email: session.user.email || null,
-            displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-            photoURL: session.user.user_metadata?.avatar_url || null,
-            provider: 'supabase'
-          });
-        } else {
+    if (!supabase || !isConfigured) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    // Get current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          uid: session.user.id,
+          email: session.user.email || null,
+          displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+          photoURL: session.user.user_metadata?.avatar_url || null,
+          provider: 'supabase'
+        });
+      } else {
+        const localDemo = localStorage.getItem('local_demo_user');
+        if (!localDemo) {
           setUser(null);
         }
-        setLoading(false);
-      });
-
-      // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session?.user) {
-          setUser({
-            uid: session.user.id,
-            email: session.user.email || null,
-            displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-            photoURL: session.user.user_metadata?.avatar_url || null,
-            provider: 'supabase'
-          });
-        } else {
-          const localDemo = localStorage.getItem('local_demo_user');
-          if (!localDemo) {
-            setUser(null);
-          }
-        }
-        setLoading(false);
-      });
-
-      return () => {
-        subscription.unsubscribe();
-      };
-    } else {
-      console.log("[Auth] Initializing with Firebase Auth provider...");
-      try {
-        const unsubscribe = onAuthStateChanged(auth, (usr) => {
-          if (usr) {
-            setUser({
-              uid: usr.uid,
-              email: usr.email,
-              displayName: usr.displayName,
-              photoURL: usr.photoURL,
-              provider: 'firebase'
-            });
-          } else {
-            setUser(null);
-          }
-          setLoading(false);
-        });
-        return unsubscribe;
-      } catch (e) {
-        console.warn("[Auth] Firebase auth init failed, staying unauthenticated", e);
-        setUser(null);
-        setLoading(false);
-        return () => {};
       }
-    }
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          uid: session.user.id,
+          email: session.user.email || null,
+          displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+          photoURL: session.user.user_metadata?.avatar_url || null,
+          provider: 'supabase'
+        });
+      } else {
+        const localDemo = localStorage.getItem('local_demo_user');
+        if (!localDemo) {
+          setUser(null);
+        }
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [isConfigured]);
 
   const logout = async () => {
     localStorage.removeItem('local_demo_user');
     const supabase = getSupabase();
-    if (isConfigured && supabase) {
+    if (supabase && isConfigured) {
       await supabase.auth.signOut();
-    } else {
-      try { await auth.signOut(); } catch {}
     }
     setUser(null);
   };

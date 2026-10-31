@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { 
   QrCode, 
-  Plus, 
-  Trash2, 
-  Sparkles, 
-  Eye, 
-  EyeOff, 
-  Printer, 
-  Download, 
-  Database, 
+  Plus,
+  Trash2,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Printer,
+  Download,
+  Database,
   Info,
   CheckCircle,
   HelpCircle,
@@ -25,8 +25,6 @@ import QRCode from "qrcode";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSettings } from "../contexts/SettingsContext";
-import { collection, query, where, onSnapshot, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
 
 const COLOR_VARIANTS: Record<string, { bg: string; text: string; border: string; bgLight: string; ring: string }> = {
@@ -293,7 +291,8 @@ export function DigitalMenu() {
           createdAt: Date.now() - (i * 1000) // Stagger slightly for ordering
         };
 
-        await setDoc(doc(db, "menu_items", itemId), newItem);
+        // Save to local collection instead of Firestore
+        addLocalDoc('menu_items', newItem, user.uid);
         setImportProgress(Math.round(((i + 1) / totalCount) * 100));
       }
 
@@ -307,7 +306,7 @@ export function DigitalMenu() {
       );
     } catch (err) {
       console.error("Error importing items:", err);
-      setImportError("Failed to save items to Firestore");
+      setImportError(language === "ar" ? "فشل استيراد المنتجات" : "Failed to import items");
       setImporting(false);
     }
   };
@@ -396,28 +395,8 @@ export function DigitalMenu() {
       }
     }
 
-    // Also fetch latest cloud design from Firestore
-    const fetchCloudDesign = async () => {
-      try {
-        const docRef = doc(db, "menu_customizer", user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const config = docSnap.data();
-          if (config.primaryColor) setMenuPrimaryColor(config.primaryColor);
-          if (config.bgStyle) setMenuBgStyle(config.bgStyle);
-          if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
-          if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
-          if (config.particles) setMenuParticles(config.particles);
-          if (config.currency) setMenuCurrency(config.currency);
-          if (config.layout) setMenuLayout(config.layout);
-          localStorage.setItem(localKey, JSON.stringify(config));
-        }
-      } catch (err) {
-        console.warn("Could not load menu design from Firestore:", err);
-      }
-    };
-
-    fetchCloudDesign();
+    // Design config is loaded from localStorage above
+    // Cloud sync removed for Supabase-only mode
   }, [user]);
 
   const handleSaveDesign = async () => {
@@ -447,27 +426,11 @@ export function DigitalMenu() {
       return;
     }
 
-    setDesignSaveStatus("saving");
-
-    try {
-      await setDoc(doc(db, "menu_customizer", user.uid), {
-        ownerId: user.uid,
-        ...config
-      });
-      
-      setDesignSaveStatus("success");
-      triggerNotification(
-        language === "ar" ? "تم حفظ تصميم ومظهر المنيو بنجاح في السحابة!" : "Menu design saved successfully to cloud!"
-      );
-      setTimeout(() => setDesignSaveStatus("idle"), 3000);
-    } catch (err) {
-      console.error("Failed to save design to Firestore, fallback to local:", err);
-      setDesignSaveStatus("success");
-      triggerNotification(
-        language === "ar" ? "تم حفظ التصميم محلياً بنجاح!" : "Design saved locally!"
-      );
-      setTimeout(() => setDesignSaveStatus("idle"), 3000);
-    }
+    setDesignSaveStatus("success");
+    triggerNotification(
+      language === "ar" ? "تم حفظ التصميم محلياً بنجاح!" : "Design saved locally!"
+    );
+    setTimeout(() => setDesignSaveStatus("idle"), 3000);
   };
 
   // Categories dedicated for Restaurant & Cafes
@@ -536,26 +499,6 @@ export function DigitalMenu() {
       return () => {
         supabase.removeChannel(channel);
       };
-    } else {
-      console.log("[Menu] Subscribed and fetching from Firebase Firestore...");
-      const q = query(
-        collection(db, "menu_items"),
-        where("ownerId", "==", user.uid)
-      );
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const docs = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        } as MenuItem));
-        setItems(docs.sort((a, b) => b.createdAt - a.createdAt));
-        setLoading(false);
-      }, (error) => {
-        console.error("Error fetching menu items:", error);
-        setLoading(false);
-      });
-
-      return () => unsubscribe();
     }
   }, [user]);
 
@@ -601,8 +544,6 @@ export function DigitalMenu() {
             localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
             setItems(updated);
           }
-        } else {
-          await setDoc(doc(db, "menu_items", itemId), newItem);
         }
       }
       
@@ -650,7 +591,7 @@ export function DigitalMenu() {
             setItems(updated);
           }
         } else {
-          await deleteDoc(doc(db, "menu_items", itemId));
+          // Firebase removed
         }
       }
       
@@ -720,8 +661,6 @@ export function DigitalMenu() {
             } catch (sbErr) {
               console.warn("Failed to insert seeded item in Supabase table:", sbErr);
             }
-          } else {
-            await setDoc(doc(db, "menu_items", itemId), bulkItem);
           }
         }
       }

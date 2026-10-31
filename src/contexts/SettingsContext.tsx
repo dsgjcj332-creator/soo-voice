@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
@@ -13,43 +11,33 @@ enum OperationType {
   WRITE = 'write',
 }
 
-interface FirestoreErrorInfo {
+interface SupabaseErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
   authInfo: {
     userId?: string | null;
     email?: string | null;
-    emailVerified?: boolean | null;
-    isAnonymous?: boolean | null;
-    tenantId?: string | null;
     providerInfo?: {
       providerId?: string | null;
       email?: string | null;
     }[];
-  }
+  };
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const currentUser = auth.currentUser;
-  const errInfo: FirestoreErrorInfo = {
+function handleSupabaseError(error: unknown, operationType: OperationType, path: string | null) {
+  const currentUser = useAuth();
+  const errInfo: SupabaseErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: currentUser?.uid,
-      email: currentUser?.email,
-      emailVerified: currentUser?.emailVerified,
-      isAnonymous: currentUser?.isAnonymous,
-      tenantId: currentUser?.tenantId,
-      providerInfo: currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        email: provider.email,
-      })) || []
-    },
     operationType,
-    path
+    path,
+    authInfo: {
+      userId: currentUser.user?.uid,
+      email: currentUser.user?.email || null,
+      providerInfo: currentUser.user ? [{ providerId: currentUser.user.provider, email: currentUser.user.email || '' }] : []
+    }
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.error('Supabase Error: ', JSON.stringify(errInfo));
 }
 
 export type Dialect = 'standard' | 'egyptian' | 'gulf' | 'levantine';
@@ -153,22 +141,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         } catch (err) {
           console.error("Error fetching settings from Supabase:", err);
         }
-      } else {
-        try {
-          const docRef = doc(db, "merchant_settings", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.dialect) setDialectState(data.dialect as Dialect);
-            if (data.voiceTone) setVoiceToneState(data.voiceTone as VoiceTone);
-            if (data.businessType) setBusinessTypeState(data.businessType as BusinessType);
-            if (data.currency) setCurrencyState(data.currency as Currency);
-            setHasCompletedOnboardingState(true);
-          }
-        } catch (err) {
-          console.error("Error fetching settings from Firestore:", err);
-          handleFirestoreError(err, OperationType.GET, `merchant_settings/${user.uid}`);
-        }
       }
       setLoadingSettings(false);
     };
@@ -199,13 +171,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             .upsert([payload], { onConflict: 'ownerId' });
         } catch (err) {
           console.error("Error saving settings to Supabase:", err);
-        }
-      } else {
-        try {
-          await setDoc(doc(db, "merchant_settings", user.uid), payload);
-        } catch (err) {
-          console.error("Error saving settings to Firestore:", err);
-          handleFirestoreError(err, OperationType.WRITE, `merchant_settings/${user.uid}`);
         }
       }
     };

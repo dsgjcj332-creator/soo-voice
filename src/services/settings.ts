@@ -1,5 +1,4 @@
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export interface SystemSettings {
   allowNewRegistrations: boolean;
@@ -20,26 +19,64 @@ const DEFAULT_SETTINGS: SystemSettings = {
 };
 
 export function subscribeToSettings(callback: (settings: SystemSettings) => void) {
-  const docRef = doc(db, 'settings', 'global');
-  
-  return onSnapshot(docRef, (snapshot) => {
-    if (snapshot.exists()) {
-      callback({ ...DEFAULT_SETTINGS, ...snapshot.data() } as SystemSettings);
-    } else {
-      callback(DEFAULT_SETTINGS);
-    }
-  });
+  const { isConfigured } = getSupabaseConfig();
+  const supabase = getSupabase();
+
+  if (!isConfigured || !supabase) {
+    callback(DEFAULT_SETTINGS);
+    return () => {};
+  }
+
+  const channel = supabase
+    .channel('settings-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'system_settings',
+        filter: 'id=eq.global'
+      },
+      (payload) => {
+        if (payload.new) {
+          callback({ ...DEFAULT_SETTINGS, ...(payload.new as SystemSettings) });
+        }
+      }
+    )
+    .subscribe();
+
+  // Load initial settings
+  supabase
+    .from('system_settings')
+    .select('*')
+    .eq('id', 'global')
+    .single()
+    .then(({ data }) => {
+      if (data) {
+        callback({ ...DEFAULT_SETTINGS, ...(data as SystemSettings) });
+      } else {
+        callback(DEFAULT_SETTINGS);
+      }
+    });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 export async function updateSettings(updates: Partial<SystemSettings>) {
-  const docRef = doc(db, 'settings', 'global');
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+
+  if (!isConfigured || !supabase) {
+    console.warn('[Settings] Supabase not configured, settings not persisted');
+    return;
+  }
+
   try {
-    const snapshot = await getDoc(docRef);
-    if (snapshot.exists()) {
-      await setDoc(docRef, updates, { merge: true });
-    } else {
-      await setDoc(docRef, { ...DEFAULT_SETTINGS, ...updates });
-    }
+    await supabase
+      .from('system_settings')
+      .upsert({ id: 'global', ...updates });
   } catch (error) {
     console.error("Error updating settings:", error);
     throw error;

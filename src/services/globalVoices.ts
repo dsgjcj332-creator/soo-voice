@@ -1,5 +1,4 @@
-import { collection, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export interface GlobalVoice {
   id: string;
@@ -12,32 +11,81 @@ export interface GlobalVoice {
 }
 
 export function subscribeToGlobalVoices(callback: (voices: GlobalVoice[]) => void) {
-  const q = query(collection(db, 'global_voices'));
-  
-  return onSnapshot(q, (snapshot) => {
-    const voices = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as GlobalVoice));
-    callback(voices.sort((a, b) => b.createdAt - a.createdAt));
-  });
+  const { isConfigured } = getSupabaseConfig();
+  const supabase = getSupabase();
+
+  if (!isConfigured || !supabase) {
+    callback([]);
+    return () => {};
+  }
+
+  const channel = supabase
+    .channel('global-voices-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'global_voices'
+      },
+      (payload) => {
+        if (payload.new) {
+          callback([payload.new as GlobalVoice]);
+        }
+      }
+    )
+    .subscribe();
+
+  // Load initial voices
+  supabase
+    .from('global_voices')
+    .select('*')
+    .order('createdAt', { ascending: false })
+    .then(({ data }) => {
+      callback((data || []).sort((a, b) => b.createdAt - a.createdAt));
+    });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 export async function addGlobalVoice(name: string, priceModel: "Free" | "Premium" = "Premium", celebrity: boolean = true) {
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+
+  if (!isConfigured || !supabase) {
+    console.warn('[GlobalVoices] Supabase not configured');
+    return;
+  }
+
   const id = Math.random().toString(36).substring(2, 15);
   const newVoice: GlobalVoice = {
     id,
     name,
     celebrity,
-    status: 'Active', // Mocking instant training
+    status: 'Active',
     samples: 1,
     priceModel,
     createdAt: Date.now()
   };
-  
-  await setDoc(doc(db, 'global_voices', id), newVoice);
+
+  await supabase
+    .from('global_voices')
+    .insert(newVoice);
 }
 
 export async function deleteGlobalVoice(id: string) {
-  await deleteDoc(doc(db, 'global_voices', id));
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+
+  if (!isConfigured || !supabase) {
+    console.warn('[GlobalVoices] Supabase not configured');
+    return;
+  }
+
+  await supabase
+    .from('global_voices')
+    .delete()
+    .eq('id', id);
 }

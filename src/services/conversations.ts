@@ -1,5 +1,4 @@
-import { collection, query, getDocs, onSnapshot, orderBy, where, doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export interface Conversation {
   id: string;
@@ -15,19 +14,43 @@ export interface Conversation {
 }
 
 export function subscribeToConversations(ownerId: string, callback: (convs: Conversation[]) => void) {
-  const q = query(
-    collection(db, 'conversations'), 
-    where('ownerId', '==', ownerId), 
-    orderBy('createdAt', 'desc')
-  );
-  
-  return onSnapshot(q, (snapshot) => {
-    const convs = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Conversation));
-    callback(convs);
-  }, (error) => {
-    console.error("Error fetching conversations:", error);
-  });
+  const { isConfigured } = getSupabaseConfig();
+  const supabase = getSupabase();
+
+  if (!isConfigured || !supabase) {
+    callback([]);
+    return () => {};
+  }
+
+  const channel = supabase
+    .channel('conversations-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'conversations',
+        filter: `ownerId=eq.${ownerId}`
+      },
+      (payload) => {
+        if (payload.new) {
+          callback([payload.new as Conversation]);
+        }
+      }
+    )
+    .subscribe();
+
+  // Load initial conversations
+  supabase
+    .from('conversations')
+    .select('*')
+    .eq('ownerId', ownerId)
+    .order('createdAt', { ascending: false })
+    .then(({ data }) => {
+      callback(data || []);
+    });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }

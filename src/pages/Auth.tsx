@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Mic, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
-import { auth } from '../lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export function Auth() {
@@ -18,22 +16,15 @@ export function Auth() {
       setLoading(true);
       setError(null);
       
-      if (isConfigured) {
-        const supabase = getSupabase();
-        if (supabase) {
-          // Trigger Supabase Google Login
-          const { error: sbError } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              redirectTo: window.location.origin + '/app'
-            }
-          });
-          if (sbError) throw sbError;
-        }
-      } else {
-        const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
-        navigate('/app');
+      const supabase = getSupabase();
+      if (supabase) {
+        const { error: sbError } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin + '/app'
+          }
+        });
+        if (sbError) throw sbError;
       }
     } catch (err: any) {
       console.error(err);
@@ -47,8 +38,8 @@ export function Auth() {
       } else if (err.code === 'auth/unauthorized-domain') {
         const domain = window.location.hostname;
         errorMessage = language === 'ar'
-          ? `النطاق "${domain}" غير مسجل في Firebase. يرجى إضافته في Firebase Console > Authentication > Settings > Authorized domains. أو استخدم الدخول السريع.`
-          : `Domain "${domain}" is not authorized in Firebase. Please add it in Firebase Console > Authentication > Settings > Authorized domains. Or use Quick Demo Sign-In.`;
+          ? `النطاق "${domain}" غير مسجل. تأكد من إضافة النطاق في إعدادات Supabase أو استخدم الدخول السريع.`
+          : `Domain "${domain}" is not authorized. Make sure it's added in Supabase Auth settings or use Quick Demo Sign-In.`;
       } else if (err.message) {
         errorMessage = err.message;
       }

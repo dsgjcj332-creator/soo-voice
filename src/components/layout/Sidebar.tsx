@@ -16,8 +16,8 @@ import {
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useAuth } from "../../contexts/AuthContext";
-import { auth } from "../../lib/firebase";
-import { signOut } from "firebase/auth";
+// Firebase auth removed for Supabase-only mode
+import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 
 const getNavigation = (t: (k: string) => string, language: string) => [
   { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },

@@ -1,5 +1,4 @@
-import { collection, query, getDocs, updateDoc, doc, deleteDoc, onSnapshot, orderBy, where } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export interface Merchant {
   id: string;
@@ -13,35 +12,86 @@ export interface Merchant {
 }
 
 export function subscribeToMerchants(callback: (merchants: Merchant[]) => void) {
-  const q = query(collection(db, 'merchants'), orderBy('createdAt', 'desc'));
-  return onSnapshot(q, (snapshot) => {
-    const merchants = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Merchant));
-    callback(merchants);
-  }, (error) => {
-    console.error("Error fetching merchants:", error);
-  });
+  const { isConfigured } = getSupabaseConfig();
+  const supabase = getSupabase();
+
+  if (!isConfigured || !supabase) {
+    callback([]);
+    return () => {};
+  }
+
+  const channel = supabase
+    .channel('merchants-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'merchants'
+      },
+      (payload) => {
+        if (payload.new) {
+          callback([payload.new as Merchant]);
+        }
+      }
+    )
+    .subscribe();
+
+  // Load initial merchants
+  supabase
+    .from('merchants')
+    .select('*')
+    .order('createdAt', { ascending: false })
+    .then(({ data }) => {
+      callback(data || []);
+    });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 export async function approveMerchant(id: string) {
-  const merchantRef = doc(db, 'merchants', id);
-  await updateDoc(merchantRef, {
-    status: 'Active',
-    updatedAt: Date.now()
-  });
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+
+  if (!isConfigured || !supabase) {
+    console.warn('[Merchants] Supabase not configured');
+    return;
+  }
+
+  await supabase
+    .from('merchants')
+    .update({ status: 'Active', updatedAt: Date.now() })
+    .eq('id', id);
 }
 
 export async function blockMerchant(id: string) {
-  const merchantRef = doc(db, 'merchants', id);
-  await updateDoc(merchantRef, {
-    status: 'Blocked',
-    updatedAt: Date.now()
-  });
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+
+  if (!isConfigured || !supabase) {
+    console.warn('[Merchants] Supabase not configured');
+    return;
+  }
+
+  await supabase
+    .from('merchants')
+    .update({ status: 'Blocked', updatedAt: Date.now() })
+    .eq('id', id);
 }
 
 export async function deleteMerchant(id: string) {
-  const merchantRef = doc(db, 'merchants', id);
-  await deleteDoc(merchantRef);
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+
+  if (!isConfigured || !supabase) {
+    console.warn('[Merchants] Supabase not configured');
+    return;
+  }
+
+  await supabase
+    .from('merchants')
+    .delete()
+    .eq('id', id);
 }

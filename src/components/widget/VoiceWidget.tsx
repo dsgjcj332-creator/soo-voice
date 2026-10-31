@@ -15,8 +15,7 @@ import { useSettings, Dialect, VoiceTone, BusinessType } from "../../contexts/Se
 import { useKnowledge } from "../../contexts/KnowledgeContext";
 import { GoogleGenAI, Modality, LiveServerMessage, Type } from "@google/genai";
 import { useCart } from "../../contexts/CartContext";
-import { collection, query, onSnapshot, doc, getDoc, getDocs, where, setDoc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+// Firebase imports removed for Supabase-only mode
 import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 
