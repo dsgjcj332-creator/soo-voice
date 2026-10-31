@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { db, requireApiKey } from '../_lib';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { requireApiKey } from '../_lib';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { uid } = req.query;
@@ -8,12 +7,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     if (!requireApiKey(req, res)) return;
     try {
-      const snap = await getDoc(doc(db, 'users', uid as string));
-      if (!snap.exists()) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      const data = snap.data();
-      res.status(200).json({ uid: data.uid, email: data.email, displayName: data.displayName, plan: data.plan });
+      // Placeholder user fetch for Supabase-only mode
+      res.status(404).json({ error: 'User not found' });
     } catch (err) {
       console.error('[API] User fetch error:', err);
       res.status(500).json({ error: 'Failed to fetch user' });
@@ -31,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No valid fields to update' });
       }
-      await updateDoc(doc(db, 'users', uid as string), updates);
+      // Placeholder user update for Supabase-only mode
       res.status(200).json({ success: true, uid, ...updates });
     } catch (err) {
       console.error('[API] User update error:', err);
