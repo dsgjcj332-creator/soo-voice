@@ -24,8 +24,10 @@ export default defineConfig(({mode}) => {
         enforce: 'post',
         transformIndexHtml(html) {
           return html
-            .replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, '')
-            .replace(/import\s+["']\/@vite\/client["'];?/g, '');
+            .replace(/<script[^>]*@vite\/client[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<script[^>]*src=["'][^"']*vite\/client[^"']*["'][^>]*><\/script>/gi, '')
+            .replace(/(?:import|src\s*=)\s*["']?[^"'\s>]*\/@vite\/client[^"'\s>]*["']?;?/gi, '')
+            .replace(/\/?@vite\/client/g, '');
         },
       },
     ],
