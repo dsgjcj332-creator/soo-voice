@@ -95,7 +95,7 @@ interface MenuItem {
 export function DigitalMenu() {
   const { language } = useLanguage();
   const { user } = useAuth();
-  const { businessType } = useSettings();
+  const { businessType, currency } = useSettings();
   
   // State for menu items
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -375,6 +375,11 @@ export function DigitalMenu() {
   const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success">("idle");
   const activePrimary = COLOR_VARIANTS[menuPrimaryColor] || COLOR_VARIANTS.indigo;
 
+  useEffect(() => {
+    const currencySymbols: Record<string, string> = { EGP: "ج.م", SAR: "ر.س", USD: "$", AED: "د.إ", KWD: "د.ك", QAR: "ر.ق" };
+    setMenuCurrency(currencySymbols[currency] || currency);
+  }, [currency]);
+
   // Load design config on mount (from local storage + Firestore)
   useEffect(() => {
     if (!user) return;
@@ -413,23 +418,26 @@ export function DigitalMenu() {
       updatedAt: Date.now()
     };
 
-    const localKey = `menu_design_config_${user.uid}`;
-    localStorage.setItem(localKey, JSON.stringify(config));
-    localStorage.setItem('menu_design_config_global', JSON.stringify(config));
-
-    if (user.provider === 'local') {
+    setDesignSaveStatus("saving");
+    try {
+      if (user.provider === 'local') {
+        localStorage.setItem(`menu_design_config_${user.uid}`, JSON.stringify(config));
+      } else {
+        const supabase = getSupabase();
+        if (!supabase) throw new Error("Supabase is not configured");
+        const { error } = await supabase.from('menu_customizer').upsert({
+          ownerId: user.uid,
+          ...config,
+        }, { onConflict: 'ownerId' });
+        if (error) throw error;
+      }
       setDesignSaveStatus("success");
-      triggerNotification(
-        language === "ar" ? "تم حفظ التصميم محلياً بنجاح!" : "Design saved locally!"
-      );
-      setTimeout(() => setDesignSaveStatus("idle"), 3000);
-      return;
+      triggerNotification(language === "ar" ? "تم حفظ التصميم بنجاح" : "Design saved successfully");
+    } catch (error) {
+      console.error("Failed to save menu design:", error);
+      setDesignSaveStatus("idle");
+      triggerNotification(language === "ar" ? "تعذر حفظ التصميم" : "Could not save design");
     }
-
-    setDesignSaveStatus("success");
-    triggerNotification(
-      language === "ar" ? "تم حفظ التصميم محلياً بنجاح!" : "Design saved locally!"
-    );
     setTimeout(() => setDesignSaveStatus("idle"), 3000);
   };
 
@@ -473,10 +481,7 @@ export function DigitalMenu() {
           setItems(data || []);
         } catch (err) {
           console.error("Failed to fetch from Supabase table 'menu_items'.", err);
-          console.log("[Menu] Falling back to LocalStorage simulation for Supabase testing...");
-          
-          const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
-          setItems(localItems);
+          setItems([]);
         } finally {
           setLoading(false);
         }
@@ -538,11 +543,8 @@ export function DigitalMenu() {
             
             setItems((prev: MenuItem[]) => [newItem, ...prev].sort((a, b) => b.createdAt - a.createdAt));
           } catch (err) {
-            console.warn("Failed to insert into Supabase menu_items. Saving to local test buffer:", err);
-            const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
-            const updated = [newItem, ...localItems];
-            localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
-            setItems(updated);
+            console.error("Failed to insert into Supabase menu_items:", err);
+            throw err;
           }
         }
       }
@@ -813,7 +815,7 @@ export function DigitalMenu() {
   };
 
   const handleDeleteQr = (qrId: string) => {
-    if (!window.confirm(language === "ar" ? "هل أنت متأكد من حذف هذا QR؟" : "Are you sure you want to delete this QR?")) return;
+    if (!window.confirm(language === "ar" ? "هل أنت متأكد من ��ذف هذا QR؟" : "Are you sure you want to delete this QR?")) return;
     setQrCodes(prev => prev.filter(qr => qr.id !== qrId));
     triggerNotification(
       language === "ar" ? "تم حذف QR بنجاح!" : "QR deleted successfully!"
