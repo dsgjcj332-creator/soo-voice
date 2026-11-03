@@ -833,6 +833,62 @@ export function DigitalMenu() {
     triggerNotification(language === 'ar' ? `تم حفظ QR للطاولة ${newQr.tableNumber}` : `QR for table ${newQr.tableNumber} saved`);
   };
 
+  const handleSaveCurrentQr = async () => {
+    if (!user || !tableNumber.trim()) {
+      triggerNotification(language === 'ar' ? 'اكتب رقم الطاولة أولاً' : 'Enter a table number first');
+      return;
+    }
+
+    const existing = qrCodes.find((qr) => qr.tableNumber === tableNumber.trim());
+    if (existing) {
+      const updates = { color: qrColor, updatedAt: Date.now() };
+      if (user.provider !== 'local') {
+        const config = getSupabaseConfig();
+        if (!config.isConfigured) {
+          triggerNotification(language === 'ar' ? 'اتصال Supabase غير متاح' : 'Supabase is not configured');
+          return;
+        }
+        const { error } = await getSupabase().from('qr_codes').update(updates).eq('id', existing.id).eq('ownerId', user.uid);
+        if (error) {
+          console.error('[v0] Failed to update stand QR:', error);
+          triggerNotification(language === 'ar' ? 'تعذر تحديث الستاند والباركود' : 'Could not update the stand and QR');
+          return;
+        }
+      }
+      setQrCodes((prev) => prev.map((qr) => qr.id === existing.id ? { ...qr, ...updates } : qr));
+      triggerNotification(language === 'ar' ? `تم تحديث الستاند والباركود للطاولة ${existing.tableNumber}` : `Stand and QR updated for table ${existing.tableNumber}`);
+      return;
+    }
+
+    const now = Date.now();
+    const newQr = {
+      id: 'qr_' + crypto.randomUUID(),
+      tableNumber: tableNumber.trim(),
+      color: qrColor,
+      label: `Table ${tableNumber.trim()}`,
+      ownerId: user.uid,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    if (user.provider !== 'local') {
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) {
+        triggerNotification(language === 'ar' ? 'اتصال Supabase غير متاح' : 'Supabase is not configured');
+        return;
+      }
+      const { error } = await getSupabase().from('qr_codes').insert(newQr);
+      if (error) {
+        console.error('[v0] Failed to save stand QR:', error);
+        triggerNotification(language === 'ar' ? 'تعذر حفظ الستاند والباركود' : 'Could not save the stand and QR');
+        return;
+      }
+    }
+
+    setQrCodes((prev) => [...prev, newQr]);
+    triggerNotification(language === 'ar' ? `تم حفظ الستاند والباركود للطاولة ${newQr.tableNumber}` : `Stand and QR saved for table ${newQr.tableNumber}`);
+  };
+
   const handleEditQr = (qr: any) => {
     setEditingQr(qr);
     setTableNumber(qr.tableNumber);
@@ -1106,7 +1162,7 @@ export function DigitalMenu() {
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600" title="Visible on Menu & AI">
                               <Eye className="w-3.5 h-3.5" />
-                              {language === "ar" ? "عام بالمنيو" : "Public Menu"}
+                              {language === "ar" ? "عام با��منيو" : "Public Menu"}
                             </span>
                           )}
                         </td>
@@ -1725,7 +1781,14 @@ export function DigitalMenu() {
               </div>
 
               {/* Print and Export Buttons */}
-              <div className="flex gap-3 mt-4 w-full">
+              <button
+                onClick={handleSaveCurrentQr}
+                className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md text-white"
+              >
+                <Save className="w-4 h-4" />
+                {language === "ar" ? "حفظ الستاند والباركود" : "Save Stand & QR"}
+              </button>
+              <div className="flex gap-3 mt-3 w-full">
                 <button
                   onClick={handlePrint}
                   className="flex-1 bg-white/10 hover:bg-white/20 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-white/5"
