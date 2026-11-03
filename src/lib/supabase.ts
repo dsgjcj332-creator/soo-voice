@@ -10,10 +10,10 @@ export function getSupabaseConfig() {
   const localKey = localStorage.getItem('supabase_anon_key');
   
   return {
-    url: localUrl || envUrl || '',
-    anonKey: localKey || envKey || '',
-    isConfigured: !!(localUrl || envUrl) && !!(localKey || envKey),
-    source: (localUrl || localKey) ? 'LocalStorage (Live UI)' : (envUrl || envKey) ? 'Environment variables' : 'Unconfigured'
+    url: envUrl || localUrl || '',
+    anonKey: envKey || localKey || '',
+    isConfigured: !!(envUrl || localUrl) && !!(envKey || localKey),
+    source: (envUrl || envKey) ? 'Environment variables' : (localUrl || localKey) ? 'LocalStorage (Live UI)' : 'Unconfigured'
   };
 }
 
