@@ -48,6 +48,11 @@ async function startServer() {
       server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
+    // The preview host does not expose a Vite WebSocket endpoint. Keep the
+    // dev client from opening a reconnecting socket in the embedded preview.
+    app.get('/@vite/client', (_req, res) => {
+      res.type('application/javascript').send('');
+    });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
