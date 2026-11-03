@@ -59,11 +59,7 @@ export function KnowledgeProvider({ children }: { children: React.ReactNode }) {
           setDocuments((data || []).sort((a, b) => b.createdAt - a.createdAt));
         } catch (err) {
           console.error("Failed to fetch from Supabase table 'knowledge_documents'.", err);
-          console.log("[Knowledge] Falling back to LocalStorage simulation for Supabase testing...");
-          
-          // LocalStorage fallback for demo/testing so it never fails even if table is not migrated yet
-          const localDocs = JSON.parse(localStorage.getItem(`sb_docs_${user.uid}`) || '[]');
-          setDocuments(localDocs);
+          setDocuments([]);
         } finally {
           setLoading(false);
         }
