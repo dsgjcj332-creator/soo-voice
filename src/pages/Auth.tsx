@@ -69,7 +69,7 @@ export function Auth() {
   const handleDemoLogin = () => {
     const demoUser = { uid: 'demo-merchant-local', email: 'demo@voiceai.com', displayName: 'Demo Merchant', photoURL: null, provider: 'local' as const };
     localStorage.setItem('local_demo_user', JSON.stringify(demoUser));
-    navigate('/app');
+    window.location.assign('/app');
   };
 
   return (
