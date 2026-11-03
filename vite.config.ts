@@ -37,6 +37,7 @@ export default defineConfig(({mode}) => {
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       port: parseInt(process.env.PORT || '3000', 10),
       hmr: false,
+      ws: false,
     },
   };
 });

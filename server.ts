@@ -45,12 +45,12 @@ async function startServer() {
   // ==========================================
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false },
       appType: 'spa',
     });
-    // The preview host does not expose a Vite WebSocket endpoint. Keep the
-    // dev client from opening a reconnecting socket in the embedded preview.
-    app.get('/@vite/client', (_req, res) => {
+    // The preview host does not expose a Vite WebSocket endpoint. Serve an
+    // inert client for any cached HTML that still references the HMR module.
+    app.use('/@vite/client', (_req, res) => {
       res.type('application/javascript').send('');
     });
     app.use(vite.middlewares);
