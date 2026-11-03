@@ -50,8 +50,12 @@ async function startServer() {
     });
     // The preview host does not expose a Vite WebSocket endpoint. Serve an
     // inert client for any cached HTML that still references the HMR module.
-    app.use('/@vite/client', (_req, res) => {
-      res.type('application/javascript').send('');
+    app.use((req, res, next) => {
+      if (req.url?.startsWith('/@vite/client')) {
+        res.type('application/javascript').send('');
+        return;
+      }
+      next();
     });
     app.use(vite.middlewares);
   } else {

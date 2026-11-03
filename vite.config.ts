@@ -23,7 +23,9 @@ export default defineConfig(({mode}) => {
         name: 'disable-vite-hmr-client',
         enforce: 'post',
         transformIndexHtml(html) {
-          return html.replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, '');
+          return html
+            .replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, '')
+            .replace(/import\s+["']\/@vite\/client["'];?/g, '');
         },
       },
     ],
