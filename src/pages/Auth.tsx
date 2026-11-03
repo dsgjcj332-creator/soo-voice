@@ -41,17 +41,20 @@ export function Auth() {
         return;
       }
 
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: { full_name: name.trim() },
-          emailRedirectTo: (import.meta as any).env?.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/auth/callback`,
-        },
+      const { url } = getSupabaseConfig();
+      const signupResponse = await fetch(`${url}/functions/v1/signup-test-no-confirmation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password, fullName: name.trim() }),
       });
-      if (signUpError) throw signUpError;
-      setError(isArabic ? 'تم إنشاء الحساب. راجع بريدك الإلكتروني للتأكيد ثم سجّل الدخول.' : 'Account created. Check your email to confirm it, then sign in.');
-      setMode('signin');
+      const signupResult = await signupResponse.json().catch(() => null);
+      if (!signupResponse.ok) {
+        throw new Error(signupResult?.error || 'signup_failed');
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInError) throw signInError;
+      navigate('/app');
     } catch (err: any) {
       const message = String(err?.message || '').toLowerCase();
       if (message.includes('email') && (message.includes('confirm') || message.includes('verified'))) {
