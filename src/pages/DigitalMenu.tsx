@@ -509,7 +509,11 @@ export function DigitalMenu() {
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !name || !price) return;
+    const parsedPrice = Number.parseFloat(price);
+    if (!user || !name.trim() || !Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      setNotification(language === "ar" ? "أدخل اسم المنتج وسعراً صحيحاً أكبر من صفر." : "Enter a product name and a valid price greater than zero.");
+      return;
+    }
 
     const defaultCat = categories[0]?.value || "Main Course";
     const itemId = "item_" + Math.random().toString(36).substring(2, 11);
@@ -518,7 +522,7 @@ export function DigitalMenu() {
       id: itemId,
       ownerId: user.uid,
       name,
-      price: parseFloat(price) || 0,
+      price: parsedPrice,
       description,
       category: category || defaultCat,
       isAiOnly,
@@ -533,22 +537,19 @@ export function DigitalMenu() {
         const { isConfigured } = getSupabaseConfig();
         const supabase = getSupabase();
         
-        if (isConfigured && supabase) {
-          try {
-            const { error } = await supabase
-              .from('menu_items')
-              .insert([newItem]);
-            
-            if (error) throw error;
-            
-            setItems((prev: MenuItem[]) => [newItem, ...prev].sort((a, b) => b.createdAt - a.createdAt));
-          } catch (err) {
-            console.error("Failed to insert into Supabase menu_items:", err);
-            throw err;
-          }
+        if (!isConfigured || !supabase) {
+          throw new Error("Supabase is not configured");
         }
+
+        const { error } = await supabase
+          .from('menu_items')
+          .insert([newItem]);
+
+        if (error) throw error;
+
+        setItems((prev: MenuItem[]) => [newItem, ...prev].sort((a, b) => b.createdAt - a.createdAt));
       }
-      
+
       // Reset form
       setName("");
       setPrice("");
@@ -560,7 +561,12 @@ export function DigitalMenu() {
         language === "ar" ? "تم إضافة المنتج بنجاح!" : "Product added successfully!"
       );
     } catch (err) {
-      console.error("Error adding menu item:", err);
+      console.error("[v0] Error adding menu item:", err);
+      setNotification(
+        language === "ar"
+          ? "لم يتم حفظ المنتج. تأكد من اتصال Supabase وصلاحية الحساب ثم حاول مرة أخرى."
+          : "The product was not saved. Check the Supabase connection and account permissions, then try again."
+      );
     }
   };
 
@@ -1570,7 +1576,7 @@ export function DigitalMenu() {
               <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none" />
               
               <div className="text-xs uppercase font-extrabold tracking-widest text-slate-400 mb-4">
-                {language === "ar" ? "معاينة ستاند الطاولة الأكريليك" : "Acrylic Stand Preview"}
+                {language === "ar" ? "معاينة ستاند الطاولة الأكري��يك" : "Acrylic Stand Preview"}
               </div>
 
               {/* Simulated Stand */}
