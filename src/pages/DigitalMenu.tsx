@@ -19,7 +19,8 @@ import {
   X,
   AlertCircle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Save
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -1339,7 +1340,7 @@ export function DigitalMenu() {
                   {/* 5. Curviness Style */}
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
-                      {language === "ar" ? "5. استدارة حواف بطاقات المنتجات" : "5. Card Curviness Style"}
+                      {language === "ar" ? "5. استدا��ة حواف بطاقات المنتجات" : "5. Card Curviness Style"}
                     </label>
                     <div className="flex gap-2">
                       {[
@@ -1517,7 +1518,7 @@ export function DigitalMenu() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none relative z-10">
                     <div className="text-center py-2">
                       <h4 className="font-extrabold text-xs">
-                        {language === "ar" ? "منيو المأكولات والمشروبات الرقمي" : "Fresh Digital Dining Menu"}
+                        {language === "ar" ? "منيو المأكولات والمشروبات الر��مي" : "Fresh Digital Dining Menu"}
                       </h4>
                       <p className="text-[9px] opacity-70 mt-0.5">
                         {language === "ar" ? "تصفح واطلب وسلّم النادل الصوتي الذكي!" : "Browse and order with our Voice AI Waiter!"}
