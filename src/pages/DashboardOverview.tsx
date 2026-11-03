@@ -43,17 +43,25 @@ export function DashboardOverview() {
   const successfulCalls = conversations.filter(c => c.isSuccess).length;
   const conversionRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
   
-  // Calculate average duration (dummy calculation for now based on string "2m 30s")
-  // In a real app, duration should be stored in seconds as a number
-  const avgDuration = totalCalls > 0 ? "1m 45s" : "-";
-  
+  const averageDurationSeconds = totalCalls > 0
+    ? Math.round(conversations.reduce((sum, conversation) => {
+        const match = conversation.duration.match(/(?:(\d+)m)?\s*(?:(\d+)s)?/);
+        return sum + (Number(match?.[1] || 0) * 60) + Number(match?.[2] || 0);
+      }, 0) / totalCalls)
+    : 0;
+  const avgDuration = averageDurationSeconds > 0
+    ? `${Math.floor(averageDurationSeconds / 60)}m ${averageDurationSeconds % 60}s`
+    : '-';
+  const activeCustomers = new Set(conversations.map((conversation) => conversation.user).filter(Boolean)).size;
+
   const stats = [
+
     {
       name: t('dash.stat.total'),
       value: totalCalls.toString(),
       icon: MessageSquare,
-      change: "+12%",
-      changeType: "positive",
+      change: "—",
+      changeType: "neutral",
     },
     {
       name: t('dash.stat.avg'),
@@ -71,9 +79,9 @@ export function DashboardOverview() {
     },
     {
       name: t('dash.stat.active'),
-      value: "1",
+      value: activeCustomers.toString(),
       icon: Users,
-      change: "0%",
+      change: "—",
       changeType: "neutral",
     },
   ];
@@ -92,12 +100,7 @@ export function DashboardOverview() {
      return acc;
   }, []).slice(0, 7).reverse();
 
-  // Ensure some fallback empty data so charts don't look broken
-  const chartData = volumeData.length > 0 ? volumeData : [
-     { name: 'Mon', calls: 0, conversions: 0 },
-     { name: 'Tue', calls: 0, conversions: 0 },
-     { name: 'Wed', calls: 0, conversions: 0 }
-  ];
+  const chartData = volumeData;
 
   if (loading) {
      return <div className="p-8 text-center text-slate-500">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>;

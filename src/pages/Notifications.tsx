@@ -21,26 +21,12 @@ export function Notifications() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread' | 'orders' | 'system'>('all');
 
-  // Load notifications from localStorage
   useEffect(() => {
-    if (!user) return;
-    const stored = localStorage.getItem(`notifications_${user.uid}`);
-    if (stored) {
-      try {
-        setNotifications(JSON.parse(stored));
-      } catch {
-        setNotifications(defaultNotifications);
-      }
-    } else {
-      setNotifications(defaultNotifications);
-    }
+    setNotifications([]);
   }, [user]);
 
   const saveNotifications = (updated: NotificationItem[]) => {
     setNotifications(updated);
-    if (user) {
-      localStorage.setItem(`notifications_${user.uid}`, JSON.stringify(updated));
-    }
   };
 
   const handleMarkRead = (id: string) => {
@@ -267,8 +253,8 @@ export function Notifications() {
           </p>
           <p className="text-xs text-indigo-700 mt-1">
             {language === 'ar' 
-              ? 'يتم تخزين الإشعارات محلياً. عند ربط النظام بـ Firebase أو Supabase، ستصلك الإشعارات لحظياً.' 
-              : 'Notifications are stored locally. When connected to Firebase or Supabase, you will receive real-time push notifications.'}
+              ? 'ستظهر هنا إشعارات الطلبات والتحديثات القادمة من النظام المتصل.' 
+              : 'Live order and system updates will appear here as they arrive.'}
           </p>
         </div>
       </div>
@@ -276,45 +262,3 @@ export function Notifications() {
   );
 }
 
-const defaultNotifications: NotificationItem[] = [
-  {
-    id: 'notif_1',
-    type: 'order',
-    title: 'طلب جديد من طاولة رقم 3',
-    message: 'عميل طلب 2x برجر لحم + 1x بطاطس. الإجمالي: $30.97',
-    timestamp: Date.now() - 5 * 60 * 1000,
-    read: false,
-  },
-  {
-    id: 'notif_2',
-    type: 'system',
-    title: 'تم تحديث المساعد الصوتي',
-    message: 'تم تثبيت الإصدار الجديد من المحرك الصوتي بدعم اللهجة المصرية',
-    timestamp: Date.now() - 2 * 60 * 60 * 1000,
-    read: false,
-  },
-  {
-    id: 'notif_3',
-    type: 'success',
-    title: 'تم ربط متجر Shopify بنجاح',
-    message: 'المنتجات تتزامن تلقائياً الآن. تم استيراد 142 منتج.',
-    timestamp: Date.now() - 5 * 60 * 60 * 1000,
-    read: true,
-  },
-  {
-    id: 'notif_4',
-    type: 'warning',
-    title: 'اقتراب حد الـ API',
-    message: 'استهلكت 85% من حد المكالمات الشهري. فكر في ترقية الباقة.',
-    timestamp: Date.now() - 24 * 60 * 60 * 1000,
-    read: false,
-  },
-  {
-    id: 'notif_5',
-    type: 'order',
-    title: 'طلب جديد من طاولة رقم 7',
-    message: 'عميل طلب 1x بيتزا مارجريتا + 2x كولا. الإجمالي: $18.50',
-    timestamp: Date.now() - 26 * 60 * 60 * 1000,
-    read: true,
-  },
-];

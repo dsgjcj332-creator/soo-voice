@@ -4,9 +4,29 @@ import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
+  const env = {
+    ...loadEnv(mode, '.', ''),
+    ...process.env,
+  };
   return {
-    plugins: [react(), tailwindcss()],
+    envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+    define: {
+      'import.meta.env.NEXT_PUBLIC_SUPABASE_URL': JSON.stringify(env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL),
+      'import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY),
+      'import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY),
+      'import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL': JSON.stringify(env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL),
+    },
+    plugins: [
+      react(),
+      tailwindcss(),
+      {
+        name: 'disable-vite-hmr-client',
+        enforce: 'post',
+        transformIndexHtml(html) {
+          return html.replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, '');
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

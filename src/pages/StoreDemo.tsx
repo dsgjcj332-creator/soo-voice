@@ -10,15 +10,6 @@ import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { useSearchParams } from 'react-router-dom';
 
 
-const RESTAURANT_FALLBACK_ITEMS = [
-  { id: '1', name: 'Truffle Angus Burger / برجر تروفل أنجوس', price: 14.99, description: 'Flame-grilled Angus patty, melted Swiss cheese, truffle glaze, and brioche bun.' },
-  { id: '2', name: 'Neapolitan Margherita Pizza / بيتزا مارغريتا نابولية', price: 12.99, description: 'Wood-fired crust, San Marzano tomato sauce, fresh buffalo mozzarella, and basil.' },
-  { id: '3', name: 'Crispy Chicken Strips & Fries / وجبة دجاج مقرمش وبطاطس', price: 11.50, description: 'Tender golden breaded chicken tenders with seasoned crinkle fries and garlic dip.' },
-  { id: '4', name: 'Creamy Alfredo Fettuccine / باستا ألفريدو كريمية', price: 13.50, description: 'Al dente fettuccine ribbons in rich parmesan cream sauce with grilled chicken breast.' },
-  { id: '5', name: 'Iced Spanish Latte / سبانش لاتيه مثلج', price: 5.50, description: 'Signature double espresso pulled over sweet condensed milk and chilled milk.' },
-  { id: '6', name: 'San Sebastian Cheesecake / تشيز كيك سان سباستيان', price: 6.99, description: 'Basque burnt cheesecake with velvety molten center and warm Belgian chocolate.' }
-];
-
 export function StoreDemo() {
   const { language } = useLanguage();
   const { businessType } = useSettings();
@@ -156,10 +147,7 @@ export function StoreDemo() {
   }, [resolvedOwnerId]);
 
   // Use Firestore items if available, else fallback. Filter out the hidden AI-only products from public rendering.
-  const allMenuItems = dbMenuItems.length > 0 
-    ? dbMenuItems 
-    : RESTAURANT_FALLBACK_ITEMS;
-  const visibleMenuItems = allMenuItems.filter(item => !item.isAiOnly);
+  const visibleMenuItems = dbMenuItems.filter(item => !item.isAiOnly);
   const filteredMenuItems = visibleMenuItems.filter(item => {
     if (activeCategory === 'all') return true;
     const cat = (item.category || '').toLowerCase();
@@ -185,11 +173,14 @@ export function StoreDemo() {
       const supabase = getSupabase();
       const { isConfigured } = getSupabaseConfig();
 
-      if (isConfigured && supabase) {
-        await supabase
-          .from('orders')
-          .insert(newOrder);
+      if (!isConfigured || !supabase) {
+        throw new Error('Order storage is not configured');
       }
+
+      const { error: orderError } = await supabase
+        .from('orders')
+        .insert(newOrder);
+      if (orderError) throw orderError;
 
       // 2. Load merchant webhook settings and dispatch event
       if (isConfigured && supabase) {
@@ -225,9 +216,7 @@ export function StoreDemo() {
       clearCart();
     } catch (err) {
       console.error("Error during tableside checkout:", err);
-      // Fallback simulation for seamless UX
-      setCheckoutStatus('success');
-      clearCart();
+      setCheckoutStatus('idle');
     } finally {
       setTimeout(() => setCheckoutStatus('idle'), 3000);
     }

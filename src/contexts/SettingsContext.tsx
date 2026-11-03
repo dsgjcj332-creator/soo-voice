@@ -181,7 +181,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [dialect, voiceTone, businessType, user, isConfigured]);
+  }, [dialect, voiceTone, businessType, currency, user, isConfigured]);
 
   return (
     <SettingsContext.Provider value={{ 
@@ -193,6 +193,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setBusinessType,
       hasCompletedOnboarding,
       setHasCompletedOnboarding,
+      currency,
+      setCurrency,
       loadingSettings
     }}>
       {children}

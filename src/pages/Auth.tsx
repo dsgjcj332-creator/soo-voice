@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Mic, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock3, Mic, ShieldCheck, Sparkles } from 'lucide-react';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export function Auth() {
@@ -10,257 +10,109 @@ export function Auth() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { isConfigured, source } = getSupabaseConfig();
-
-  const [mode, setMode] = useState<'demo' | 'email'>('demo');
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
 
-  const handleEmailLogin = async () => {
+  const isArabic = language === 'ar';
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    if (!email.trim() || !password) return;
+    if (mode === 'signup' && !name.trim()) {
+      setError(isArabic ? 'اكتب اسمك أولاً.' : 'Please enter your name first.');
+      return;
+    }
+
     try {
       setLoading(true);
-      setError(null);
       const supabase = getSupabase();
       if (!supabase) {
-        setError(language === 'ar' ? 'Supabase غير مهيأ' : 'Supabase is not configured');
+        setError(isArabic ? 'التسجيل غير متاح حالياً. جرّب الدخول للتجربة.' : 'Sign up is not available yet. Try the demo instead.');
         return;
       }
 
-      if (mode === 'email') {
-        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (mode === 'signin') {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (signInError) throw signInError;
         navigate('/app');
         return;
       }
 
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { displayName: name } },
+      const { url } = getSupabaseConfig();
+      const signupResponse = await fetch(`${url}/functions/v1/signup-test-no-confirmation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password, fullName: name.trim() }),
       });
-      if (signUpError) throw signUpError;
-      setError(language === 'ar' ? 'تم إنشاء الحساب، يمكنك تسجيل الدخول الآن.' : 'Account created, you can sign in now.');
-      setMode('email');
-    } catch (err: any) {
-      console.error(err);
-      let errorMessage = language === 'ar' ? 'فشل المصادقة. حاول مرة أخرى.' : 'Authentication failed. Please try again.';
-      if (err.message) errorMessage = err.message;
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const supabase = getSupabase();
-      if (supabase) {
-        const { error: sbError } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin + '/app'
-          }
-        });
-        if (sbError) throw sbError;
+      const signupResult = await signupResponse.json().catch(() => null);
+      if (!signupResponse.ok) {
+        throw new Error(signupResult?.error || 'signup_failed');
       }
-    } catch (err: any) {
-      console.error(err);
-      
-      let errorMessage = language === 'ar' ? 'فشل تسجيل الدخول. حاول مرة أخرى.' : 'Authentication failed. Please try again.';
-      
-      if (err.code === 'auth/popup-closed-by-user') {
-        errorMessage = language === 'ar' ? 'تم إغلاق نافذة تسجيل الدخول. يرجى المحاولة مرة أخرى.' : 'Sign-in popup was closed. Please try again.';
-      } else if (err.code === 'auth/popup-blocked') {
-        errorMessage = language === 'ar' ? 'تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة للموقع.' : 'Popup blocked by browser. Please allow popups.';
-      } else if (err.code === 'auth/unauthorized-domain') {
-        const domain = window.location.hostname;
-        errorMessage = language === 'ar'
-          ? `النطاق "${domain}" غير مسجل. تأكد من إضافة النطاق في إعدادات Supabase أو استخدم الدخول السريع.`
-          : `Domain "${domain}" is not authorized. Make sure it's added in Supabase Auth settings or use Quick Demo Sign-In.`;
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // Quick Developer Demo Login - local only, no backend required
-  const handleDemoLogin = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const demoUser = {
-        uid: 'demo-merchant-local',
-        email: 'demo@voiceai.com',
-        displayName: 'Demo Merchant',
-        photoURL: null,
-        provider: 'local' as const,
-      };
-      localStorage.setItem('local_demo_user', JSON.stringify(demoUser));
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInError) throw signInError;
       navigate('/app');
     } catch (err: any) {
-      console.error(err);
-      setError(language === 'ar' ? 'حدث خطأ. حاول مرة أخرى.' : 'Something went wrong. Please try again.');
+      const message = String(err?.message || '').toLowerCase();
+      if (message.includes('email') && (message.includes('confirm') || message.includes('verified'))) {
+        setError(isArabic ? 'أكد بريدك الإلكتروني من الرسالة المرسلة إليك.' : 'Please confirm your email from the message we sent you.');
+      } else if (message.includes('invalid') || message.includes('credential') || message.includes('password')) {
+        setError(isArabic ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Invalid email or password.');
+      } else {
+        setError(isArabic ? 'حدث خطأ غير متوقع. حاول مرة أخرى.' : 'Something unexpected happened. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDemoLogin = () => {
+    const demoUser = { uid: 'demo-merchant-local', email: 'demo@voiceai.com', displayName: 'Demo Merchant', photoURL: null, provider: 'local' as const };
+    localStorage.setItem('local_demo_user', JSON.stringify(demoUser));
+    window.location.assign('/app');
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-        <div className="p-8 text-center bg-indigo-600 text-white relative">
-          <div className="absolute top-4 right-4 bg-white/10 text-white text-[10px] px-2 py-1 rounded-full flex items-center gap-1 font-mono">
-            <ShieldCheck className="w-3 h-3" />
-            {isConfigured ? 'SUPABASE ACTIVE' : 'LOCAL MODE'}
+    <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+        <header className="relative bg-indigo-600 px-7 pb-8 pt-7 text-center text-white">
+          <div className="absolute right-5 top-5 flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[10px] font-mono">
+            <ShieldCheck className="h-3 w-3" /> {isConfigured ? 'SUPABASE ACTIVE' : 'SETUP MODE'}
           </div>
-          
-          <div className="flex justify-center mb-4">
-            <div className="bg-white/20 p-3 rounded-2xl">
-              <Mic className="h-8 w-8 text-white" />
-            </div>
-          </div>
-          <h2 className="text-2xl font-bold mb-2">
-            {language === 'ar' ? 'مرحباً بك في VoiceAI' : 'Welcome to VoiceAI'}
-          </h2>
-          <p className="text-indigo-200 text-sm">
-            {language === 'ar' 
-              ? 'سجل دخولك لإدارة مساعدك الصوتي' 
-              : 'Sign in to manage your voice agent'}
-          </p>
-        </div>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15"><Mic className="h-8 w-8" /></div>
+          <h1 className="text-2xl font-bold">{isArabic ? 'مرحباً بك في VoiceAI' : 'Welcome to VoiceAI'}</h1>
+          <p className="mt-2 text-sm text-indigo-100">{isArabic ? 'ابدأ بإدارة مساعدك الصوتي بسهولة' : 'Manage your voice assistant with ease'}</p>
+        </header>
 
-        <div className="p-8 flex flex-col items-center">
-          {error && (
-            <div className="mb-4 w-full p-3 bg-red-50 text-red-600 text-sm rounded-lg text-center leading-relaxed">
-              {error}
-            </div>
-          )}
-          
-          {/* Auth Mode Tabs */}
-          <div className="w-full flex gap-2 mb-4">
-            <button
-              onClick={() => setMode('demo')}
-              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${mode === 'demo' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
-            >
-              {language === 'ar' ? 'تجربة محلية' : 'Local Demo'}
-            </button>
-            <button
-              onClick={() => setMode('email')}
-              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors cursor-pointer ${mode === 'email' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}
-            >
-              {language === 'ar' ? 'بريد إلكتروني' : 'Email'}
-            </button>
+        <section className="p-7">
+          {error && <div className="mb-5 flex gap-2 rounded-xl bg-amber-50 p-3 text-sm leading-relaxed text-amber-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
+
+          <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+            <button type="button" onClick={() => { setMode('signin'); setError(null); }} className={`rounded-lg py-2.5 text-sm font-bold transition ${mode === 'signin' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>{isArabic ? 'تسجيل الدخول' : 'Sign in'}</button>
+            <button type="button" onClick={() => { setMode('signup'); setError(null); }} className={`rounded-lg py-2.5 text-sm font-bold transition ${mode === 'signup' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}>{isArabic ? 'تسجيل جديد' : 'Create account'}</button>
           </div>
 
-          {mode === 'demo' ? (
-            <div className="w-full space-y-3">
-              {/* Quick Demo Login - Primary for local/dev */}
-              <button
-                onClick={handleDemoLogin}
-                disabled={loading}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors shadow-lg cursor-pointer ring-2 ring-amber-400/50"
-              >
-                <Sparkles className="w-5 h-5 text-amber-400" />
-                {loading 
-                  ? (language === 'ar' ? 'جاري الدخول...' : 'Signing in...') 
-                  : (language === 'ar' ? 'دخول سريع للتجربة والمراجعة' : 'Quick Demo Sign-In')}
-              </button>
-              <p className="text-[11px] text-slate-400 text-center">
-                {language === 'ar' ? 'لا يحتاج حساب أو إنترنت. بيانات محفوظة على جهازك.' : 'No account needed. Data saved locally on your device.'}
-              </p>
-            </div>
-          ) : (
-            <div className="w-full space-y-3">
-              {mode === 'email' && !email && (
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={language === 'ar' ? 'الاسم (اختياري)' : 'Name (optional)'}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              )}
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={language === 'ar' ? 'البريد الإلكتروني' : 'Email address'}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={language === 'ar' ? 'كلمة المرور' : 'Password'}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <button
-                onClick={handleEmailLogin}
-                disabled={loading || !email || !password}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-lg cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loading 
-                  ? (language === 'ar' ? 'جاري المعالجة...' : 'Processing...') 
-                  : (mode === 'email' 
-                    ? (language === 'ar' ? 'تسجيل الدخول' : 'Sign In') 
-                    : (language === 'ar' ? 'إنشاء حساب' : 'Create Account'))}
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode(mode === 'email' ? 'signup' : 'email')}
-                className="w-full text-xs text-indigo-600 hover:text-indigo-700 cursor-pointer"
-              >
-                {mode === 'email'
-                  ? (language === 'ar' ? 'ليس لديك حساب؟ أنشئ حساباً' : 'No account? Create one')
-                  : (language === 'ar' ? 'لديك حساب؟ سجل دخولك' : 'Have an account? Sign in')}
-              </button>
-            </div>
-          )}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {mode === 'signup' && <input aria-label={isArabic ? 'الاسم' : 'Name'} required value={name} onChange={(event) => setName(event.target.value)} placeholder={isArabic ? 'الاسم الكامل' : 'Full name'} className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />}
+            <input aria-label={isArabic ? 'البريد الإلكتروني' : 'Email'} required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={isArabic ? 'البريد الإلكتروني' : 'Email address'} className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            <input aria-label={isArabic ? 'كلمة المرور' : 'Password'} required minLength={6} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={isArabic ? 'كلمة المرور (6 أحرف على الأقل)' : 'Password (at least 6 characters)'} className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" />
+            <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3.5 font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">{loading ? (isArabic ? 'جاري المعالجة...' : 'Processing...') : mode === 'signin' ? (isArabic ? 'دخول' : 'Sign in') : (isArabic ? 'إنشاء الحساب' : 'Create account')}<ArrowRight className="h-4 w-4" /></button>
+          </form>
 
-          {mode !== 'email' && (
-            <div className="w-full mt-4">
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-100"></div>
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-white px-2 text-slate-400">or</span>
-                </div>
-              </div>
+          <div className="my-5 flex items-center gap-3 text-xs text-slate-400"><div className="h-px flex-1 bg-slate-100" />{isArabic ? 'أو' : 'OR'}<div className="h-px flex-1 bg-slate-100" /></div>
+          <button type="button" disabled className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-3 font-bold text-slate-400" title={isArabic ? 'سيتم تفعيله قريباً' : 'Coming soon'}><span className="text-lg font-bold">G</span>{isArabic ? 'التسجيل باستخدام Google (قريباً)' : 'Continue with Google (Coming soon)'}<Clock3 className="h-4 w-4" /></button>
 
-              {/* Google Login - Secondary */}
-              <button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors shadow-sm cursor-pointer"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-                {loading 
-                  ? (language === 'ar' ? 'جاري تسجيل الدخول...' : 'Signing in...') 
-                  : (language === 'ar' ? 'المتابعة باستخدام Google' : 'Continue with Google')}
-              </button>
-            </div>
-          )}
-
-          {isConfigured && (
-            <p className="mt-4 text-[11px] text-slate-400 text-center font-mono">
-              Connecting via: {source}
-            </p>
-          )}
-        </div>
+          <div className="my-6 border-t border-slate-100 pt-5">
+            <p className="mb-3 text-center text-xs font-semibold text-slate-500">{isArabic ? 'تريد تجربة النظام أولاً؟' : 'Want to explore first?'}</p>
+            <button type="button" onClick={handleDemoLogin} className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white transition hover:bg-slate-800"><Sparkles className="h-4 w-4 text-amber-400" />{isArabic ? 'دخول للتجربة' : 'Enter demo'}</button>
+            <p className="mt-2 text-center text-[11px] text-slate-400">{isArabic ? 'تجربة محلية بدون إنشاء حساب' : 'Local demo without creating an account'}</p>
+          </div>
+          {isConfigured && <p className="text-center text-[10px] font-mono text-slate-400">Connecting via: {source}</p>}
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
