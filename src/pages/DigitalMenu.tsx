@@ -1012,13 +1012,13 @@ export function DigitalMenu() {
       </div>
 
       {/* Sub Tabs Selection */}
-      <div className="flex border-b border-slate-200 mb-8 overflow-x-auto gap-2 scrollbar-none" id="digital-menu-subtabs">
+      <div className="flex mb-8 overflow-x-auto gap-1.5 scrollbar-none rounded-2xl bg-slate-100 p-1" id="digital-menu-subtabs">
         <button
           onClick={() => setActiveSubTab("catalog")}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-4 text-sm font-bold rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === "catalog"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+? "bg-white text-indigo-600 shadow-sm"
+  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
           }`}
         >
           <Database className="w-4 h-4" />
@@ -1027,10 +1027,10 @@ export function DigitalMenu() {
 
         <button
           onClick={() => setActiveSubTab("design")}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-4 text-sm font-bold rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === "design"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+? "bg-white text-indigo-600 shadow-sm"
+  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
           }`}
         >
           <Sparkles className="w-4 h-4" />
@@ -1039,10 +1039,10 @@ export function DigitalMenu() {
 
         <button
           onClick={() => setActiveSubTab("qr_stand")}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-4 text-sm font-bold rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === "qr_stand"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+? "bg-white text-indigo-600 shadow-sm"
+  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
           }`}
         >
           <Smartphone className="w-4 h-4" />
