@@ -53,7 +53,20 @@ async function startServer() {
     app.use((req, res, next) => {
       if (req.url?.startsWith('/@vite/client')) {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-        res.type('application/javascript').send('window.__vite_hmr_disabled__ = true;');
+        res.type('application/javascript').send(`
+          const noop = () => {};
+          export const createHotContext = () => ({
+            accept: noop,
+            dispose: noop,
+            prune: noop,
+            decline: noop,
+            invalidate: noop,
+            on: noop,
+            send: noop,
+          });
+          export const updateStyle = noop;
+          export const removeStyle = noop;
+        `);
         return;
       }
       next();
