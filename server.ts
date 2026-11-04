@@ -45,8 +45,33 @@ async function startServer() {
   // ==========================================
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
+      server: { middlewareMode: true, hmr: false, ws: false },
       appType: 'spa',
+    });
+    // The preview host does not expose a Vite WebSocket endpoint. Serve an
+    // inert client for any cached HTML that still references the HMR module.
+    app.use((req, res, next) => {
+      if (req.url?.startsWith('/@vite/client')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        res.type('application/javascript').send(`
+          const noop = () => {};
+          export function createHotContext() {
+            return {
+              accept: noop,
+              dispose: noop,
+              prune: noop,
+              decline: noop,
+              invalidate: noop,
+              on: noop,
+              send: noop,
+            };
+          }
+          export function updateStyle() {}
+          export function removeStyle() {}
+        `);
+        return;
+      }
+      next();
     });
     app.use(vite.middlewares);
   } else {

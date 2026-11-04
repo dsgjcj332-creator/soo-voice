@@ -72,8 +72,12 @@ export function Sidebar() {
       </div>
       <nav className="flex flex-1 flex-col px-4 py-4 space-y-4">
         
-        {/* Main Nav */}
-        <div className="space-y-1">
+        {/* Workspace navigation */}
+        <div>
+          <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            {language === 'ar' ? 'مساحة العمل' : 'Workspace'}
+          </p>
+          <div className="space-y-1">
           {navigation.map((item) => (
             <NavLink
               key={item.name}
@@ -104,6 +108,7 @@ export function Sidebar() {
               )}
             </NavLink>
           ))}
+          </div>
         </div>
 
         {/* Demo Store Link */}

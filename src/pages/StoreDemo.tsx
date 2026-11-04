@@ -112,18 +112,10 @@ export function StoreDemo() {
           const { data, error } = await queryBuilder;
           if (error) throw error;
           
-          if (data && data.length > 0) {
-            setDbMenuItems(data);
-          } else {
-            // Load from local storage buffer as fallback
-            const localItems = JSON.parse(localStorage.getItem(`sb_items_${resolvedOwnerId}`) || '[]');
-            setDbMenuItems(localItems);
-          }
+          setDbMenuItems(data ?? []);
         } catch (err) {
           console.error("Failed to query menu_items in Supabase:", err);
-          // Load local buffer fallback
-          const localItems = JSON.parse(localStorage.getItem(`sb_items_${resolvedOwnerId}`) || '[]');
-          setDbMenuItems(localItems);
+          setDbMenuItems([]);
         }
       };
 

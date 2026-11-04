@@ -23,7 +23,11 @@ export default defineConfig(({mode}) => {
         name: 'disable-vite-hmr-client',
         enforce: 'post',
         transformIndexHtml(html) {
-          return html.replace(/<script[^>]+src=["']\/@vite\/client["'][^>]*><\/script>/g, '');
+          return html
+            .replace(/<script[^>]*@vite\/client[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<script[^>]*src=["'][^"']*vite\/client[^"']*["'][^>]*><\/script>/gi, '')
+            .replace(/(?:import|src\s*=)\s*["']?[^"'\s>]*\/@vite\/client[^"'\s>]*["']?;?/gi, '')
+            .replace(/\/?@vite\/client/g, '');
         },
       },
     ],
@@ -37,6 +41,7 @@ export default defineConfig(({mode}) => {
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       port: parseInt(process.env.PORT || '3000', 10),
       hmr: false,
+      ws: false,
     },
   };
 });
