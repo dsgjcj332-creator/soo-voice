@@ -19,7 +19,8 @@ import {
   X,
   AlertCircle,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Save
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -721,18 +722,39 @@ export function DigitalMenu() {
 
   const currentScheme = QR_STAND_COLORS[qrColor] || QR_STAND_COLORS.indigo;
 
-  // Load QR codes from local storage for local users
+  // Load the saved QR records so the stand builder and QR manager use the same source.
   useEffect(() => {
     if (!user) return;
-    if (user.provider === 'local') {
-      const localQrCodes = getLocalCollection('qr_codes', user.uid);
-      setQrCodes(localQrCodes);
-    }
-  }, [user]);
 
-  // Save QR codes to local storage when they change (for local users)
+    const loadQrCodes = async () => {
+      if (user.provider === 'local') {
+        setQrCodes(getLocalCollection('qr_codes', user.uid));
+        return;
+      }
+
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) return;
+
+      const { data, error } = await getSupabase()
+        .from('qr_codes')
+        .select('id, ownerId, tableNumber, color, label, createdAt, updatedAt')
+        .eq('ownerId', user.uid)
+        .order('createdAt', { ascending: false });
+
+      if (error) {
+        console.error('[v0] Failed to load QR codes:', error);
+        triggerNotification(language === 'ar' ? 'تعذر تحميل أكواد QR' : 'Could not load QR codes');
+        return;
+      }
+
+      setQrCodes(data || []);
+    };
+
+    void loadQrCodes();
+  }, [user, language]);
+
   useEffect(() => {
-    if (user?.provider === 'local' && qrCodes.length >= 0) {
+    if (user?.provider === 'local') {
       setLocalCollection('qr_codes', qrCodes, user.uid);
     }
   }, [qrCodes, user]);
@@ -776,56 +798,160 @@ export function DigitalMenu() {
     window.print();
   };
 
-  // QR Code CRUD operations
-  const handleCreateQr = () => {
-    if (!qrForm.tableNumber) return;
+  // QR Code CRUD operations. Each saved record drives both the stand and the customer URL.
+  const handleCreateQr = async () => {
+    if (!qrForm.tableNumber || !user) return;
+
     const newQr = {
-      id: 'qr_' + Math.random().toString(36).substring(2, 9),
-      tableNumber: qrForm.tableNumber,
+      id: 'qr_' + crypto.randomUUID(),
+      tableNumber: qrForm.tableNumber.trim(),
       color: qrForm.color,
-      label: qrForm.label || `Table ${qrForm.tableNumber}`,
-      ownerId: resolvedOwnerId,
-      createdAt: Date.now()
+      label: qrForm.label.trim() || `Table ${qrForm.tableNumber.trim()}`,
+      ownerId: user.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
+
+    if (user.provider !== 'local') {
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) {
+        triggerNotification(language === 'ar' ? 'اتصال Supabase غير متاح' : 'Supabase is not configured');
+        return;
+      }
+      const { error } = await getSupabase().from('qr_codes').insert(newQr);
+      if (error) {
+        console.error('[v0] Failed to create QR:', error);
+        triggerNotification(language === 'ar' ? 'تعذر حفظ QR' : 'Could not save QR');
+        return;
+      }
+    }
+
     setQrCodes(prev => [...prev, newQr]);
+    setTableNumber(newQr.tableNumber);
+    setQrColor(newQr.color);
     setQrForm({ tableNumber: '', color: 'indigo', label: '' });
     setShowQrModal(false);
-    triggerNotification(
-      language === "ar" ? `تم إنشاء QR للطاولة ${newQr.tableNumber} بنجاح!` : `QR for table ${newQr.tableNumber} created!`
-    );
+    triggerNotification(language === 'ar' ? `تم حفظ QR للطاولة ${newQr.tableNumber}` : `QR for table ${newQr.tableNumber} saved`);
+  };
+
+  const handleSaveCurrentQr = async () => {
+    if (!user || !tableNumber.trim()) {
+      triggerNotification(language === 'ar' ? 'اكتب رقم الطاولة أولاً' : 'Enter a table number first');
+      return;
+    }
+
+    const existing = qrCodes.find((qr) => qr.tableNumber === tableNumber.trim());
+    if (existing) {
+      const updates = { color: qrColor, updatedAt: Date.now() };
+      if (user.provider !== 'local') {
+        const config = getSupabaseConfig();
+        if (!config.isConfigured) {
+          triggerNotification(language === 'ar' ? 'اتصال Supabase غير متاح' : 'Supabase is not configured');
+          return;
+        }
+        const { error } = await getSupabase().from('qr_codes').update(updates).eq('id', existing.id).eq('ownerId', user.uid);
+        if (error) {
+          console.error('[v0] Failed to update stand QR:', error);
+          triggerNotification(language === 'ar' ? 'تعذر تحديث الستاند والباركود' : 'Could not update the stand and QR');
+          return;
+        }
+      }
+      setQrCodes((prev) => prev.map((qr) => qr.id === existing.id ? { ...qr, ...updates } : qr));
+      triggerNotification(language === 'ar' ? `تم تحديث الستاند والباركود للطاولة ${existing.tableNumber}` : `Stand and QR updated for table ${existing.tableNumber}`);
+      return;
+    }
+
+    const now = Date.now();
+    const newQr = {
+      id: 'qr_' + crypto.randomUUID(),
+      tableNumber: tableNumber.trim(),
+      color: qrColor,
+      label: `Table ${tableNumber.trim()}`,
+      ownerId: user.uid,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    if (user.provider !== 'local') {
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) {
+        triggerNotification(language === 'ar' ? 'اتصال Supabase غير متاح' : 'Supabase is not configured');
+        return;
+      }
+      const { error } = await getSupabase().from('qr_codes').insert(newQr);
+      if (error) {
+        console.error('[v0] Failed to save stand QR:', error);
+        triggerNotification(language === 'ar' ? 'تعذر حفظ الستاند والباركود' : 'Could not save the stand and QR');
+        return;
+      }
+    }
+
+    setQrCodes((prev) => [...prev, newQr]);
+    triggerNotification(language === 'ar' ? `تم حفظ الستاند والباركود للطاولة ${newQr.tableNumber}` : `Stand and QR saved for table ${newQr.tableNumber}`);
   };
 
   const handleEditQr = (qr: any) => {
     setEditingQr(qr);
-    setQrForm({
-      tableNumber: qr.tableNumber,
-      color: qr.color,
-      label: qr.label || ''
-    });
+    setTableNumber(qr.tableNumber);
+    setQrColor(qr.color);
+    setQrForm({ tableNumber: qr.tableNumber, color: qr.color, label: qr.label || '' });
     setShowQrModal(true);
   };
 
-  const handleUpdateQr = () => {
-    if (!editingQr || !qrForm.tableNumber) return;
-    setQrCodes(prev => prev.map(qr => 
-      qr.id === editingQr.id 
-        ? { ...qr, tableNumber: qrForm.tableNumber, color: qrForm.color, label: qrForm.label || `Table ${qrForm.tableNumber}` }
-        : qr
-    ));
+  const handleUpdateQr = async () => {
+    if (!editingQr || !qrForm.tableNumber || !user) return;
+    const updates = {
+      tableNumber: qrForm.tableNumber.trim(),
+      color: qrForm.color,
+      label: qrForm.label.trim() || `Table ${qrForm.tableNumber.trim()}`,
+      updatedAt: Date.now(),
+    };
+
+    if (user.provider !== 'local') {
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) {
+        triggerNotification(language === 'ar' ? 'اتصال Supabase غير متاح' : 'Supabase is not configured');
+        return;
+      }
+      const { error } = await getSupabase().from('qr_codes').update(updates).eq('id', editingQr.id).eq('ownerId', user.uid);
+      if (error) {
+        console.error('[v0] Failed to update QR:', error);
+        triggerNotification(language === 'ar' ? 'تعذر تحديث QR' : 'Could not update QR');
+        return;
+      }
+    }
+
+    setQrCodes(prev => prev.map(qr => qr.id === editingQr.id ? { ...qr, ...updates } : qr));
+    setTableNumber(updates.tableNumber);
+    setQrColor(updates.color);
     setEditingQr(null);
     setQrForm({ tableNumber: '', color: 'indigo', label: '' });
     setShowQrModal(false);
-    triggerNotification(
-      language === "ar" ? "تم تحديث QR بنجاح!" : "QR updated successfully!"
-    );
+    triggerNotification(language === 'ar' ? 'تم تحديث QR والستاند' : 'QR and stand updated');
   };
 
-  const handleDeleteQr = (qrId: string) => {
-    if (!window.confirm(language === "ar" ? "هل أنت متأكد من ��ذف هذا QR؟" : "Are you sure you want to delete this QR?")) return;
+  const handleDeleteQr = async (qrId: string) => {
+    if (!window.confirm(language === 'ar' ? 'هل أنت متأكد من حذف هذا QR؟' : 'Are you sure you want to delete this QR?')) return;
+    if (user?.provider !== 'local') {
+      const { error } = await getSupabase().from('qr_codes').delete().eq('id', qrId).eq('ownerId', user?.uid);
+      if (error) {
+        console.error('[v0] Failed to delete QR:', error);
+        triggerNotification(language === 'ar' ? 'تعذر حذف QR' : 'Could not delete QR');
+        return;
+      }
+    }
     setQrCodes(prev => prev.filter(qr => qr.id !== qrId));
-    triggerNotification(
-      language === "ar" ? "تم حذف QR بنجاح!" : "QR deleted successfully!"
-    );
+    triggerNotification(language === 'ar' ? 'تم حذف QR بنجاح!' : 'QR deleted successfully!');
+  };
+
+  const getQrUrl = (table: string) => `${window.location.origin}/store?ownerId=${resolvedOwnerId}&table=${encodeURIComponent(table)}`;
+
+  const handleDownloadSavedQr = async (qr: any) => {
+    const dataUrl = await QRCode.toDataURL(getQrUrl(qr.tableNumber), { width: 1200, margin: 2, color: { dark: QR_STAND_COLORS[qr.color]?.hex || '#4338ca', light: '#ffffff' } });
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `table-${qr.tableNumber}-qr.png`;
+    link.click();
   };
 
   const openCreateQrModal = () => {
@@ -886,13 +1012,13 @@ export function DigitalMenu() {
       </div>
 
       {/* Sub Tabs Selection */}
-      <div className="flex border-b border-slate-200 mb-8 overflow-x-auto gap-2 scrollbar-none" id="digital-menu-subtabs">
+      <div className="flex mb-8 overflow-x-auto gap-1.5 scrollbar-none rounded-2xl bg-slate-100 p-1" id="digital-menu-subtabs">
         <button
           onClick={() => setActiveSubTab("catalog")}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-4 text-sm font-bold rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === "catalog"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+? "bg-white text-indigo-600 shadow-sm"
+  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
           }`}
         >
           <Database className="w-4 h-4" />
@@ -901,10 +1027,10 @@ export function DigitalMenu() {
 
         <button
           onClick={() => setActiveSubTab("design")}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-4 text-sm font-bold rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === "design"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+? "bg-white text-indigo-600 shadow-sm"
+  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
           }`}
         >
           <Sparkles className="w-4 h-4" />
@@ -913,10 +1039,10 @@ export function DigitalMenu() {
 
         <button
           onClick={() => setActiveSubTab("qr_stand")}
-          className={`flex items-center gap-2 py-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 py-2.5 px-4 text-sm font-bold rounded-xl transition-all whitespace-nowrap ${
             activeSubTab === "qr_stand"
-              ? "border-indigo-600 text-indigo-600"
-              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+? "bg-white text-indigo-600 shadow-sm"
+  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
           }`}
         >
           <Smartphone className="w-4 h-4" />
@@ -1037,7 +1163,7 @@ export function DigitalMenu() {
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600" title="Visible on Menu & AI">
                               <Eye className="w-3.5 h-3.5" />
-                              {language === "ar" ? "عام بالمنيو" : "Public Menu"}
+                              {language === "ar" ? "عام با��منيو" : "Public Menu"}
                             </span>
                           )}
                         </td>
@@ -1214,7 +1340,7 @@ export function DigitalMenu() {
                   {/* 5. Curviness Style */}
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
-                      {language === "ar" ? "5. استدارة حواف بطاقات المنتجات" : "5. Card Curviness Style"}
+                      {language === "ar" ? "5. استدا��ة حواف بطاقات المنتجات" : "5. Card Curviness Style"}
                     </label>
                     <div className="flex gap-2">
                       {[
@@ -1392,7 +1518,7 @@ export function DigitalMenu() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none relative z-10">
                     <div className="text-center py-2">
                       <h4 className="font-extrabold text-xs">
-                        {language === "ar" ? "منيو المأكولات والمشروبات الرقمي" : "Fresh Digital Dining Menu"}
+                        {language === "ar" ? "منيو المأكولات والمشروبات الر��مي" : "Fresh Digital Dining Menu"}
                       </h4>
                       <p className="text-[9px] opacity-70 mt-0.5">
                         {language === "ar" ? "تصفح واطلب وسلّم النادل الصوتي الذكي!" : "Browse and order with our Voice AI Waiter!"}
@@ -1656,7 +1782,14 @@ export function DigitalMenu() {
               </div>
 
               {/* Print and Export Buttons */}
-              <div className="flex gap-3 mt-4 w-full">
+              <button
+                onClick={handleSaveCurrentQr}
+                className="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md text-white"
+              >
+                <Save className="w-4 h-4" />
+                {language === "ar" ? "حفظ الستاند والباركود" : "Save Stand & QR"}
+              </button>
+              <div className="flex gap-3 mt-3 w-full">
                 <button
                   onClick={handlePrint}
                   className="flex-1 bg-white/10 hover:bg-white/20 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-white/5"
@@ -1708,16 +1841,33 @@ export function DigitalMenu() {
                   </div>
                   <div className={`w-6 h-6 rounded-full ${QR_STAND_COLORS[qr.color]?.bg || 'bg-indigo-600'}`} />
                 </div>
-                <div className="flex gap-2">
+                <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-[10px] text-slate-500 font-mono truncate dir-ltr">
+                  {getQrUrl(qr.tableNumber)}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleEditQr(qr)}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold transition-colors"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-xs font-bold transition-colors"
                   >
                     {language === "ar" ? "تعديل" : "Edit"}
                   </button>
                   <button
+                    onClick={() => handleDownloadSavedQr(qr)}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {language === "ar" ? "تنزيل QR" : "Download QR"}
+                  </button>
+                  <button
+                    onClick={() => window.open(getQrUrl(qr.tableNumber), '_blank', 'noopener,noreferrer')}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {language === "ar" ? "فتح الرابط" : "Open URL"}
+                  </button>
+                  <button
                     onClick={() => handleDeleteQr(qr.id)}
-                    className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-lg text-xs font-bold transition-colors"
+                    className="bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-lg text-xs font-bold transition-colors"
                   >
                     {language === "ar" ? "حذف" : "Delete"}
                   </button>
