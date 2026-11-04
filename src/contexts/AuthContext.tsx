@@ -27,20 +27,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { isConfigured } = getSupabaseConfig();
 
   useEffect(() => {
-    const localDemo = localStorage.getItem('local_demo_user');
-    if (localDemo) {
-      try {
-        const parsed = JSON.parse(localDemo);
-        if (parsed && parsed.uid && parsed.provider === 'local') {
-          setUser(parsed);
-          setLoading(false);
-          return;
-        }
-      } catch {}
-    }
-
     const supabase = getSupabase();
+    const localDemo = localStorage.getItem('local_demo_user');
+
+    // When Supabase is configured, the authenticated Supabase session is always
+    // the source of truth. The local demo must never shadow a real account.
     if (!supabase || !isConfigured) {
+      if (localDemo) {
+        try {
+          const parsed = JSON.parse(localDemo);
+          if (parsed && parsed.uid && parsed.provider === 'local') {
+            setUser(parsed);
+            setLoading(false);
+            return;
+          }
+        } catch {}
+      }
       setUser(null);
       setLoading(false);
       return;
@@ -57,10 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           provider: 'supabase'
         });
       } else {
-        const localDemo = localStorage.getItem('local_demo_user');
-        if (!localDemo) {
-          setUser(null);
-        }
+        setUser(null);
       }
       setLoading(false);
     });
@@ -76,10 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           provider: 'supabase'
         });
       } else {
-        const localDemo = localStorage.getItem('local_demo_user');
-        if (!localDemo) {
-          setUser(null);
-        }
+        setUser(null);
       }
       setLoading(false);
     });
