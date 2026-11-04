@@ -55,17 +55,19 @@ async function startServer() {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.type('application/javascript').send(`
           const noop = () => {};
-          export const createHotContext = () => ({
-            accept: noop,
-            dispose: noop,
-            prune: noop,
-            decline: noop,
-            invalidate: noop,
-            on: noop,
-            send: noop,
-          });
-          export const updateStyle = noop;
-          export const removeStyle = noop;
+          export function createHotContext() {
+            return {
+              accept: noop,
+              dispose: noop,
+              prune: noop,
+              decline: noop,
+              invalidate: noop,
+              on: noop,
+              send: noop,
+            };
+          }
+          export function updateStyle() {}
+          export function removeStyle() {}
         `);
         return;
       }
