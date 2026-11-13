@@ -12,6 +12,8 @@ interface LanguageContextType {
 export const translations: Record<Language, Record<string, string>> = {
   en: {
     'nav.overview': 'Overview',
+    'nav.group.workspace': 'Workspace',
+    'nav.group.setup': 'Setup & AI',
     'nav.conversations': 'Conversations',
     'nav.kb': 'AI Brain & Profile',
     'nav.settings': 'Settings',
@@ -62,6 +64,8 @@ export const translations: Record<Language, Record<string, string>> = {
   },
   ar: {
     'nav.overview': 'نظرة عامة',
+    'nav.group.workspace': 'مساحة العمل',
+    'nav.group.setup': 'الإعداد والذكاء',
     'nav.conversations': 'المحادثات',
     'nav.kb': 'ملف ومعلومات الشركة',
     'nav.settings': 'الإعدادات',

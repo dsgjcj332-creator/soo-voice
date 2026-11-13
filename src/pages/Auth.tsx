@@ -10,7 +10,7 @@ export function Auth() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isConfigured, source } = getSupabaseConfig();
+  const { isConfigured } = getSupabaseConfig();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -142,7 +142,6 @@ export function Auth() {
             <button type="button" onClick={handleDemoLogin} className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-bold text-white transition hover:bg-slate-800"><Sparkles className="h-4 w-4 text-amber-400" />{isArabic ? 'دخول للتجربة' : 'Enter demo'}</button>
             <p className="mt-2 text-center text-[11px] text-slate-400">{isArabic ? 'تجربة محلية بدون إنشاء حساب' : 'Local demo without creating an account'}</p>
           </div>
-          {isConfigured && <p className="text-center text-[10px] font-mono text-slate-400">Connecting via: {source}</p>}
         </section>
       </div>
     </main>

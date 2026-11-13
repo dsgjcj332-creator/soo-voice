@@ -18,19 +18,35 @@ import { useLanguage } from "../../contexts/LanguageContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { Logo } from "../brand/Logo";
 
-const getNavigation = (t: (k: string) => string, language: string) => [
-  { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
-  { name: language === 'ar' ? 'طلبات المطبخ الحية (KDS)' : 'Live Kitchen Orders (KDS)', href: "/app/integration", icon: Utensils },
-  { name: language === 'ar' ? 'المنيو والـ QR' : 'Digital Menu & QR', href: "/app/digital-menu", icon: QrCode },
-  { name: t("nav.conversations"), href: "/app/conversations", icon: MessageSquare },
-  { name: t("nav.kb"), href: "/app/knowledge-base", icon: Book },
-  { name: t("nav.settings"), href: "/app/settings", icon: Settings },
+const getNavigationGroups = (t: (k: string) => string, language: string) => [
+  {
+    label: t('nav.group.workspace'),
+    items: [
+      { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
+      { name: t("nav.conversations"), href: "/app/conversations", icon: MessageSquare },
+      { name: language === 'ar' ? 'المنيو الرقمي و QR' : 'Digital Menu & QR', href: "/app/digital-menu", icon: QrCode },
+    ],
+  },
+  {
+    label: t('nav.group.setup'),
+    items: [
+      { name: t("nav.kb"), href: "/app/knowledge-base", icon: Book },
+      { name: t("nav.integration"), href: "/app/integration", icon: Code },
+    ],
+  },
+  {
+    label: t('nav.system'),
+    items: [
+      { name: t("nav.billing"), href: "/app/billing", icon: CreditCard },
+      { name: t("nav.settings"), href: "/app/settings", icon: Settings },
+    ],
+  },
 ];
 
 export function Sidebar() {
   const { t, language } = useLanguage();
   const { user, logout } = useAuth();
-  const navigation = getNavigation(t, language);
+  const groups = getNavigationGroups(t, language);
   const navigate = useNavigate();
   const [clickCount, setClickCount] = useState(0);
 
@@ -69,49 +85,49 @@ export function Sidebar() {
           </span>
         </div>
       </div>
-      <nav className="flex flex-1 flex-col px-4 py-4 space-y-4">
-        
-        {/* Workspace navigation */}
-        <div>
-          <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            {language === 'ar' ? 'مساحة العمل' : 'Workspace'}
-          </p>
-          <div className="space-y-1">
-          {navigation.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.href}
-              end={item.href === '/app'}
-              className={({ isActive }) =>
-                cn(
-                  "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon
-                    className={cn(
-                      "me-3 h-5 w-5 shrink-0",
+      <nav className="flex flex-1 flex-col px-4 py-4 space-y-5">
+        {groups.map((group) => (
+          <div key={group.label}>
+            <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              {group.label}
+            </p>
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.name}
+                  to={item.href}
+                  end={item.href === '/app'}
+                  className={({ isActive }) =>
+                    cn(
+                      "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
                       isActive
-                        ? "text-indigo-600"
-                        : "text-slate-400 group-hover:text-indigo-500",
-                    )}
-                    aria-hidden="true"
-                  />
-                  {item.name}
-                </>
-              )}
-            </NavLink>
-          ))}
+                        ? "bg-indigo-50 text-indigo-600"
+                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                    )
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <item.icon
+                        className={cn(
+                          "me-3 h-5 w-5 shrink-0",
+                          isActive
+                            ? "text-indigo-600"
+                            : "text-slate-400 group-hover:text-indigo-500",
+                        )}
+                        aria-hidden="true"
+                      />
+                      {item.name}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
           </div>
-        </div>
+        ))}
 
-        {/* Demo Store Link */}
-        <div className="pt-4 border-t border-slate-100">
+        {/* Live dine-in preview (opens in a new tab) */}
+        <div className="pt-2 border-t border-slate-100">
           <NavLink
             to={user?.uid ? `/store?ownerId=${user.uid}&table=1` : "/store"}
             target="_blank"
@@ -121,50 +137,6 @@ export function Sidebar() {
             <span className="flex-1">{language === 'ar' ? 'معاينة المنيو للطاولات' : 'Live Dine-In Menu'}</span>
             <ExternalLink className="h-4 w-4 opacity-50" />
           </NavLink>
-        </div>
-
-        <div className="pt-4">
-          <h3 className="px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            {t('nav.system')}
-          </h3>
-          <div className="mt-2 space-y-1">
-            <NavLink
-              to="/app/integration"
-              className={({ isActive }) =>
-                cn(
-                  "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-indigo-600",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Code className={cn("me-3 h-5 w-5", isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-500")} />
-                  {t('nav.integration')}
-                </>
-              )}
-            </NavLink>
-            <NavLink
-              to="/app/billing"
-              className={({ isActive }) =>
-                cn(
-                  "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-indigo-50 text-indigo-600"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-indigo-600",
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <CreditCard className={cn("me-3 h-5 w-5", isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-500")} />
-                  {t('nav.billing')}
-                </>
-              )}
-            </NavLink>
-          </div>
         </div>
       </nav>
 
