@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Users, Store, Activity, Database, TrendingUp, Check, X, ShieldBan } from 'lucide-react';
+import { Users, Store, Activity, MessageSquare, Check, X, ShieldBan } from 'lucide-react';
 import { motion } from 'motion/react';
 import { subscribeToMerchants, approveMerchant, blockMerchant, deleteMerchant, Merchant } from '../services/merchants';
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 export function SuperAdminDashboard() {
   const { language } = useLanguage();
   const [registrations, setRegistrations] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [conversations24h, setConversations24h] = useState<number | null>(null);
+  const [orders24h, setOrders24h] = useState<number | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToMerchants((data) => {
@@ -15,6 +18,31 @@ export function SuperAdminDashboard() {
       setLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Real platform activity from the database (last 24 hours)
+  useEffect(() => {
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) return;
+
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const fetchActivity = async () => {
+      try {
+        const [{ count: convCount, error: convErr }, { count: ordCount, error: ordErr }] = await Promise.all([
+          supabase.from('conversations').select('id', { count: 'exact', head: true }).gte('createdAt', since),
+          supabase.from('orders').select('id', { count: 'exact', head: true }).gte('createdAt', since),
+        ]);
+        if (!convErr) setConversations24h(convCount ?? 0);
+        if (!ordErr) setOrders24h(ordCount ?? 0);
+      } catch (err) {
+        console.error('Failed to load platform activity:', err);
+      }
+    };
+
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleApprove = async (id: string) => {
@@ -44,10 +72,10 @@ export function SuperAdminDashboard() {
   };
 
   const STATS = [
-    { id: 1, name: 'Total Merchants', stat: registrations.length.toString(), icon: Store, trend: '0%', trendType: 'neutral' },
-    { id: 2, name: 'Active Users (24h)', stat: '0', icon: Users, trend: '0%', trendType: 'neutral' },
-    { id: 3, name: 'Voice Queries (24h)', stat: '0', icon: Activity, trend: '0%', trendType: 'neutral' },
-    { id: 4, name: 'System Load', stat: '0%', icon: Database, trend: '0%', trendType: 'neutral' },
+    { id: 1, name: language === 'ar' ? 'إجمالي التجار' : 'Total Merchants', stat: registrations.length.toString(), icon: Store, trend: '—', trendType: 'neutral' },
+    { id: 2, name: language === 'ar' ? 'طلبات الطاولات (24 ساعة)' : 'Orders (24h)', stat: orders24h === null ? '—' : orders24h.toString(), icon: Activity, trend: '—', trendType: 'neutral' },
+    { id: 3, name: language === 'ar' ? 'محادثات المساعد (24 ساعة)' : 'Voice Sessions (24h)', stat: conversations24h === null ? '—' : conversations24h.toString(), icon: MessageSquare, trend: '—', trendType: 'neutral' },
+    { id: 4, name: language === 'ar' ? 'تجار نشطون' : 'Active Merchants', stat: registrations.filter(r => r.status === 'Active').length.toString(), icon: Users, trend: '—', trendType: 'neutral' },
   ];
 
   return (
@@ -185,34 +213,24 @@ export function SuperAdminDashboard() {
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col">
            <h3 className="font-bold text-slate-800 mb-6 flex items-center justify-between">
-              {language === 'ar' ? 'استهلاك الذكاء الاصطناعي' : 'AI API Usage'}
-              <TrendingUp className="w-4 h-4 text-slate-400" />
+              {language === 'ar' ? 'نشاط المنصة المباشر' : 'Live Platform Activity'}
+              <MessageSquare className="w-4 h-4 text-slate-400" />
            </h3>
-           <div className="flex-1 flex flex-col justify-center gap-8">
-              <div>
-                 <div className="flex justify-between items-end mb-2">
-                    <div>
-                      <span className="text-slate-800 font-bold block mb-1">SooVoice AI Engine</span>
-                      <span className="text-xs text-slate-500">0 / 10M tokens</span>
-                    </div>
-                    <span className="text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded text-sm">0%</span>
+           <div className="flex-1 flex flex-col justify-center gap-6">
+              <div className="flex items-center justify-between bg-slate-50 rounded-xl p-4 border border-slate-100">
+                 <div>
+                    <span className="text-slate-800 font-bold block">{language === 'ar' ? 'محادثات صوتية (24 ساعة)' : 'Voice sessions (24h)'}</span>
+                    <span className="text-xs text-slate-500">{language === 'ar' ? 'من قاعدة البيانات المباشرة' : 'from the live database'}</span>
                  </div>
-                 <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                     <div className="bg-rose-500 h-full rounded-full transition-all duration-1000" style={{ width: '0%' }}></div>
-                 </div>
+                 <span className="text-2xl font-black text-indigo-600">{conversations24h === null ? '—' : conversations24h}</span>
               </div>
 
-              <div>
-                 <div className="flex justify-between items-end mb-2">
-                    <div>
-                      <span className="text-slate-800 font-bold block mb-1">Text-to-Speech (TTS)</span>
-                      <span className="text-xs text-slate-500">0 / 10k hours</span>
-                    </div>
-                    <span className="text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded text-sm">0%</span>
+              <div className="flex items-center justify-between bg-slate-50 rounded-xl p-4 border border-slate-100">
+                 <div>
+                    <span className="text-slate-800 font-bold block">{language === 'ar' ? 'طلبات مُنشأة (24 ساعة)' : 'Orders created (24h)'}</span>
+                    <span className="text-xs text-slate-500">{language === 'ar' ? 'من المنيو الرقمي والمساعد الصوتي' : 'from digital menu & voice agent'}</span>
                  </div>
-                 <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                     <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000" style={{ width: '0%' }}></div>
-                 </div>
+                 <span className="text-2xl font-black text-emerald-600">{orders24h === null ? '—' : orders24h}</span>
               </div>
            </div>
         </div>

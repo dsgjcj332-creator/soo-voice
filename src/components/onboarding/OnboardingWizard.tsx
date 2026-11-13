@@ -4,90 +4,10 @@ import { useSettings, Dialect, VoiceTone, BusinessType } from '../../contexts/Se
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Store, Home, Car, Boxes, Languages, Volume2, ArrowRight, ArrowLeft, 
-  CheckCircle2, Copy, Sparkles, HelpCircle, Code, Loader2
+  CheckCircle2, Copy, Sparkles, HelpCircle, Code
 } from 'lucide-react';
-import { getSupabase, getSupabaseConfig } from '../../lib/supabase';
 import { Logo } from '../brand/Logo';
 import { VoiceWidget } from '../widget/VoiceWidget';
-
-interface SeedItem {
-  nameAr: string;
-  nameEn: string;
-  price: number;
-  categoryAr: string;
-  categoryEn: string;
-  descAr: string;
-  descEn: string;
-  isAiOnly: boolean;
-}
-
-const seedTemplates: Record<BusinessType, SeedItem[]> = {
-  restaurant: [
-    {
-      nameAr: "برجر دبل بيف تشيز فاخر",
-      nameEn: "Double Beef Cheese Burger",
-      price: 38,
-      categoryAr: "برجر ووجبات / Burgers",
-      categoryEn: "Burgers",
-      descAr: "شريحتين لحم بقري أنجوس مشوي على اللهب مع جبن شيدر ذائب وصوص سموكي خاص في خبز بريوش طازج",
-      descEn: "Two flame-grilled Angus beef patties with melted cheddar cheese and smoky chef sauce in a brioche bun",
-      isAiOnly: false
-    },
-    {
-      nameAr: "وجبة كرسبي تشيكن ستريبس مقرمش",
-      nameEn: "Crispy Chicken Tenders Meal",
-      price: 34,
-      categoryAr: "وجبات / Meals",
-      categoryEn: "Meals",
-      descAr: "أصابع دجاج مقرمشة بتتبيلة خاصة تقدم مع بطاطس مقلية ذهبية وخبز وصوص باربكيو وثومية",
-      descEn: "Crispy seasoned chicken tenders served with golden french fries, garlic dip, and BBQ sauce",
-      isAiOnly: false
-    },
-    {
-      nameAr: "بيتزا تروفل وموزاريلا إيطالية",
-      nameEn: "Italian Truffle Mozzarella Pizza",
-      price: 48,
-      categoryAr: "بيتزا / Pizza",
-      categoryEn: "Pizza",
-      descAr: "عجينة نابولية مخمرة بحرارة الحطب مع صلصة التروفل البيضاء وجبنة موزاريلا طازجة وفطر بري",
-      descEn: "Wood-fired Neapolitan crust with rich white truffle crema, fresh mozzarella, and wild mushrooms",
-      isAiOnly: false
-    },
-    {
-      nameAr: "سبانش لاتيه بارد ومثلج",
-      nameEn: "Iced Spanish Latte",
-      price: 18,
-      categoryAr: "مشروبات وقهوة / Coffee",
-      categoryEn: "Coffee & Drinks",
-      descAr: "إسبريسو غني مستخلص من حبوب بن مختصة مع الحليب المكثف المحلى ومكعبات الثلج المنعشة",
-      descEn: "Rich specialty espresso pulled over sweetened condensed milk and crisp crushed ice",
-      isAiOnly: false
-    },
-    {
-      nameAr: "كيكة تشيز كيك بالسان سباستيان",
-      nameEn: "San Sebastian Basque Cheesecake",
-      price: 24,
-      categoryAr: "حلويات / Desserts",
-      categoryEn: "Desserts",
-      descAr: "تشيز كيك كريمي محروق من الأطراف يذوب في الفم مع صوص الشوكولاتة البلجيكية الدافئة",
-      descEn: "Creamy crustless caramelized cheesecake served with warm Belgian chocolate ganache",
-      isAiOnly: false
-    },
-    {
-      nameAr: "وجبة الشيف السرية الحصرية (أوف منيو)",
-      nameEn: "Chef's Secret Off-Menu Special",
-      price: 55,
-      categoryAr: "أطباق سرية / Secret Menu",
-      categoryEn: "Secret Menu",
-      descAr: "طلب حصري لا يظهر بالمنيو البصري بل يعرفه المساعد الصوتي فقط! برجر واغيو مدخن بخلطة الشيف السرية ورقائق البطاطا المقرمشة",
-      descEn: "Exclusive off-menu item known only to your Voice AI Waiter! Smoked Wagyu burger with secret glaze and truffle fries",
-      isAiOnly: true
-    }
-  ],
-  real_estate: [],
-  automotive: [],
-  general: []
-};
 
 export function OnboardingWizard() {
   const { language } = useLanguage();
@@ -102,7 +22,6 @@ export function OnboardingWizard() {
   const [step, setStep] = useState(1);
   const [copied, setCopied] = useState(false);
   const [testActive, setTestActive] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState(() => localStorage.getItem('restaurant_concept') || 'burgers_fast_casual');
 
   // Restaurant Concepts definitions
@@ -179,56 +98,13 @@ export function OnboardingWizard() {
     if (step > 1) setStep(step - 1);
   };
 
-  const seedDatabaseCatalog = async (merchantId: string, sector: BusinessType) => {
-    const templates = seedTemplates[sector] || [];
-    const itemsToInsert = templates.map((tmpl, index) => {
-      const itemId = `seed_${sector}_${index}_${Math.floor(Math.random() * 100000)}`;
-      return {
-        id: itemId,
-        ownerId: merchantId,
-        name: language === 'ar' ? tmpl.nameAr : tmpl.nameEn,
-        price: tmpl.price,
-        category: language === 'ar' ? tmpl.categoryAr : tmpl.categoryEn,
-        description: language === 'ar' ? tmpl.descAr : tmpl.descEn,
-        isAiOnly: tmpl.isAiOnly,
-        createdAt: Date.now() - (index * 1000)
-      };
-    });
-
-    const { isConfigured, source } = getSupabaseConfig();
-    const supabase = getSupabase();
-
-    if (isConfigured && supabase) {
-      try {
-        console.log("[Seeder] Inserting seeded products to Supabase...");
-        const { error } = await supabase.from('menu_items').insert(itemsToInsert);
-        if (error) throw error;
-      } catch (err) {
-        console.error("Supabase seed error:", err);
-      }
-    }
-  };
-
+  // Onboarding saves the merchant's preferences (SettingsContext already
+  // persists dialect/voice/business/currency). No fake products are inserted
+  // into the catalog — the merchant builds their real menu themselves.
   const handleFinish = async () => {
-    if (!user) {
-      setHasCompletedOnboarding(true);
-      return;
-    }
-
-    try {
-      setSeeding(true);
-      // Wait slightly for settings to sink
-      await new Promise(resolve => setTimeout(resolve, 500));
-      // Seed appropriate list of catalog items directly based on selected activity
-      await seedDatabaseCatalog(user.uid, businessType);
-      // Complete onboarding state
-      setHasCompletedOnboarding(true);
-    } catch (error) {
-      console.error("Error during onboarding completion & seeding:", error);
-      setHasCompletedOnboarding(true); // fall-through anyway to keep user flow healthy
-    } finally {
-      setSeeding(false);
-    }
+    // Wait briefly so the settings upsert lands before navigating away
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setHasCompletedOnboarding(true);
   };
 
   const origin = window.location.origin;
@@ -580,9 +456,9 @@ export function OnboardingWizard() {
           <div className="flex items-center justify-between border-t border-slate-100 pt-6 mt-4">
             <button
               onClick={handlePrev}
-              disabled={step === 1 || seeding}
+              disabled={step === 1}
               className={`flex items-center gap-2 text-sm font-bold px-4 py-2.5 rounded-xl border transition-all ${
-                step === 1 || seeding
+                step === 1
                   ? 'border-slate-100 text-slate-300 bg-slate-50/50 cursor-not-allowed' 
                   : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300 cursor-pointer'
               }`}
@@ -602,22 +478,10 @@ export function OnboardingWizard() {
             ) : (
               <button
                 onClick={handleFinish}
-                disabled={seeding}
-                className={`flex items-center gap-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-200 cursor-pointer ${
-                  seeding ? 'opacity-80 cursor-not-allowed' : ''
-                }`}
+                className="flex items-center gap-2 text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-200 cursor-pointer"
               >
-                {seeding ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {language === 'ar' ? 'جاري تجهيز منتجاتك...' : 'Seeding catalog...'}
-                  </>
-                ) : (
-                  <>
-                    {language === 'ar' ? 'حفظ والذهاب للوحة التحكم' : 'Save & Go to Dashboard'}
-                    <CheckCircle2 className="w-4 h-4" />
-                  </>
-                )}
+                {language === 'ar' ? 'حفظ والذهاب للوحة التحكم' : 'Save & Go to Dashboard'}
+                <CheckCircle2 className="w-4 h-4" />
               </button>
             )}
           </div>

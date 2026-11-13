@@ -96,20 +96,6 @@ export function AdminSystemSettings() {
             <div className="space-y-4">
                 <div className="flex items-center justify-between py-3 border-b border-slate-100">
                     <div>
-                        <div className="font-bold text-sm text-slate-700">{language === 'ar' ? 'دمج منهمنك (MNMKNK)' : 'MNMKNK Integration'}</div>
-                        <div className="text-xs text-slate-500 mt-1">{language === 'ar' ? 'تفعيل أو إيقاف ربط المتاجر القادمة من MNMKNK.' : 'Enable or disable incoming merchants from MNMKNK.'}</div>
-                    </div>
-                    <button 
-                       onClick={() => handleToggleIntegration('mnmknk')}
-                       disabled={saving}
-                       className={`w-11 h-6 rounded-full relative transition-colors ${settings.integrations?.mnmknk !== false ? 'bg-indigo-600' : 'bg-slate-200'}${saving ? ' opacity-50' : ''}`}
-                    >
-                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${settings.integrations?.mnmknk !== false ? 'left-[calc(100%-22px)]' : 'left-0.5'}`}></div>
-                    </button>
-                </div>
-                
-                <div className="flex items-center justify-between py-3 border-b border-slate-100">
-                    <div>
                         <div className="font-bold text-sm text-slate-700">{language === 'ar' ? 'دمج Shopify' : 'Shopify Integration'}</div>
                         <div className="text-xs text-slate-500 mt-1">{language === 'ar' ? 'قبول المتاجر القادمة من متجر شوبيفاي.' : 'Accept incoming merchants from Shopify via OAuth.'}</div>
                     </div>

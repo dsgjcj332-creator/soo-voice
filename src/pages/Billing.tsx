@@ -15,30 +15,25 @@ import {
 } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSettings } from "../contexts/SettingsContext";
+import { useAuth } from "../contexts/AuthContext";
+import { currencySymbol, formatPrice } from "../lib/currency";
 
 export function Billing() {
   const { language } = useLanguage();
   const { currency } = useSettings();
+  const { user } = useAuth();
   const [copied, setCopied] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("pro");
-  const [isSubscribing, setIsSubscribing] = useState(false);
   const [subscribedPlan, setSubscribedPlan] = useState("free");
+  const [activationNotice, setActivationNotice] = useState(false);
 
   // ROI Calculator states
   const [monthlyVisitors, setMonthlyVisitors] = useState(10000);
   const [averageOrderValue, setAverageOrderValue] = useState(50);
   const [integrationTab, setIntegrationTab] = useState("shopify");
 
-  // Currency symbol map
-  const currencySymbols: Record<string, string> = {
-    EGP: 'E£',
-    SAR: '﷼',
-    USD: '$',
-    AED: 'د.إ',
-    KWD: 'د.ك',
-    QAR: '﷼'
-  };
-  const symbol = currencySymbols[currency] || '$';
+  // Single shared currency map (src/lib/currency.ts)
+  const symbol = currencySymbol(currency);
 
   // Calculate simulated ROI
   const adoptionRate = 0.08; // 8% of visitors use the AI Voice assistant
@@ -47,18 +42,17 @@ export function Billing() {
   const extraRevenue = extraOrders * averageOrderValue;
 
   const handleCopyCode = () => {
-    const embedCode = `<!-- SooVoice Widget Embed -->\n<script src="https://cdn.soovoice.app/widget.js"\n  data-merchant-id="merchant_demo_94c8"\n  data-language="${language}"\n  async>\n</script>`;
+    const merchantId = user?.uid || 'YOUR_MERCHANT_ID';
+    const embedCode = `<!-- SooVoice Widget Embed -->\n<script src="https://cdn.soovoice.app/widget.js"\n  data-merchant-id="${merchantId}"\n  data-language="${language}"\n  async>\n</script>`;
     navigator.clipboard.writeText(embedCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSubscribe = (planId: string) => {
-    setIsSubscribing(true);
-    setTimeout(() => {
-      setSubscribedPlan(planId);
-      setIsSubscribing(false);
-    }, 1500);
+  // No fake payment gateway yet: subscriptions activate manually.
+  const handleSubscribe = () => {
+    setActivationNotice(true);
+    setTimeout(() => setActivationNotice(false), 6000);
   };
 
   const pricingPlans = [
@@ -140,8 +134,8 @@ export function Billing() {
         </h1>
         <p className="text-slate-500 mt-1 text-sm md:text-base">
           {language === "ar" 
-            ? "انسخ كود الربط لتشغيل مساعد الصوت في موقعك الخاص، أو اشترك لتفعيل الباقات المتقدمة ومزايا الـ 2000 منتج." 
-            : "Copy the embed script to go live on any store, or subscribe to unlock advanced limits and unlisted AI catalogs."}
+            ? "انسخ كود الربط لتشغيل مساعد الصوت في موقعك الخاص، أو اشترك لتفعيل الباقات المتقدمة وحدود أعلى للمنتجات." 
+            : "Copy the embed script to go live on any store, or subscribe to unlock advanced limits and higher product caps."}
         </p>
       </div>
 
@@ -160,6 +154,14 @@ export function Billing() {
                 {language === "ar" ? `الخطة الحالية: ${subscribedPlan.toUpperCase()}` : `Current: ${subscribedPlan.toUpperCase()}`}
               </span>
             </div>
+
+            {activationNotice && (
+              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs font-semibold text-amber-800 leading-relaxed">
+                {language === "ar"
+                  ? "الدفع الإلكتروني غير مفعّل بعد في النسخة الحالية — لتفعيل باقة مدفوعة تواصل معنا على billing@soovoice.app وسيتم تنشيط حسابك يدويًا بعد تأكيد الدفع."
+                  : "Online payment is not enabled yet — to activate a paid plan, contact us at billing@soovoice.app and your account will be activated manually after payment confirmation."}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {pricingPlans.map((plan) => {
@@ -186,7 +188,7 @@ export function Billing() {
                       </p>
                       
                       <div className="my-4">
-                        <span className="text-3xl font-extrabold text-slate-800">{symbol}{plan.price}</span>
+                        <span className="text-3xl font-extrabold text-slate-800" dir="ltr">{formatPrice(plan.price, currency)}</span>
                         <span className="text-slate-400 text-xs font-semibold"> / {language === "ar" ? "شهرياً" : "mo"}</span>
                       </div>
 
@@ -202,8 +204,8 @@ export function Billing() {
 
                     <div className="mt-6 pt-4 border-t border-slate-100">
                       <button
-                        onClick={() => handleSubscribe(plan.id)}
-                        disabled={isActive || isSubscribing}
+                        onClick={handleSubscribe}
+                        disabled={isActive}
                         className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                           isActive 
                             ? "bg-slate-100 text-slate-400 cursor-default" 
@@ -217,8 +219,6 @@ export function Billing() {
                             <CheckCircle className="w-4 h-4 text-emerald-500" />
                             {language === "ar" ? "نشط حالياً" : "Active Now"}
                           </>
-                        ) : isSubscribing ? (
-                          language === "ar" ? "جاري الاشتراك..." : "Subscribing..."
                         ) : (
                           language === "ar" ? "اشترك الآن" : "Subscribe"
                         )}
@@ -258,7 +258,7 @@ export function Billing() {
                 <span className="text-emerald-400">{`="https://cdn.soovoice.app/widget.js"`}</span>
                 {`\n  `}
                 <span className="text-yellow-400">{`data-merchant-id`}</span>
-                <span className="text-emerald-400">{`="merchant_demo_94c"`}</span>
+                <span className="text-emerald-400">="${user?.uid || "YOUR_MERCHANT_ID"}"</span>
                 {`\n  `}
                 <span className="text-yellow-400">{`data-language`}</span>
                 <span className="text-emerald-400">{`="${language}"`}</span>
@@ -368,8 +368,8 @@ export function Billing() {
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
-                  <span className="text-slate-300">{language === "ar" ? "متوسط قيمة الطلب" : "Average Order Value ($)"}</span>
-                  <span className="text-indigo-300 font-mono">${averageOrderValue}</span>
+                  <span className="text-slate-300">{language === "ar" ? `متوسط قيمة الطلب (${symbol})` : `Average Order Value (${symbol})`}</span>
+                  <span className="text-indigo-300 font-mono" dir="ltr">{formatPrice(averageOrderValue, currency)}</span>
                 </div>
                 <input
                   type="range"
@@ -397,7 +397,7 @@ export function Billing() {
                     <DollarSign className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs font-bold text-slate-200">{language === "ar" ? "زيادة الأرباح الشهرية المتوقعة" : "Extra Monthly Revenue"}</span>
                   </div>
-                  <span className="text-lg font-black font-mono text-emerald-400">+{symbol}{extraRevenue.toLocaleString()}</span>
+                  <span className="text-lg font-black font-mono text-emerald-400" dir="ltr">+{formatPrice(extraRevenue, currency)}</span>
                 </div>
               </div>
 
@@ -421,13 +421,13 @@ export function Billing() {
                 <>
                   <span><strong>القرار الصائب:</strong> قم بنشره كموديل اشتراكات للجميع (SaaS) وليس لمتجرك فقط!</span>
                   <br />
-                  <span>أصحاب المتاجر والمطاعم في سلة وشوبيفاي ومن مكانك مستعدون لدفع 49$ شهرياً للحصول على منيو رقمي ذكي مع مساعد صوتي، لتوفر مبيعات متجرهم على مدار الساعة وبدون عمولات للموظفين. يمكنك تحقيق دخل متكرر (MRR) مذهل!</span>
+                  <span>أصحاب المتاجر والمطاعم في سلة وشوبيفاي والمواقع المستقلة مستعدون للاشتراك الشهري في باقة Pro للحصول على منيو رقمي ذكي مع مساعد صوتي، ليوفروا مبيعات متجرهم على مدار الساعة وبدون عمولات للموظفين. يمكنك تحقيق دخل متكرر (MRR) مذهل!</span>
                 </>
               ) : (
                 <>
                   <span><strong>The Verdict:</strong> Build and scale this as a public SaaS product!</span>
                   <br />
-                  <span>Merchants on Shopify, Salla, and independent websites are eager to pay $49/month to add interactive voice shopping widgets and tableside QR ordering to save on human order processing and increase their conversion rates.</span>
+                  <span>Merchants on Shopify, Salla, and independent websites are eager to subscribe monthly to the Growth Pro plan to add interactive voice shopping widgets and tableside QR ordering, saving on human order processing and increasing their conversion rates.</span>
                 </>
               )}
             </p>

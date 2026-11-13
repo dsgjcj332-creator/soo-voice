@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
+import type { CurrencyCode } from '../lib/currency';
 
 enum OperationType {
   CREATE = 'create',
@@ -43,7 +44,8 @@ function handleSupabaseError(error: unknown, operationType: OperationType, path:
 export type Dialect = 'standard' | 'egyptian' | 'gulf' | 'levantine';
 export type VoiceTone = 'Zephyr' | 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Aoede';
 export type BusinessType = 'restaurant' | 'real_estate' | 'automotive' | 'general';
-export type Currency = 'EGP' | 'SAR' | 'USD' | 'AED' | 'KWD' | 'QAR';
+// Currency codes live in src/lib/currency.ts (single source of truth)
+export type Currency = CurrencyCode;
 
 interface SettingsContextType {
   dialect: Dialect;

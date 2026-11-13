@@ -6,6 +6,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
+import { normalizeCurrency, formatPrice } from '../lib/currency';
 import { useSearchParams } from 'react-router-dom';
 
 
@@ -38,7 +39,7 @@ export function StoreDemo() {
   const [menuLogoEmoji, setMenuLogoEmoji] = React.useState<string>("🍔");
   const [menuBorderRadius, setMenuBorderRadius] = React.useState<string>("rounded-2xl");
   const [menuParticles, setMenuParticles] = React.useState<string>("none");
-  const [menuCurrency, setMenuCurrency] = React.useState<string>("$");
+  const [menuCurrency, setMenuCurrency] = React.useState<string>(normalizeCurrency(null));
   const [menuLayout, setMenuLayout] = React.useState<string>("grid");
 
   // Load design customizations on mount and when owner ID changes
@@ -54,7 +55,7 @@ export function StoreDemo() {
         if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
         if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
         if (config.particles) setMenuParticles(config.particles);
-        if (config.currency) setMenuCurrency(config.currency);
+        if (config.currency) setMenuCurrency(normalizeCurrency(config.currency));
         if (config.layout) setMenuLayout(config.layout);
       } catch (e) {
         console.error("Error reading cached store design:", e);
@@ -80,12 +81,28 @@ export function StoreDemo() {
             if (data.logoEmoji) setMenuLogoEmoji(data.logoEmoji);
             if (data.borderRadius) setMenuBorderRadius(data.borderRadius);
             if (data.particles) setMenuParticles(data.particles);
-            if (data.currency) setMenuCurrency(data.currency);
+            if (data.currency) setMenuCurrency(normalizeCurrency(data.currency));
             if (data.layout) setMenuLayout(data.layout);
             
             // Sync back to local storage
             localStorage.setItem(`menu_design_config_${resolvedOwnerId}`, JSON.stringify(data));
             localStorage.setItem('menu_design_config_global', JSON.stringify(data));
+          }
+
+          // Currency source of truth is merchant_settings — the design config
+          // only mirrors it at save time. Fetch it so the store always shows
+          // the currency the merchant picked in Settings (e.g. EGP not $).
+          try {
+            const { data: settingsData } = await supabase
+              .from('merchant_settings')
+              .select('currency')
+              .eq('ownerId', resolvedOwnerId)
+              .single();
+            if (settingsData?.currency) {
+              setMenuCurrency(normalizeCurrency(settingsData.currency));
+            }
+          } catch (curErr) {
+            console.warn("No merchant_settings currency found for owner:", curErr);
           }
         }
       } catch (err) {
@@ -187,8 +204,7 @@ export function StoreDemo() {
             fetch(whSettings.webhookUrl, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'X-SooVoice-Signature': 'sha256_mock_sig_value_for_verification'
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({
                 event: 'order.created',
@@ -513,8 +529,8 @@ export function StoreDemo() {
                   <div>
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <h3 className={`font-extrabold text-base line-clamp-2 ${currentBgTheme.titleText}`}>{item.name}</h3>
-                      <span className={`font-extrabold ${currentPrimary.text} text-lg whitespace-nowrap`}>
-                        {menuCurrency}{item.price.toFixed(2)}
+                      <span className={`font-extrabold ${currentPrimary.text} text-lg whitespace-nowrap`} dir="ltr">
+                        {formatPrice(item.price, menuCurrency)}
                       </span>
                     </div>
                     <p className={`text-xs mb-4 line-clamp-3 min-h-[48px] ${currentBgTheme.descText}`}>{item.description || (language === 'ar' ? 'لا يوجد وصف متاح.' : 'No description available.')}</p>
@@ -555,13 +571,13 @@ export function StoreDemo() {
                   <div key={item.id} className={`flex items-center justify-between pb-3 border-b border-black/5 last:border-none`}>
                     <div>
                       <p className={`font-bold text-sm line-clamp-1 ${currentBgTheme.titleText}`}>{item.name}</p>
-                      <p className={`text-xs ${currentBgTheme.descText}`}>
-                        {item.quantity} x {menuCurrency}{item.price.toFixed(2)}
+                      <p className={`text-xs ${currentBgTheme.descText}`} dir="ltr">
+                        {item.quantity} x {formatPrice(item.price, menuCurrency)}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
-                      <span className={`font-extrabold text-sm ${currentBgTheme.titleText}`}>
-                        {menuCurrency}{(item.quantity * item.price).toFixed(2)}
+                      <span className={`font-extrabold text-sm ${currentBgTheme.titleText}`} dir="ltr">
+                        {formatPrice(item.quantity * item.price, menuCurrency)}
                       </span>
                       <button 
                         onClick={() => removeFromCart(item.id)}
@@ -578,8 +594,8 @@ export function StoreDemo() {
                     <span className={`font-bold ${currentBgTheme.descText}`}>
                       {language === 'ar' ? 'المجموع الإجمالي' : 'Total Value'}
                     </span>
-                    <span className={`text-2xl font-extrabold ${currentBgTheme.titleText}`}>
-                      {menuCurrency}{total.toFixed(2)}
+                    <span className={`text-2xl font-extrabold ${currentBgTheme.titleText}`} dir="ltr">
+                      {formatPrice(total, menuCurrency)}
                     </span>
                   </div>
 

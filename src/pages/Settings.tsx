@@ -4,6 +4,7 @@ import { useSettings, Dialect, VoiceTone, BusinessType, Currency } from '../cont
 import { Globe, Settings2, Sparkles, Star, Utensils, DollarSign, Database } from 'lucide-react';
 import { subscribeToGlobalVoices, GlobalVoice } from '../services/globalVoices';
 import { getSupabaseConfig } from '../lib/supabase';
+import { CURRENCY_LIST } from '../lib/currency';
 
 
 export function Settings() {
@@ -153,31 +154,24 @@ export function Settings() {
 
         <div className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { value: 'EGP', labelAr: 'جنيه مصري (EGP)', labelEn: 'Egyptian Pound (EGP)', symbol: 'E£' },
-              { value: 'SAR', labelAr: 'ريال سعودي (SAR)', labelEn: 'Saudi Riyal (SAR)', symbol: '﷼' },
-              { value: 'USD', labelAr: 'دولار أمريكي (USD)', labelEn: 'US Dollar (USD)', symbol: '$' },
-              { value: 'AED', labelAr: 'درهم إماراتي (AED)', labelEn: 'UAE Dirham (AED)', symbol: 'د.إ' },
-              { value: 'KWD', labelAr: 'دينار كويتي (KWD)', labelEn: 'Kuwaiti Dinar (KWD)', symbol: 'د.ك' },
-              { value: 'QAR', labelAr: 'ريال قطري (QAR)', labelEn: 'Qatari Riyal (QAR)', symbol: '﷼' },
-            ].map((opt) => (
+            {CURRENCY_LIST.map((cur) => (
               <label
-                key={opt.value}
+                key={cur.code}
                 className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all ${
-                  currency === opt.value ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-slate-200 hover:border-amber-300'
+                  currency === cur.code ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-slate-200 hover:border-amber-300'
                 }`}
               >
                 <div>
                   <span className="font-bold text-slate-800 text-sm block">
-                    {language === 'ar' ? opt.labelAr : opt.labelEn}
+                    {language === 'ar' ? `${cur.labelAr} (${cur.code})` : `${cur.labelEn} (${cur.code})`}
                   </span>
-                  <span className="text-[11px] text-slate-400">{opt.symbol}</span>
+                  <span className="text-[11px] text-slate-400" dir="ltr">{cur.symbol}</span>
                 </div>
                 <input
                   type="radio"
                   name="currency"
-                  value={opt.value}
-                  checked={currency === opt.value}
+                  value={cur.code}
+                  checked={currency === cur.code}
                   onChange={(e) => setCurrency(e.target.value as any)}
                   className="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500"
                 />

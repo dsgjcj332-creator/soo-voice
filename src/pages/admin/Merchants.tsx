@@ -110,7 +110,6 @@ export function AdminMerchants() {
                         </td>
                         <td className="px-6 py-4">
                            <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                               merchant.platform === 'MNMKNK' ? 'bg-indigo-100 text-indigo-700' :
                                merchant.platform === 'Shopify' ? 'bg-green-100 text-green-700' :
                                merchant.platform === 'Salla' ? 'bg-teal-100 text-teal-700' :
                                merchant.platform === 'WooCommerce' ? 'bg-purple-100 text-purple-700' :

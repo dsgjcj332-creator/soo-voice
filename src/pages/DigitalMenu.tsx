@@ -27,6 +27,7 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
+import { CURRENCY_LIST, normalizeCurrency, formatPrice, type CurrencyCode } from "../lib/currency";
 
 const COLOR_VARIANTS: Record<string, { bg: string; text: string; border: string; bgLight: string; ring: string }> = {
   indigo: { bg: "bg-indigo-600", text: "text-indigo-600", border: "border-indigo-600", bgLight: "bg-indigo-50", ring: "ring-indigo-500" },
@@ -96,7 +97,8 @@ interface MenuItem {
 export function DigitalMenu() {
   const { language } = useLanguage();
   const { user } = useAuth();
-  const { businessType, currency } = useSettings();
+  const { businessType, currency, setCurrency } = useSettings();
+  const isSupabaseMode = user?.provider !== 'local' && getSupabaseConfig().isConfigured;
   
   // State for menu items
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -371,38 +373,76 @@ export function DigitalMenu() {
   const [menuLogoEmoji, setMenuLogoEmoji] = useState("✨");
   const [menuBorderRadius, setMenuBorderRadius] = useState("rounded-2xl");
   const [menuParticles, setMenuParticles] = useState("sparkles");
-  const [menuCurrency, setMenuCurrency] = useState("$");
+  const [menuCurrency, setMenuCurrency] = useState<CurrencyCode>(currency);
   const [menuLayout, setMenuLayout] = useState("grid");
   const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success">("idle");
   const activePrimary = COLOR_VARIANTS[menuPrimaryColor] || COLOR_VARIANTS.indigo;
 
+  // Currency is owned by SettingsContext (single source of truth).
+  // The designer picker writes through to it, so the menu, store, KDS and
+  // AI voice agent always announce the SAME currency.
   useEffect(() => {
-    const currencySymbols: Record<string, string> = { EGP: "ج.م", SAR: "ر.س", USD: "$", AED: "د.إ", KWD: "د.ك", QAR: "ر.ق" };
-    setMenuCurrency(currencySymbols[currency] || currency);
+    setMenuCurrency(normalizeCurrency(currency));
   }, [currency]);
 
-  // Load design config on mount (from local storage + Supabase)
+  const handleMenuCurrencyChange = (code: CurrencyCode) => {
+    setMenuCurrency(code);
+    setCurrency(code); // write-through to settings (DB + localStorage)
+  };
+
+  // Load design config on mount: localStorage cache first, then Supabase (real users).
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+
+    const applyConfig = (config: any) => {
+      if (cancelled || !config) return;
+      if (config.primaryColor) setMenuPrimaryColor(config.primaryColor);
+      if (config.bgStyle) setMenuBgStyle(config.bgStyle);
+      if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
+      if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
+      if (config.particles) setMenuParticles(config.particles);
+      if (config.layout) setMenuLayout(config.layout);
+      // NOTE: currency is intentionally NOT read here — SettingsContext owns it
+    };
+
+    // 1. Instant local cache
     const localKey = `menu_design_config_${user.uid}`;
     const saved = localStorage.getItem(localKey);
     if (saved) {
       try {
-        const config = JSON.parse(saved);
-        if (config.primaryColor) setMenuPrimaryColor(config.primaryColor);
-        if (config.bgStyle) setMenuBgStyle(config.bgStyle);
-        if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
-        if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
-        if (config.particles) setMenuParticles(config.particles);
-        if (config.currency) setMenuCurrency(config.currency);
-        if (config.layout) setMenuLayout(config.layout);
+        applyConfig(JSON.parse(saved));
       } catch (e) {
         console.error("Error parsing saved design config:", e);
       }
     }
 
-    // Design config is loaded from localStorage above
-    // Cloud sync removed for Supabase-only mode
+    // 2. Cloud config wins for real Supabase users (fixes saved design
+    //    resetting to defaults on every reload)
+    if (user.provider !== 'local') {
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+      if (isConfigured && supabase) {
+        (async () => {
+          try {
+            const { data, error } = await supabase
+              .from('menu_customizer')
+              .select('*')
+              .eq('ownerId', user.uid)
+              .single();
+            if (!error && data) {
+              applyConfig(data);
+              // Refresh the local cache with the cloud version
+              localStorage.setItem(localKey, JSON.stringify(data));
+            }
+          } catch (err) {
+            console.error("Error loading cloud design config:", err);
+          }
+        })();
+      }
+    }
+
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleSaveDesign = async () => {
@@ -612,13 +652,13 @@ export function DigitalMenu() {
     }
   };
 
-  // Sector-Aware 2,000 items AI Index Seeder
+  // Starter AI-only catalog seeder (adds a small honest demo set for testing)
   const handleBulkAISeeding = async () => {
     if (!user) return;
     if (!window.confirm(
       language === "ar" 
-        ? "سيقوم هذا بتوليد المنتجات المخفية والكتالوج الكامل تلقائياً لقطاع نشاطك الحالي لتجربة البحث الذكي ومساعد الذكاء الاصطناعي الصوتي. هل تريد المتابعة؟" 
-        : "This will generate dynamic, sector-specific hidden catalog products automatically to test smart AI voice search and indexing. Continue?"
+        ? "سيتم إضافة 15 منتج تجريبي مخفي (للذكاء الاصطناعي فقط) لتجربة البحث الذكي والمساعد الصوتي. يمكنك حذفها في أي وقت. هل تريد المتابعة؟" 
+        : "This will add 15 sample hidden (AI-only) products to test smart voice search and indexing. You can delete them anytime. Continue?"
     )) return;
 
     try {
@@ -692,8 +732,8 @@ export function DigitalMenu() {
       setLoading(false);
       triggerNotification(
         language === "ar" 
-          ? "تم توليد وتأريخ كتالوج الذكاء الاصطناعي لقطاع نشاطك بنجاح!" 
-          : "Successfully indexed AI Product catalog for your business sector!"
+          ? "تمت إضافة 15 منتج تجريبي للذكاء الاصطناعي بنجاح!"
+          : "15 sample AI-only products added successfully!"
       );
     } catch (err) {
       console.error("Bulk seeding error:", err);
@@ -990,7 +1030,7 @@ export function DigitalMenu() {
             className="flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors px-4 py-2.5 rounded-xl font-bold text-sm"
           >
             <Sparkles className="w-4 h-4" />
-            {language === "ar" ? "توليد 2000 منتج للذكاء الاصطناعي" : "Bulk Generate 2000 AI Catalog"}
+            {language === "ar" ? "إضافة منتجات تجريبية (15 منتج)" : "Add Sample Catalog (15 items)"}
           </button>
 
           <button
@@ -1082,10 +1122,12 @@ export function DigitalMenu() {
               </h2>
 
               <div className="flex gap-2">
-                {/* Seed Status info */}
-                <div className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-                  {language === "ar" ? "قاعدة البيانات متصلة وجاهزة" : "Database synced live"}
+                {/* Storage status: honest per mode */}
+                <div className={`text-xs font-semibold flex items-center gap-1.5 ${isSupabaseMode ? "text-emerald-500" : "text-amber-500"}`}>
+                  <span className={`h-2 w-2 rounded-full ${isSupabaseMode ? "bg-emerald-500 animate-ping" : "bg-amber-400"}`}></span>
+                  {isSupabaseMode
+                    ? (language === "ar" ? "قاعدة البيانات متصلة وجاهزة" : "Database synced live")
+                    : (language === "ar" ? "وضع تجريبي محلي — البيانات محفوظة على هذا الجهاز" : "Local demo mode — data saved on this device")}
                 </div>
               </div>
             </div>
@@ -1103,15 +1145,15 @@ export function DigitalMenu() {
                 </h3>
                 <p className="text-sm text-slate-400 max-w-sm mx-auto mt-2">
                   {language === "ar" 
-                    ? "ابدأ بإضافة منتجك الأول أو انقر على زر 'توليد 2000 منتج للذكاء الاصطناعي' لتعبئة المحاكاة فوراً واختبار الذكاء."
-                    : "Add your first item or click 'Bulk Generate' to populate 1,800+ unlisted products for AI testing."}
+                    ? "ابدأ بإضافة منتجك الأول، أو استورد ملف CSV/JSON، أو جرّب زر 'إضافة منتجات تجريبية' لتعبئة الكتالوج بسرعة واختبار المساعد الصوتي."
+                    : "Add your first item, import a CSV/JSON file, or use 'Add Sample Catalog' to quickly populate the menu and test the voice agent."}
                 </p>
                 <div className="mt-6 flex justify-center gap-3">
                   <button
                     onClick={handleBulkAISeeding}
                     className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-100"
                   >
-                    {language === "ar" ? "توليد تلقائي للكتالوج" : "Auto Seed Catalog"}
+                    {language === "ar" ? "منتجات تجريبية سريعة" : "Add Sample Catalog"}
                   </button>
                   <button
                     onClick={() => setShowAddModal(true)}
@@ -1151,8 +1193,8 @@ export function DigitalMenu() {
                             categories.find(c => c.value === item.category)?.labelEn || item.category
                           )}
                         </td>
-                        <td className="py-4 px-6 font-bold text-indigo-600">
-                          ${item.price.toFixed(2)}
+                        <td className="py-4 px-6 font-bold text-indigo-600" dir="ltr">
+                          {formatPrice(item.price, menuCurrency)}
                         </td>
                         <td className="py-4 px-6 text-center">
                           {item.isAiOnly ? (
@@ -1317,22 +1359,27 @@ export function DigitalMenu() {
                   {/* 4. Active Currency */}
                   <div>
                     <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
-                      {language === "ar" ? "4. العملة المعروضة بالمنيو" : "4. Active Currency Suffix"}
+                      {language === "ar" ? "4. عملة عرض الأسعار" : "4. Menu Display Currency"}
                     </label>
-                    <div className="flex gap-2">
-                      {["$", "ر.س", "د.إ", "ج.م", "د.ك"].map((cur) => (
+                    <div className="flex flex-wrap gap-2">
+                      {CURRENCY_LIST.map((cur) => (
                         <button
-                          key={cur}
+                          key={cur.code}
                           type="button"
-                          onClick={() => setMenuCurrency(cur)}
-                          className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-extrabold transition-all ${
-                            menuCurrency === cur ? "border-slate-800 bg-slate-50 text-slate-800" : "border-slate-100 text-slate-400 hover:border-slate-200"
+                          onClick={() => handleMenuCurrencyChange(cur.code)}
+                          className={`flex-1 min-w-[52px] py-2.5 px-2 rounded-xl border-2 text-xs font-extrabold transition-all ${
+                            menuCurrency === cur.code ? "border-slate-800 bg-slate-50 text-slate-800" : "border-slate-100 text-slate-400 hover:border-slate-200"
                           }`}
                         >
-                          {cur}
+                          {cur.symbol}
                         </button>
                       ))}
                     </div>
+                    <p className="text-[10px] text-slate-400 mt-2">
+                      {language === "ar"
+                        ? "هذه هي نفس العملة المحددة في الإعدادات — تتزامن تلقائيًا مع المتجر والمساعد الصوتي."
+                        : "Same currency as your Settings — auto-synced with your store and voice agent."}
+                    </p>
                   </div>
                 </div>
 
@@ -1573,8 +1620,8 @@ export function DigitalMenu() {
                             <p className="text-[7px] opacity-60 leading-tight line-clamp-2 mb-2">{card.desc}</p>
                           </div>
                           <div className="flex items-center justify-between mt-1">
-                            <span className={`font-bold text-[9px] ${activePrimary.text}`}>
-                              {menuCurrency}{card.price.toLocaleString()}
+                            <span className={`font-bold text-[9px] ${activePrimary.text}`} dir="ltr">
+                              {formatPrice(card.price, menuCurrency)}
                             </span>
                             <button className={`w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] ${activePrimary.bg} flex items-center justify-center hover:scale-105 transition-transform`}>
                               +
@@ -2221,7 +2268,7 @@ export function DigitalMenu() {
                           <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="py-2.5 px-4 font-bold max-w-[150px] truncate">{item.name}</td>
                             <td className="py-2.5 px-4 text-slate-500 font-medium">{item.category}</td>
-                            <td className="py-2.5 px-4 font-bold text-indigo-600">${item.price.toFixed(2)}</td>
+                            <td className="py-2.5 px-4 font-bold text-indigo-600" dir="ltr">{formatPrice(item.price, menuCurrency)}</td>
                             <td className="py-2.5 px-4">
                               {item.isAiOnly ? (
                                 <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full text-[9px] font-bold">

@@ -17,22 +17,23 @@ import {
   Terminal,
   HelpCircle,
   RefreshCw,
-  AlertCircle,
   Trash,
   Server,
   CheckSquare,
   Bell,
   Utensils,
-  Plus,
   Filter
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
+import { formatPrice } from '../lib/currency';
 
 export function Integration() {
   const { language } = useLanguage();
   const { user } = useAuth();
+  const { currency } = useSettings();
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -265,7 +266,6 @@ export function Integration() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-SooVoice-Signature': 'sha256_mock_sig_value_for_verification',
           'User-Agent': 'SooVoice-Webhook-Bot/1.0'
         },
         body: JSON.stringify(testPayload),
@@ -315,37 +315,6 @@ export function Integration() {
       }
     } catch (err) {
       console.error('Error deleting order:', err);
-    }
-  };
-
-  const handleCreateTestOrder = async () => {
-    if (!user) return;
-    const testOrderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
-    const randTable = String(Math.floor(Math.random() * 12) + 1);
-    const testOrder = {
-      id: testOrderId,
-      ownerId: user.uid,
-      tableNumber: randTable,
-      items: [
-        { id: '1', name: 'برجر تروفل أنجوس فاخر', price: 16.50, quantity: 2 },
-        { id: '3', name: 'بطاطس مقرمشة بجبن الشيدر', price: 6.00, quantity: 1 },
-        { id: '5', name: 'سبانش لاتيه بارد', price: 5.50, quantity: 2 }
-      ],
-      total: 50.00,
-      status: 'pending',
-      createdAt: Date.now()
-    };
-    try {
-      const supabase = getSupabase();
-      const { isConfigured } = getSupabaseConfig();
-
-      if (isConfigured && supabase) {
-        await supabase
-          .from('orders')
-          .insert(testOrder);
-      }
-    } catch (err) {
-      console.error('Failed to create test order:', err);
     }
   };
 
@@ -497,13 +466,6 @@ export function Integration() {
               ))}
             </div>
 
-            <button
-              onClick={handleCreateTestOrder}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" />
-              {language === 'ar' ? 'محاكاة إرسال طلب طاولة تجريبي 🔔' : 'Simulate Live Table Order 🔔'}
-            </button>
           </div>
 
           {/* Orders Stream Grid */}
@@ -520,15 +482,9 @@ export function Integration() {
               </h4>
               <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
                 {language === 'ar' 
-                  ? 'انقر على زر "محاكاة إرسال طلب طاولة تجريبي" أعلاه لمشاهدة كيف يتدفق الطلب فوراً ويصدر صوتاً في المطبخ.' 
-                  : 'Click the simulate button above or scan any table QR to see real-time orders arrive.'}
+                  ? 'أول طلب سيظهر هنا تلقائياً لحظة إرساله من المنيو الرقمي أو المساعد الصوتي — جرب مسح كود QR لأي طاولة.' 
+                  : 'Your first order will appear here automatically the moment it is sent from the digital menu or voice agent — try scanning any table QR code.'}
               </p>
-              <button
-                onClick={handleCreateTestOrder}
-                className="mt-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
-              >
-                {language === 'ar' ? 'إنشاء طلب تجريبي الآن' : 'Create Test Order Now'}
-              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -578,7 +534,7 @@ export function Integration() {
                           {order.items?.map((item: any, idx: number) => (
                             <div key={idx} className="flex justify-between text-xs font-medium text-slate-700">
                               <span>{item.name} <span className="text-indigo-600 font-extrabold ml-1">x{item.quantity}</span></span>
-                              <span className="font-mono text-slate-500">${(item.price * item.quantity).toFixed(2)}</span>
+                              <span className="font-mono text-slate-500" dir="ltr">{formatPrice(item.price * item.quantity, currency)}</span>
                             </div>
                           ))}
                         </div>
@@ -589,7 +545,7 @@ export function Integration() {
                     <div className="border-t border-slate-100 pt-3 mt-3">
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-xs font-bold text-slate-500">{language === 'ar' ? 'الحساب الإجمالي:' : 'Grand Total:'}</span>
-                        <span className="text-base font-extrabold text-indigo-600 font-mono">${order.total?.toFixed(2)}</span>
+                        <span className="text-base font-extrabold text-indigo-600 font-mono" dir="ltr">{formatPrice(order.total, currency)}</span>
                       </div>
 
                       <div className="flex gap-2">
@@ -851,24 +807,6 @@ export function Integration() {
               {language === 'ar' ? 'التثبيت التلقائي السريع (1-Click Install)' : 'Native 1-Click Integrations'}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* MNMKNK */}
-              <div 
-                onClick={() => handleSimulateAppStore('MNMKNK')}
-                className="bg-white border text-center border-slate-200 rounded-2xl shadow-sm p-6 hover:border-indigo-400 hover:shadow-lg transition-all flex flex-col items-center group cursor-pointer relative overflow-hidden"
-              >
-                <div className="h-14 w-14 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center mb-4">
-                  <span className="font-bold text-lg">M</span>
-                </div>
-                <h3 className="font-bold text-slate-800">منهمنك (MNMKNK)</h3>
-                <p className="text-xs text-slate-500 mt-2 mb-4 font-medium">
-                  {language === 'ar' ? 'الشريك الرسمي الأول. تزامن تلقائي.' : 'First official partner. Auto-sync.'}
-                </p>
-                <button className="mt-auto flex items-center gap-2 text-sm font-bold text-indigo-700 bg-indigo-50/80 px-4 py-2.5 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-colors w-full justify-center border border-indigo-200">
-                  {language === 'ar' ? 'تثبيت التطبيق' : 'Install App'}
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-
               {/* Shopify */}
               <div 
                 onClick={() => handleSimulateAppStore('Shopify')}

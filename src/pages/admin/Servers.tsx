@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { Server, Activity, Database, AlertCircle, Wifi, WifiOff } from "lucide-react";
+import { Server, Activity, Database } from "lucide-react";
+import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 
 export function AdminServers() {
   const { language } = useLanguage();
@@ -10,24 +11,40 @@ export function AdminServers() {
   useEffect(() => {
     let isMounted = true;
     const checkDb = async () => {
+      // Real connectivity probe: a lightweight head-count query against
+      // merchants, timed end-to-end.
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+
+      if (!isConfigured || !supabase) {
+        if (isMounted) {
+          setDbStatus("offline");
+          setPing(0);
+        }
+        return;
+      }
+
       try {
         const start = performance.now();
-        // Placeholder connectivity check for Supabase-only mode
+        const { error } = await supabase
+          .from('merchants')
+          .select('id', { count: 'exact', head: true });
         const end = performance.now();
+
         if (isMounted) {
-          setDbStatus("online");
-          setPing(Math.round(end - start));
+          if (error) {
+            setDbStatus("offline");
+            setPing(0);
+          } else {
+            setDbStatus("online");
+            setPing(Math.max(1, Math.round(end - start)));
+          }
         }
       } catch (e: any) {
-         if (e.message?.includes('offline') || e.code === 'unavailable') {
-            if (isMounted) setDbStatus("offline");
-         } else {
-            const end = performance.now();
-            if (isMounted) {
-               setDbStatus("online");
-               setPing(50);
-            }
-         }
+        if (isMounted) {
+          setDbStatus("offline");
+          setPing(0);
+        }
       }
     };
     checkDb();
@@ -110,7 +127,7 @@ export function AdminServers() {
                 ) : (
                    <span className="flex items-center gap-1.5 text-sm font-bold text-red-700 bg-red-50 px-2.5 py-1 rounded-md">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                      Offline
+                      {language === 'ar' ? 'غير متصل' : 'Offline'}
                    </span>
                 )}
             </div>

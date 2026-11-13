@@ -17,16 +17,10 @@ import { GoogleGenAI, Modality, LiveServerMessage, Type } from "@google/genai";
 import { useCart } from "../../contexts/CartContext";
 import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
+import { currencyPromptLabel } from "../../lib/currency";
+import { brandColor } from "../../lib/theme";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "error";
-
-const MENU_ITEMS = [
-  { id: '1', name: 'Classic Burger', price: 12.99, description: 'Beef patty, lettuce, tomato, cheese.' },
-  { id: '2', name: 'Margherita Pizza', price: 15.99, description: 'Fresh tomatoes, mozzarella, basil.' },
-  { id: '3', name: 'Caesar Salad', price: 9.99, description: 'Crisp romaine, croutons, parmesan.' },
-  { id: '4', name: 'Fries', price: 4.99, description: 'Golden crispy french fries.' },
-  { id: '5', name: 'Cola', price: 2.99, description: 'Refreshing cold soda.' },
-];
 
 const RESTAURANT_PROMPTS_AR = [
   { label: "🍔 إضافة برجر للطلب", text: "أريد إضافة برجر دبل تشيز وبطاطس مقلية إلى طلبي" },
@@ -56,18 +50,21 @@ export function VoiceWidget() {
   const [activeVoiceTone, setActiveVoiceTone] = useState<VoiceTone>("Zephyr");
   const [activeBusinessType, setActiveBusinessType] = useState<BusinessType>("restaurant");
   const [activeDocuments, setActiveDocuments] = useState<any[]>([]);
+  const [activeCurrency, setActiveCurrency] = useState<string>("EGP");
+  const [brandAccent, setBrandAccent] = useState<string>("indigo");
 
   const [isOpen, setIsOpen] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [dbMenuItems, setDbMenuItems] = useState<any[]>([]);
   const [typedMessage, setTypedMessage] = useState("");
 
-  // Sync / load Dialect, VoiceTone, BusinessType dynamically
+  // Sync / load Dialect, VoiceTone, BusinessType, Currency + brand color dynamically
   useEffect(() => {
     if (!urlOwnerId) {
       setActiveDialect(contextSettings.dialect);
       setActiveVoiceTone(contextSettings.voiceTone);
       setActiveBusinessType(contextSettings.businessType);
+      setActiveCurrency(contextSettings.currency);
       return;
     }
 
@@ -87,15 +84,28 @@ export function VoiceWidget() {
             if (data.dialect) setActiveDialect(data.dialect as Dialect);
             if (data.voiceTone) setActiveVoiceTone(data.voiceTone as VoiceTone);
             if (data.businessType) setActiveBusinessType(data.businessType as BusinessType);
+            if (data.currency) setActiveCurrency(String(data.currency));
           }
         } catch (err) {
           console.error("Error loading external settings:", err);
+        }
+
+        // Brand accent color chosen by the merchant in the Menu Designer
+        try {
+          const { data: design } = await supabase
+            .from('menu_customizer')
+            .select('primaryColor')
+            .eq('ownerId', urlOwnerId)
+            .single();
+          if (design?.primaryColor) setBrandAccent(String(design.primaryColor));
+        } catch (err) {
+          console.warn("No menu_customizer brand color for owner:", err);
         }
       }
     };
 
     loadExternalSettings();
-  }, [urlOwnerId, contextSettings.dialect, contextSettings.voiceTone, contextSettings.businessType]);
+  }, [urlOwnerId, contextSettings.dialect, contextSettings.voiceTone, contextSettings.businessType, contextSettings.currency]);
 
   // Sync / load Knowledge Documents dynamically
   useEffect(() => {
@@ -307,8 +317,16 @@ export function VoiceWidget() {
       // Ephemeral tokens require the v1alpha API version.
       const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1alpha" } });
 
-      // Merge database items with fallback menu
-      const allMenuItems = dbMenuItems.length > 0 ? dbMenuItems : MENU_ITEMS;
+      // Real catalog from the merchant's database. No fake fallback: if the
+      // merchant hasn't added products yet, the agent honestly says so instead
+      // of inventing items.
+      const allMenuItems = dbMenuItems;
+      const emptyMenuNoticeAr = allMenuItems.length === 0
+        ? "\nتنبيه: قائمة المنتجات فارغة حالياً (لم يقم صاحب المتجر بإضافة المنتجات بعد). إذا طلب العميل أي منتج أو طعام، اعتذر بلطف وأخبره أن المنيو غير متاح حالياً، ولا تختلق أي منتجات أو أسعار."
+        : "";
+      const emptyMenuNoticeEn = allMenuItems.length === 0
+        ? "\nIMPORTANT: The product catalog is currently EMPTY (the merchant has not added products yet). If the customer asks for any product, politely apologize and tell them the menu is not available yet. Never invent products or prices."
+        : "";
 
       // 1. Separate structured docs from unstructured ones
       const profileDoc = activeDocuments.find(d => d.id === "business_profile");
@@ -399,8 +417,12 @@ STRICT SYSTEM GUARDRAILS:
         activeDialect === 'levantine' ? 'أنت تتحدث باللهجة الشامية اللطيفة.' :
         'أنت تتحدث باللغة العربية الفصحى المبسطة.';
 
+      const currencyLineAr = `\nعملة الأسعار المعتمدة: ${currencyPromptLabel(activeCurrency, 'ar')}. كل الأسعار في القائمة أعلاه بهذه العملة — اذكرها دائماً عند ذكر أي سعر ولا تستخدم أي عملة أخرى.`;
+      const currencyLineEn = `\nOfficial currency: ${currencyPromptLabel(activeCurrency, 'en')}. All prices in the catalog above are in this currency — always state prices in this currency and never use any other.`;
+
       const baseInstructionAr = `أنت نادل ومساعد ضيافة ذكي ومضياف لمطعمنا وكافيهنا. هذه قائمة الأطعمة والمشروبات والحلويات المتاحة للطلب:
 ${JSON.stringify(allMenuItems)}
+${currencyLineAr}${emptyMenuNoticeAr}
 ${structuredProfilePromptAr}
 ${structuredFaqsPromptAr}
 ${standardDocsPromptAr}
@@ -409,6 +431,7 @@ ${strictGuardrailsAr}
 
       const baseInstructionEn = `You are a friendly and smart restaurant host and table ordering assistant. Here is our menu catalog including main courses, drinks, and desserts:
 ${JSON.stringify(allMenuItems)}
+${currencyLineEn}${emptyMenuNoticeEn}
 ${structuredProfilePromptEn}
 ${structuredFaqsPromptEn}
 ${standardDocsPromptEn}
@@ -530,6 +553,17 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                           }]
                         });
                       });
+                    } else {
+                      // Item not found in the real catalog — never fake it
+                      sessionPromise.then(session => {
+                        session.sendToolResponse({
+                          functionResponses: [{
+                            name,
+                            id,
+                            response: { status: "error", message: language === "ar" ? "المنتج غير موجود في قائمة المنتجات الحالية." : "Item not found in the current product catalog." }
+                          }]
+                        });
+                      });
                     }
                   } else if (name === "place_order") {
                     if (items.length === 0) {
@@ -584,8 +618,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                                   fetch(whSettings.webhookUrl, {
                                     method: 'POST',
                                     headers: {
-                                      'Content-Type': 'application/json',
-                                      'X-SooVoice-Signature': 'sha256_mock_sig_value_for_verification'
+                                      'Content-Type': 'application/json'
                                     },
                                     body: JSON.stringify({
                                       event: 'order.created',
@@ -704,6 +737,8 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
     }
   };
 
+  const brand = brandColor(brandAccent);
+
   return (
     <div className="fixed bottom-6 end-6 z-50 flex flex-col items-end">
       <AnimatePresence>
@@ -715,14 +750,17 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
             className="mb-4 w-80 overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200 flex flex-col"
           >
             {/* Header */}
-            <div className="bg-indigo-600 px-4 py-3 flex items-center justify-between text-white drop-shadow-md z-10">
+            <div
+              className="px-4 py-3 flex items-center justify-between text-white drop-shadow-md z-10"
+              style={{ backgroundColor: brand.hex }}
+            >
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
                 <span className="font-medium text-sm">{t('widget.agent')}</span>
               </div>
               <div className="flex gap-2">
                 <button
-                  className="text-indigo-200 hover:text-white transition-colors"
+                  className="text-white/70 hover:text-white transition-colors"
                   title="Settings"
                 >
                   <Settings className="w-4 h-4" />
@@ -732,7 +770,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                     setIsOpen(false);
                     stopLiveConversation();
                   }}
-                  className="text-indigo-200 hover:text-white transition-colors"
+                  className="text-white/70 hover:text-white transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -743,7 +781,10 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
             <div className="bg-slate-50 flex-1 p-4 h-64 overflow-y-auto flex flex-col gap-3 relative">
               {history.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center p-1 space-y-4">
-                  <div className="bg-indigo-50 text-indigo-600 p-2.5 rounded-full animate-bounce">
+                  <div
+                    className="p-2.5 rounded-full animate-bounce"
+                    style={{ backgroundColor: brand.bgLight, color: brand.hex }}
+                  >
                     <Volume2 className="w-5 h-5" />
                   </div>
                   <div>
@@ -763,7 +804,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                       <button
                         key={idx}
                         onClick={() => handleSuggestionClick(p.text)}
-                        className="text-[9px] font-bold bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 px-2 py-1.5 rounded-xl text-center shadow-xs transition-all duration-150 line-clamp-2"
+                        className="text-[9px] font-bold bg-white text-slate-600 border border-slate-200 px-2 py-1.5 rounded-xl text-center shadow-xs transition-all duration-150 line-clamp-2 hover:bg-slate-50"
                       >
                         {p.label}
                       </button>
@@ -778,9 +819,10 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                       className={cn(
                         "px-3 py-2 rounded-2xl text-xs max-w-[85%] leading-relaxed shadow-xs transition-all duration-200",
                         msg.role === "user"
-                          ? "bg-indigo-600 text-white self-end rounded-ee-none"
+                          ? "text-white self-end rounded-ee-none"
                           : "bg-white border border-slate-100 text-slate-700 self-start rounded-es-none",
                       )}
+                      style={msg.role === "user" ? { backgroundColor: brand.hex } : undefined}
                     >
                       {msg.text}
                     </div>
@@ -829,7 +871,8 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                     <motion.div
                       animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0.1, 0.5] }}
                       transition={{ duration: 1.2, repeat: Infinity }}
-                      className="absolute w-20 h-20 bg-indigo-400 rounded-full"
+                      className="absolute w-20 h-20 rounded-full"
+                      style={{ backgroundColor: `${brand.hex}66` }}
                     />
                     <motion.div
                       animate={{ scale: [1, 1.2, 1], opacity: [0.8, 0.2, 0.8] }}
@@ -838,7 +881,8 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                         repeat: Infinity,
                         delay: 0.1,
                       }}
-                      className="absolute w-16 h-16 bg-indigo-500 rounded-full"
+                      className="absolute w-16 h-16 rounded-full"
+                      style={{ backgroundColor: `${brand.hex}99` }}
                     />
                   </>
                 )}
@@ -847,16 +891,17 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                 <button
                   className={cn(
                     "relative z-10 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-colors focus:outline-none focus:ring-4",
-                    voiceState === "idle"
-                      ? "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-200"
-                      : voiceState === "listening"
-                        ? "bg-green-600 focus:ring-green-200"
-                        : voiceState === "thinking"
-                          ? "bg-amber-500 focus:ring-amber-200"
-                          : voiceState === "speaking"
-                            ? "bg-indigo-600 focus:ring-indigo-200"
-                            : "bg-red-500",
+                    voiceState === "listening"
+                      ? "bg-green-600 focus:ring-green-200"
+                      : voiceState === "thinking"
+                        ? "bg-amber-500 focus:ring-amber-200"
+                        : "",
                   )}
+                  style={
+                    voiceState === "idle" || voiceState === "speaking"
+                      ? { backgroundColor: brand.hex }
+                      : undefined
+                  }
                 >
                   {voiceState === "idle" && (
                     <Mic className="h-6 w-6 text-white" />
@@ -907,7 +952,8 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                 <button
                   type="submit"
                   disabled={!typedMessage.trim()}
-                  className="bg-indigo-600 disabled:bg-slate-300 hover:bg-indigo-700 text-white p-1.5 rounded-lg transition-colors shadow-sm"
+                  className="disabled:bg-slate-300 text-white p-1.5 rounded-lg transition-colors shadow-sm"
+                  style={{ backgroundColor: brand.hex }}
                 >
                   <Send className="w-3.5 h-3.5" />
                 </button>
@@ -934,10 +980,17 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
               startLiveConversation();
             }
           }}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-2xl shadow-indigo-500/50 hover:shadow-indigo-500/70 hover:scale-105 transition-all focus:outline-none focus:ring-4 focus:ring-indigo-200 border-2 border-white/20 relative group"
+          className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-2xl hover:scale-105 transition-all focus:outline-none focus:ring-4 border-2 border-white/20 relative group"
+          style={{
+            background: `linear-gradient(135deg, ${brand.hex} 0%, ${brand.dark} 100%)`,
+            boxShadow: `0 20px 25px -5px ${brand.hex}55`,
+          }}
         >
           {/* Subtle pulse effect underneath the button when closed to attract attention */}
-          <div className="absolute inset-0 rounded-full border-4 border-indigo-400 opacity-20 group-hover:animate-ping animate-[pulse_2s_ease-in-out_infinite]" />
+          <div
+            className="absolute inset-0 rounded-full border-4 opacity-20 group-hover:animate-ping animate-[pulse_2s_ease-in-out_infinite]"
+            style={{ borderColor: brand.hex }}
+          />
           <Mic className="h-7 w-7" />
         </motion.button>
       )}

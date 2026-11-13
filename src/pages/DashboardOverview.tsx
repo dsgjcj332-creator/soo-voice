@@ -54,28 +54,55 @@ export function DashboardOverview() {
     : '-';
   const activeCustomers = new Set(conversations.map((conversation) => conversation.user).filter(Boolean)).size;
 
+  // Real week-over-week comparison (no hardcoded deltas)
+  const now = Date.now();
+  const WEEK = 7 * 24 * 60 * 60 * 1000;
+  const thisWeek = conversations.filter(c => now - new Date(c.createdAt).getTime() <= WEEK);
+  const prevWeek = conversations.filter(c => {
+    const age = now - new Date(c.createdAt).getTime();
+    return age > WEEK && age <= 2 * WEEK;
+  });
+  const pctChange = (current: number, previous: number): { change: string; changeType: "positive" | "negative" | "neutral" } => {
+    if (previous === 0) {
+      return current > 0
+        ? { change: language === 'ar' ? 'جديد' : 'new', changeType: 'positive' }
+        : { change: "—", changeType: 'neutral' };
+    }
+    const delta = Math.round(((current - previous) / previous) * 100);
+    if (delta === 0) return { change: "0%", changeType: 'neutral' };
+    return {
+      change: `${delta > 0 ? '+' : ''}${delta}%`,
+      changeType: delta > 0 ? 'positive' : 'negative',
+    };
+  };
+  const prevSuccessful = prevWeek.filter(c => c.isSuccess).length;
+  const prevConvRate = prevWeek.length > 0 ? Math.round((prevSuccessful / prevWeek.length) * 100) : 0;
+  const thisWeekConvRate = thisWeek.length > 0 ? Math.round((thisWeek.filter(c => c.isSuccess).length / thisWeek.length) * 100) : 0;
+  const totalChange = pctChange(thisWeek.length, prevWeek.length);
+  const convChange = pctChange(thisWeekConvRate, prevConvRate);
+
   const stats = [
 
     {
       name: t('dash.stat.total'),
       value: totalCalls.toString(),
       icon: MessageSquare,
-      change: "—",
-      changeType: "neutral",
+      change: totalChange.change,
+      changeType: totalChange.changeType,
     },
     {
       name: t('dash.stat.avg'),
       value: avgDuration,
       icon: Clock,
-      change: "+0%",
+      change: "—",
       changeType: "neutral",
     },
     {
       name: t('dash.stat.conv'),
       value: `${conversionRate}%`,
       icon: ArrowUpRight,
-      change: "+5%",
-      changeType: "positive",
+      change: convChange.change,
+      changeType: convChange.changeType,
     },
     {
       name: t('dash.stat.active'),
@@ -144,13 +171,15 @@ export function DashboardOverview() {
                   className={`text-xs font-bold px-1.5 py-0.5 rounded ${
                     item.changeType === "positive"
                       ? "text-emerald-500 bg-emerald-50"
-                      : "text-slate-500 bg-slate-50"
+                      : item.changeType === "negative"
+                        ? "text-rose-500 bg-rose-50"
+                        : "text-slate-500 bg-slate-50"
                   }`}
                 >
                   {item.change}
                 </span>
                 <span className="text-xs text-slate-400">
-                  {language === 'ar' ? 'هذا الأسبوع' : 'this week'}
+                  {language === 'ar' ? 'مقارنة بالأسبوع الماضي' : 'vs last week'}
                 </span>
               </div>
             </dd>
