@@ -279,14 +279,34 @@ export function VoiceWidget() {
       setVoiceState("thinking");
       setTranscript("Connecting to Gemini Live...");
 
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
+      // The real Gemini API key must never be exposed to the browser.
+      // The server mints a short-lived ephemeral token for the Live API.
+      let apiKey: string;
+      try {
+        const tokenRes = await fetch("/api/gemini-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const tokenData = await tokenRes.json().catch(() => ({} as any));
+        if (!tokenRes.ok || !tokenData?.token) {
+          throw new Error(
+            tokenData?.error || `Secure voice session unavailable (${tokenRes.status})`,
+          );
+        }
+        apiKey = tokenData.token;
+      } catch (tokenErr) {
+        console.error("Ephemeral token error:", tokenErr);
         setVoiceState("error");
-        setTranscript("Missing GEMINI_API_KEY environment variable.");
+        setTranscript(
+          tokenErr instanceof Error
+            ? tokenErr.message
+            : "Could not start a secure voice session."
+        );
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      // Ephemeral tokens require the v1alpha API version.
+      const ai = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1alpha" } });
 
       // Merge database items with fallback menu
       const allMenuItems = dbMenuItems.length > 0 ? dbMenuItems : MENU_ITEMS;
