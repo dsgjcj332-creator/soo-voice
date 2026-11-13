@@ -15,7 +15,6 @@ import { useSettings, Dialect, VoiceTone, BusinessType } from "../../contexts/Se
 import { useKnowledge } from "../../contexts/KnowledgeContext";
 import { GoogleGenAI, Modality, LiveServerMessage, Type } from "@google/genai";
 import { useCart } from "../../contexts/CartContext";
-// Firebase imports removed for Supabase-only mode
 import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 
@@ -128,7 +127,7 @@ export function VoiceWidget() {
     loadExternalKnowledge();
   }, [urlOwnerId, contextKnowledge.documents]);
 
-  // Real-time synchronization of menu items from Firestore/Supabase
+  // Real-time synchronization of menu items from Supabase
   useEffect(() => {
     const { isConfigured } = getSupabaseConfig();
     const supabase = getSupabase();

@@ -269,7 +269,7 @@ export function DigitalMenu() {
     }
   };
 
-  // Submit to Firestore with Progress
+  // Submit the import with a progress indicator
   const handleImportSubmit = async () => {
     if (!user || parsedItems.length === 0) return;
     setImporting(true);
@@ -292,7 +292,7 @@ export function DigitalMenu() {
           createdAt: Date.now() - (i * 1000) // Stagger slightly for ordering
         };
 
-        // Save to local collection instead of Firestore
+        // Save to the local store
         addLocalDoc('menu_items', newItem, user.uid);
         setImportProgress(Math.round(((i + 1) / totalCount) * 100));
       }
@@ -381,7 +381,7 @@ export function DigitalMenu() {
     setMenuCurrency(currencySymbols[currency] || currency);
   }, [currency]);
 
-  // Load design config on mount (from local storage + Firestore)
+  // Load design config on mount (from local storage + Supabase)
   useEffect(() => {
     if (!user) return;
     const localKey = `menu_design_config_${user.uid}`;
@@ -600,7 +600,7 @@ export function DigitalMenu() {
             setItems(updated);
           }
         } else {
-          // Firebase removed
+          // No-op: persistence is handled by Supabase / local store
         }
       }
       

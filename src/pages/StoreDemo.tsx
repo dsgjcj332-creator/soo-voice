@@ -4,7 +4,6 @@ import { ShoppingBag, Plus, Trash2, CreditCard, Sparkles, Key, Home, Car, MapPin
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
-// Firebase imports removed for Supabase-only mode
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { useSearchParams } from 'react-router-dom';
@@ -138,7 +137,7 @@ export function StoreDemo() {
     }
   }, [resolvedOwnerId]);
 
-  // Use Firestore items if available, else fallback. Filter out the hidden AI-only products from public rendering.
+  // Use database items when available, else fallback. Filter out the hidden AI-only products from public rendering.
   const visibleMenuItems = dbMenuItems.filter(item => !item.isAiOnly);
   const filteredMenuItems = visibleMenuItems.filter(item => {
     if (activeCategory === 'all') return true;

@@ -142,8 +142,8 @@ export function AdminSystemSettings() {
       <div className="mt-8 text-center pb-8">
          <p className="text-sm text-green-600 font-bold bg-green-50 p-2 rounded-lg inline-block border border-green-200">
             {language === 'ar' 
-               ? 'متصل بقاعدة البيانات الحية (Firestore)' 
-               : 'Connected to live Firestore database'}
+               ? 'متصل بقاعدة البيانات الحية (Supabase)' 
+               : 'Connected to live Supabase database'}
          </p>
       </div> */}
 
