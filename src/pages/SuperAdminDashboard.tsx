@@ -192,7 +192,7 @@ export function SuperAdminDashboard() {
               <div>
                  <div className="flex justify-between items-end mb-2">
                     <div>
-                      <span className="text-slate-800 font-bold block mb-1">Gemini Pro API</span>
+                      <span className="text-slate-800 font-bold block mb-1">SooVoice AI Engine</span>
                       <span className="text-xs text-slate-500">0 / 10M tokens</span>
                     </div>
                     <span className="text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded text-sm">0%</span>

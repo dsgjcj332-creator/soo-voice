@@ -1,5 +1,7 @@
 # SooVoice — Live Voice AI Ordering Agent
 
+![SooVoice](public/logo-full.svg)
+
 A SaaS platform that adds a **live voice agent** to restaurants and online stores. Customers speak instead of clicking through menus; the agent understands the order, answers questions from the merchant's knowledge base, and adds items to the cart automatically.
 
 Powered by the **Gemini Live API** (audio in / audio out) with function calling (`add_to_cart`, `place_order`).
@@ -96,7 +98,7 @@ npm run clean   # remove dist/
 | Variable | Scope | Description |
 |---|---|---|
 | `GEMINI_API_KEY` | **server-only** | Gemini API key. Used by the serverless function to mint ephemeral Live-API tokens. **Never** prefixed with `VITE_`. |
-| `WEBHOOK_SECRET` | **server-only** | HMAC secret for inbound webhooks (`x-voiceai-signature: sha256=<hex of RAW body>`). Webhooks fail closed if unset. |
+| `WEBHOOK_SECRET` | **server-only** | HMAC secret for inbound webhooks (`x-soovoice-signature: sha256=<hex of RAW body>`). Webhooks fail closed if unset. |
 | `API_KEY` | **server-only** | Admin API key required via the `x-api-key` header on data routes. |
 | `APP_URL` | server | Public deployment URL (OAuth callbacks, self-referential links). |
 | `ALLOWED_ORIGINS` | server | Optional comma-separated CORS allowlist. Empty = allow all (needed while the widget is embedded on arbitrary storefronts). |
@@ -106,7 +108,7 @@ npm run clean   # remove dist/
 ## Security Model
 
 - **No API keys in the browser.** The widget requests a short-lived **ephemeral token** from `/api/gemini-session`; the real `GEMINI_API_KEY` lives only in serverless functions.
-- **Signed webhooks.** Every webhook route requires `x-voiceai-signature: sha256=<hex>` (HMAC-SHA256 over the raw body). Verification is constant-time and fails closed when `WEBHOOK_SECRET` is missing.
+- **Signed webhooks.** Every webhook route requires `x-soovoice-signature: sha256=<hex>` (HMAC-SHA256 over the raw body). Verification is constant-time and fails closed when `WEBHOOK_SECRET` is missing.
 - **Timing-safe API keys.** `x-api-key` comparisons use hashed constant-time equality.
 - **Rate limiting.** Global per-IP limit (600 req/min) plus a stricter limit on token minting (30 req/min), per serverless instance.
 - **CORS allowlist.** Set `ALLOWED_ORIGINS` to lock the API to known dashboard/widget origins once merchant domains are registered.

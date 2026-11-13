@@ -1748,7 +1748,7 @@ export function DigitalMenu() {
                 {/* NFC Logo or Help Note */}
                 <div className="mt-4 pt-3 border-t border-slate-100 w-full flex items-center justify-center gap-1.5 text-[8px] text-slate-400 font-bold uppercase tracking-wider">
                   <Sparkles className="w-3 h-3 text-indigo-500" />
-                  {language === "ar" ? "مدعوم بنادل صوتي ذكي للمأكولات" : "Powered by Voice AI Dining Assistant"}
+                  {language === "ar" ? "مدعوم بـ SooVoice" : "Powered by SooVoice"}
                 </div>
               </div>
 

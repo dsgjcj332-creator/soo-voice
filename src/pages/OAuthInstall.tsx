@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { CheckCircle2, ShieldCheck, Loader2, Bot, Database, Blocks, LogIn } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Loader2, Database, Blocks, LogIn } from "lucide-react";
+import { Logo } from '../components/brand/Logo';
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
@@ -104,10 +105,8 @@ export function OAuthInstall() {
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="px-6 py-4 border-b border-slate-200 bg-white flex justify-center">
         <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-2 rounded-xl shadow-sm">
-            <Bot className="h-5 w-5 text-white" />
-          </div>
-          <span className="font-bold text-xl text-slate-800 tracking-tight">VoiceAI SaaS</span>
+          <Logo size={36} className="rounded-xl shadow-sm" />
+          <span className="font-bold text-xl text-slate-800 tracking-tight">SooVoice</span>
         </div>
       </header>
 
@@ -119,8 +118,8 @@ export function OAuthInstall() {
             </h1>
             <p className="text-sm text-slate-600">
               {language === 'ar' 
-                ? `يرغب تطبيق VoiceAI بالاتصال بمتجرك على ${platform}`
-                : `VoiceAI is requesting access to your ${platform} store`}
+                ? `يرغب تطبيق SooVoice بالاتصال بمتجرك على ${platform}`
+                : `SooVoice is requesting access to your ${platform} store`}
             </p>
             <div className="mt-4 font-mono text-xs bg-white px-3 py-2 border border-slate-200 rounded-lg inline-block text-slate-500">
               {shopName}

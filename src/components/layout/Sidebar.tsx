@@ -16,6 +16,7 @@ import {
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { Logo } from "../brand/Logo";
 
 const getNavigation = (t: (k: string) => string, language: string) => [
   { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
@@ -62,11 +63,9 @@ export function Sidebar() {
           onClick={handleLogoClick}
           title={language === 'ar' ? 'انقر 5 مرات للإدارة' : 'Click 5 times for Admin'}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-            <span className="font-bold">V</span>
-          </div>
+          <Logo size={32} className="rounded-lg" />
           <span className="text-xl font-bold font-sans tracking-tight text-gray-900">
-            VoiceAI
+            SooVoice
           </span>
         </div>
       </div>

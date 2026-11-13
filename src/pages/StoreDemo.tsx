@@ -188,7 +188,7 @@ export function StoreDemo() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'X-VoiceAI-Signature': 'sha256_mock_sig_value_for_verification'
+                'X-SooVoice-Signature': 'sha256_mock_sig_value_for_verification'
               },
               body: JSON.stringify({
                 event: 'order.created',

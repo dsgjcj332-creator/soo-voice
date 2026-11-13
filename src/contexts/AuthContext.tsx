@@ -28,56 +28,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = getSupabase();
-    const localDemo = localStorage.getItem('local_demo_user');
 
-    // When Supabase is configured, the authenticated Supabase session is always
-    // the source of truth. The local demo must never shadow a real account.
-    if (!supabase || !isConfigured) {
-      if (localDemo) {
-        try {
-          const parsed = JSON.parse(localDemo);
-          if (parsed && parsed.uid && parsed.provider === 'local') {
-            setUser(parsed);
-            setLoading(false);
-            return;
-          }
-        } catch {}
+    const readDemoUser = (): UnifiedUser | null => {
+      const localDemo = localStorage.getItem('local_demo_user');
+      if (!localDemo) return null;
+      try {
+        const parsed = JSON.parse(localDemo);
+        if (parsed && parsed.uid && parsed.provider === 'local') return parsed;
+      } catch {}
+      return null;
+    };
+
+    const mapSupabaseUser = (sessionUser: any): UnifiedUser => ({
+      uid: sessionUser.id,
+      email: sessionUser.email || null,
+      displayName: sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0] || 'User',
+      photoURL: sessionUser.user_metadata?.avatar_url || null,
+      provider: 'supabase'
+    });
+
+    // A real Supabase session is always the source of truth. The local demo
+    // user is honored only when there is NO real session behind it, so a demo
+    // login still works even while the project is connected to Supabase.
+    const applySession = (sessionUser: any | null) => {
+      if (sessionUser) {
+        setUser(mapSupabaseUser(sessionUser));
+      } else {
+        setUser(readDemoUser());
       }
-      setUser(null);
+      setLoading(false);
+    };
+
+    if (!supabase || !isConfigured) {
+      setUser(readDemoUser());
       setLoading(false);
       return;
     }
 
     // Get current session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser({
-          uid: session.user.id,
-          email: session.user.email || null,
-          displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          photoURL: session.user.user_metadata?.avatar_url || null,
-          provider: 'supabase'
-        });
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
+      applySession(session?.user ?? null);
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          uid: session.user.id,
-          email: session.user.email || null,
-          displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          photoURL: session.user.user_metadata?.avatar_url || null,
-          provider: 'supabase'
-        });
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
+      applySession(session?.user ?? null);
     });
 
     return () => {

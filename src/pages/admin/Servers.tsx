@@ -45,7 +45,7 @@ export function AdminServers() {
           {language === 'ar' ? 'الخوادم والـ API' : 'Servers & API'}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {language === 'ar' ? 'مراقبة حالة الخوادم، الاتصالات مع Gemini وصلاحيات قواعد البيانات.' : 'Monitor server health, Gemini connections, and database status.'}
+          {language === 'ar' ? 'مراقبة حالة الخوادم، الاتصال بمحرك الذكاء الصوتي وصلاحيات قواعد البيانات.' : 'Monitor server health, voice engine connections, and database status.'}
         </p>
       </div>
 
@@ -74,7 +74,7 @@ export function AdminServers() {
                     <Activity className="w-5 h-5" />
                 </div>
                 <h3 className="font-bold text-slate-800">
-                    {language === 'ar' ? 'ربط الذكاء الاصطناعي (Gemini)' : 'AI Connection (Gemini)'}
+                    {language === 'ar' ? 'ربط محرك الذكاء الصوتي' : 'AI Voice Engine Connection'}
                 </h3>
             </div>
             <div className="flex items-center justify-between mt-6">

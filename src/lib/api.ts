@@ -8,7 +8,7 @@
  * Security notes:
  *  - All admin/data routes require the `x-api-key` header (timing-safe compare).
  *  - All webhook routes require an HMAC-SHA256 signature header
- *    `x-voiceai-signature: sha256=<hex>` computed over the RAW request body
+ *    `x-soovoice-signature: sha256=<hex>` computed over the RAW request body
  *    with WEBHOOK_SECRET (fail-closed when the secret is not configured).
  *  - In-memory rate limiting per client IP (per-instance on serverless).
  *  - CORS origins can be restricted via ALLOWED_ORIGINS (comma-separated).
@@ -108,7 +108,7 @@ export function createApiApp() {
     next();
   };
 
-  // Verifies `x-voiceai-signature: sha256=<hex hmac>` computed over the RAW body.
+  // Verifies `x-soovoice-signature: sha256=<hex hmac>` computed over the RAW body.
   const verifyWebhookSignature = (
     req: express.Request & { rawBody?: Buffer },
     res: express.Response,
@@ -120,7 +120,7 @@ export function createApiApp() {
       res.status(503).json({ error: 'Webhooks not configured: WEBHOOK_SECRET is missing server-side' });
       return;
     }
-    const signature = firstHeader(req.headers['x-voiceai-signature']);
+    const signature = firstHeader(req.headers['x-soovoice-signature']);
     if (!signature || !signature.startsWith('sha256=')) {
       res.status(401).json({ error: 'Missing or invalid signature' });
       return;
@@ -337,6 +337,13 @@ export function createApiApp() {
       console.error('[API] User update error:', err);
       res.status(500).json({ error: 'Failed to update user' });
     }
+  });
+
+  // Explicit API terminator: any unmatched /api route (including wrong HTTP
+  // methods on registered paths) returns a JSON 404 instead of falling through
+  // to the SPA static fallback.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Not found' });
   });
 
   return app;

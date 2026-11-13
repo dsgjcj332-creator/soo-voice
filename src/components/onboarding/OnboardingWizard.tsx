@@ -3,10 +3,11 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useSettings, Dialect, VoiceTone, BusinessType } from '../../contexts/SettingsContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
-  Store, Home, Car, Boxes, Languages, Volume2, Mic, ArrowRight, ArrowLeft, 
+  Store, Home, Car, Boxes, Languages, Volume2, ArrowRight, ArrowLeft, 
   CheckCircle2, Copy, Sparkles, HelpCircle, Code, Loader2
 } from 'lucide-react';
 import { getSupabase, getSupabaseConfig } from '../../lib/supabase';
+import { Logo } from '../brand/Logo';
 import { VoiceWidget } from '../widget/VoiceWidget';
 
 interface SeedItem {
@@ -233,7 +234,7 @@ export function OnboardingWizard() {
   const origin = window.location.origin;
   const merchantOwnerId = user?.uid || 'demo_user_onboarding';
 
-  const embedCode = `<!-- VoiceAI Widget Embed Snippet -->
+  const embedCode = `<!-- SooVoice Widget Embed Snippet -->
 <script>
   (function() {
     var iframe = document.createElement('iframe');
@@ -281,10 +282,8 @@ export function OnboardingWizard() {
           
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-8">
-              <div className="p-2 bg-white/10 rounded-xl">
-                <Mic className="w-6 h-6 text-indigo-200 animate-pulse" />
-              </div>
-              <span className="font-bold text-lg tracking-tight">VoiceAI</span>
+              <Logo size={40} className="rounded-xl" />
+              <span className="font-bold text-lg tracking-tight">SooVoice</span>
             </div>
 
             <h3 className="text-xl font-bold mb-4 leading-snug">
@@ -323,7 +322,7 @@ export function OnboardingWizard() {
           </div>
 
           <div className="text-[10px] text-indigo-400 font-mono mt-8">
-            VoiceAI SaaS Engine v2.4
+            SooVoice Engine v2.4
           </div>
         </div>
 

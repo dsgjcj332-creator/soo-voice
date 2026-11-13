@@ -64,7 +64,6 @@ export function LandingPage() {
              {language === 'ar' ? 'متوافق مع منصات التجارة الرائدة' : 'Integrated with leading platforms'}
            </p>
            <div className="flex flex-wrap justify-center items-center gap-10 md:gap-16 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-              <div className="flex items-center gap-2 text-2xl font-extrabold text-indigo-700 tracking-tight">MNMKNK</div>
               <div className="flex items-center gap-2 text-2xl font-bold font-serif italic"><div className="w-8 h-8 bg-green-600 rounded-full"></div> Shopify</div>
               <div className="flex items-center gap-2 text-2xl font-bold text-teal-600"><Store className="w-8 h-8" /> Salla</div>
               <div className="flex items-center gap-2 text-2xl font-bold text-blue-600"><Code className="w-8 h-8" /> WooCommerce</div>

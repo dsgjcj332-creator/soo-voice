@@ -47,7 +47,7 @@ export function Billing() {
   const extraRevenue = extraOrders * averageOrderValue;
 
   const handleCopyCode = () => {
-    const embedCode = `<!-- Min Makanak VoiceAI Widget Embed -->\n<script src="https://cdn.minmakanak.com/voice-widget.js"\n  data-merchant-id="merchant_demo_94c8"\n  data-language="${language}"\n  async>\n</script>`;
+    const embedCode = `<!-- SooVoice Widget Embed -->\n<script src="https://cdn.soovoice.app/widget.js"\n  data-merchant-id="merchant_demo_94c8"\n  data-language="${language}"\n  async>\n</script>`;
     navigator.clipboard.writeText(embedCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -252,10 +252,10 @@ export function Billing() {
                 {copied ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
               </button>
               <pre className="overflow-x-auto pr-10 leading-relaxed text-indigo-200">
-                {`<!-- Min Makanak VoiceAI Widget Embed -->\n`}
+                {`<!-- SooVoice Widget Embed -->\n`}
                 <span className="text-white">{`<script `}</span>
                 <span className="text-yellow-400">{`src`}</span>
-                <span className="text-emerald-400">{`="https://cdn.minmakanak.com/voice-widget.js"`}</span>
+                <span className="text-emerald-400">{`="https://cdn.soovoice.app/widget.js"`}</span>
                 {`\n  `}
                 <span className="text-yellow-400">{`data-merchant-id`}</span>
                 <span className="text-emerald-400">{`="merchant_demo_94c"`}</span>

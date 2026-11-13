@@ -276,7 +276,7 @@ export function VoiceWidget() {
   const startLiveConversation = async (initialText?: string) => {
     try {
       setVoiceState("thinking");
-      setTranscript("Connecting to Gemini Live...");
+      setTranscript(language === "ar" ? "جاري الاتصال بالمساعد الصوتي..." : "Connecting to your voice assistant...");
 
       // The real Gemini API key must never be exposed to the browser.
       // The server mints a short-lived ephemeral token for the Live API.
@@ -585,7 +585,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                                     method: 'POST',
                                     headers: {
                                       'Content-Type': 'application/json',
-                                      'X-VoiceAI-Signature': 'sha256_mock_sig_value_for_verification'
+                                      'X-SooVoice-Signature': 'sha256_mock_sig_value_for_verification'
                                     },
                                     body: JSON.stringify({
                                       event: 'order.created',
@@ -917,7 +917,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
             {/* Branding */}
             <div className="bg-slate-50 py-1.5 text-center border-t border-slate-200">
               <span className="text-[10px] text-slate-400 font-bold tracking-wider">
-                ✨ Powered by VoiceAI
+                Powered by SooVoice
               </span>
             </div>
           </motion.div>

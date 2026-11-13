@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 120">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="12" width="96" height="96" rx="26" fill="url(#g)"/>
+  <g fill="#FFFFFF" transform="translate(16,28)">
+    <rect x="0" y="14" width="6.4" height="16" rx="3.2"/>
+    <rect x="11.2" y="8" width="6.4" height="28" rx="3.2"/>
+    <rect x="22.4" y="0" width="6.4" height="44" rx="3.2"/>
+    <rect x="33.6" y="8" width="6.4" height="28" rx="3.2"/>
+    <rect x="44.8" y="14" width="6.4" height="16" rx="3.2"/>
+  </g>
+  <text x="124" y="66" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="46" font-weight="800" fill="#0F172A">SooVoice</text>
+  <text x="126" y="94" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="500" fill="#64748B">AI Voice Ordering Agent</text>
+</svg>

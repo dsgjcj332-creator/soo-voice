@@ -33,7 +33,7 @@ export function DeveloperDocs() {
     { id: 'api', icon: Terminal, title: language === 'ar' ? 'REST API' : 'REST API' },
   ];
 
-  const iframeCode = `<!-- VoiceAI Floating Widget -->
+  const iframeCode = `<!-- SooVoice Floating Widget -->
 <script>
   (function() {
     var iframe = document.createElement('iframe');
@@ -61,9 +61,9 @@ export function DeveloperDocs() {
   })();
 </script>`;
 
-  const sdkCode = `<!-- VoiceAI SDK -->
+  const sdkCode = `<!-- SooVoice SDK -->
 <script>
-  window.VoiceAIConfig = {
+  window.SooVoiceConfig = {
     apiKey: "YOUR_PUBLIC_KEY",
     theme: "light",
     position: "bottom-right",
@@ -74,10 +74,10 @@ export function DeveloperDocs() {
 <script src="${origin}/widget.js" async defer></script>`;
 
   const shopifyCode = `<!-- Add to theme.liquid before </body> -->
-{{ 'https://your-voiceai-domain.com/widget.js' | script_tag }}
+{{ 'https://your-soovoice-domain.com/widget.js' | script_tag }}
 <script>
-  window.VoiceAIConfig = {
-    apiKey: "{{ shop.metafields.voiceai.public_key }}",
+  window.SooVoiceConfig = {
+    apiKey: "{{ shop.metafields.soovoice.public_key }}",
     storeId: "${ownerId}",
     position: "bottom-right"
   };
@@ -85,7 +85,7 @@ export function DeveloperDocs() {
 
   const sallaCode = `<!-- Add to Salla theme footer -->
 <script>
-  window.VoiceAIConfig = {
+  window.SooVoiceConfig = {
     apiKey: "YOUR_SALLA_APP_KEY",
     storeId: "${ownerId}",
     position: "bottom-right"
@@ -95,7 +95,7 @@ export function DeveloperDocs() {
 
   const wordpressCode = `<!-- Add to functions.php or use "Custom HTML" widget -->
 <script>
-  window.VoiceAIConfig = {
+  window.SooVoiceConfig = {
     apiKey: "YOUR_PUBLIC_KEY",
     storeId: "${ownerId}",
     position: "bottom-right"
@@ -166,7 +166,7 @@ console.log(session.sessionId);`;
             <p className="mt-0.5 text-sm text-slate-500">
               {language === 'ar' 
                 ? 'كل ما تحتاجه لربط المساعد الصوتي بمتجرك أو موقعك أو نظام الـ POS الخاص بك' 
-                : 'Everything you need to connect VoiceAI to your store, website, or POS system'}
+                : 'Everything you need to connect SooVoice to your store, website, or POS system'}
             </p>
           </div>
         </div>

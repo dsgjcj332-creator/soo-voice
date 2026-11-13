@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
-import { ArrowRight, CheckCircle2, Clock3, Mic, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock3, ShieldCheck, Sparkles } from 'lucide-react';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
+import { Logo } from '../components/brand/Logo';
 
 export function Auth() {
   const { language } = useLanguage();
@@ -41,17 +42,46 @@ export function Auth() {
         return;
       }
 
+      // Preferred path: an edge function that skips email confirmation (if
+      // deployed on the Supabase project). Fallback: native Supabase signup,
+      // which works on any project — if email confirmation is enabled there,
+      // the visitor gets the friendly "confirm your email" message below.
       const { url } = getSupabaseConfig();
-      const signupResponse = await fetch(`${url}/functions/v1/signup-test-no-confirmation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password, fullName: name.trim() }),
-      });
-      const signupResult = await signupResponse.json().catch(() => null);
-      if (!signupResponse.ok) {
-        throw new Error(signupResult?.error || 'signup_failed');
+      let accountCreated = false;
+      try {
+        const signupResponse = await fetch(`${url}/functions/v1/signup-test-no-confirmation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password, fullName: name.trim() }),
+        });
+        if (signupResponse.ok) {
+          accountCreated = true;
+        } else {
+          const signupResult = await signupResponse.json().catch(() => null);
+          const msg = String(signupResult?.error || '').toLowerCase();
+          const missing = signupResponse.status === 404 || signupResponse.status === 405
+            || msg.includes('not found') || msg.includes('no function');
+          // Surface real validation errors; only fall back when the function
+          // itself is not deployed on this Supabase project.
+          if (!missing) {
+            throw new Error(signupResult?.error || 'signup_failed');
+          }
+        }
+      } catch (fetchErr: any) {
+        // Network failure reaching the edge function → native signup fallback.
+        if (!(fetchErr instanceof TypeError)) throw fetchErr;
       }
 
+      if (!accountCreated) {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { full_name: name.trim() } },
+        });
+        if (signUpError) throw signUpError;
+      }
+
+      // Native signup already returns a session when confirmation is disabled.
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) throw signInError;
       navigate('/app');
@@ -61,6 +91,8 @@ export function Auth() {
         setError(isArabic ? 'أكد بريدك الإلكتروني من الرسالة المرسلة إليك.' : 'Please confirm your email from the message we sent you.');
       } else if (message.includes('invalid') || message.includes('credential') || message.includes('password')) {
         setError(isArabic ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Invalid email or password.');
+      } else if (message.includes('already registered') || message.includes('already exists')) {
+        setError(isArabic ? 'البريد الإلكتروني مسجل بالفعل. سجّل الدخول بدلاً من ذلك.' : 'This email is already registered. Try signing in instead.');
       } else {
         setError(isArabic ? 'حدث خطأ غير متوقع. حاول مرة أخرى.' : 'Something unexpected happened. Please try again.');
       }
@@ -70,7 +102,7 @@ export function Auth() {
   };
 
   const handleDemoLogin = () => {
-    const demoUser = { uid: 'demo-merchant-local', email: 'demo@voiceai.com', displayName: 'Demo Merchant', photoURL: null, provider: 'local' as const };
+    const demoUser = { uid: 'demo-merchant-local', email: 'demo@soovoice.app', displayName: 'SooVoice Demo', photoURL: null, provider: 'local' as const };
     localStorage.setItem('local_demo_user', JSON.stringify(demoUser));
     window.location.assign('/app');
   };
@@ -82,8 +114,8 @@ export function Auth() {
           <div className="absolute right-5 top-5 flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-[10px] font-mono">
             <ShieldCheck className="h-3 w-3" /> {isConfigured ? 'SUPABASE ACTIVE' : 'SETUP MODE'}
           </div>
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15"><Mic className="h-8 w-8" /></div>
-          <h1 className="text-2xl font-bold">{isArabic ? 'مرحباً بك في VoiceAI' : 'Welcome to VoiceAI'}</h1>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15"><Logo size={38} /></div>
+          <h1 className="text-2xl font-bold">{isArabic ? 'مرحباً بك في SooVoice' : 'Welcome to SooVoice'}</h1>
           <p className="mt-2 text-sm text-indigo-100">{isArabic ? 'ابدأ بإدارة مساعدك الصوتي بسهولة' : 'Manage your voice assistant with ease'}</p>
         </header>
 

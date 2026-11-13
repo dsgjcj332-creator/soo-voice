@@ -56,7 +56,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'landing.feat2.title': 'Higher Conversion',
     'landing.feat2.desc': 'Reduce friction. Customers buy faster by just asking.',
     'landing.feat3.title': 'Live AI Agent',
-    'landing.feat3.desc': 'Powered by Gemini for ultra-low latency contextual answers.',
+    'landing.feat3.desc': 'Ultra-low latency voice engine that understands buyer intent and answers instantly.',
     'landing.how.title': 'How to integrate in your website',
     'landing.how.subtitle': 'Paste this snippet just before the closing </body> tag of your website.',
   },
@@ -106,7 +106,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'landing.feat2.title': 'مبيعات أكثر بجهد أقل',
     'landing.feat2.desc': 'العميل يشتري أسرع عندما يطلب ما يريد بصوته مباشرة.',
     'landing.feat3.title': 'مساعد ذكي مباشر',
-    'landing.feat3.desc': 'مدعوم بمحرك Gemini للإجابة السريعة وفهم نية العميل بدقة.',
+    'landing.feat3.desc': 'محرك صوتي فائق السرعة يفهم نية العميل ويجيب في الحال دون أي تأخير.',
     'landing.how.title': 'كيف تربط النظام بموقعك',
     'landing.how.subtitle': 'انسخ هذا الكود وضعه قبل إغلاق وسم </body> في موقعك.',
   }

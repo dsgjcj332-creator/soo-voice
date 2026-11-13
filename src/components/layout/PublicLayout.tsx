@@ -1,7 +1,8 @@
 import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { Mic, Github } from 'lucide-react';
+import { Github } from 'lucide-react';
+import { Logo } from '../brand/Logo';
 
 export function PublicLayout() {
   const { language, setLanguage } = useLanguage();
@@ -43,10 +44,8 @@ export function PublicLayout() {
       {/* Header */}
       <header className="px-6 py-5 flex items-center justify-between border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-50 transition-all">
         <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2 select-none" title={language === 'ar' ? 'انقر 5 مرات للوصول للوحة الإدارة العليا' : 'Click 5 times for Super Admin'}>
-          <div className="bg-indigo-600 p-2 rounded-xl shadow-indigo-200 shadow-lg">
-            <Mic className="h-5 w-5 text-white" />
-          </div>
-          <span className="font-bold text-xl tracking-tight">VoiceAI</span>
+          <Logo size={36} className="rounded-xl shadow-indigo-200 shadow-lg" />
+          <span className="font-bold text-xl tracking-tight">SooVoice</span>
         </Link>
         
         <nav className="hidden md:flex items-center gap-8 font-medium text-sm text-slate-600">
@@ -87,10 +86,8 @@ export function PublicLayout() {
         <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-6">
-              <div className="bg-indigo-500 p-2 rounded-xl">
-                <Mic className="h-5 w-5 text-white" />
-              </div>
-              <span className="font-bold text-xl text-white tracking-tight">VoiceAI</span>
+              <Logo size={36} className="rounded-xl" />
+              <span className="font-bold text-xl text-white tracking-tight">SooVoice</span>
             </Link>
             <p className="text-slate-400 text-sm leading-relaxed mb-6">
               {language === 'ar' 
@@ -127,7 +124,7 @@ export function PublicLayout() {
 
         <div className="max-w-6xl mx-auto px-6 pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-slate-500 text-sm">
-            © {new Date().getFullYear()} VoiceAI SaaS. {language === 'ar' ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}
+            © {new Date().getFullYear()} SooVoice. {language === 'ar' ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}
           </p>
           <div className="flex items-center gap-4 text-slate-400">
              <a href="#" className="hover:text-white transition-colors"><Github className="w-5 h-5" /></a>

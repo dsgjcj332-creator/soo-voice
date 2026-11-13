@@ -57,7 +57,7 @@ export function Security() {
               language === 'ar' ? 'متوافق مع نظام حماية البيانات الشخصية السعودي (PDPL).' : 'Compliant with Saudi PDPL (Personal Data Protection Law).',
               language === 'ar' ? 'جاهز للامتثال لمعايير اللائحة العامة لحماية البيانات (GDPR).' : 'GDPR compliance ready infrastructure.',
               language === 'ar' ? 'تُعالَج المدخلات الصوتية لحظياً ولا يتم تخزين التسجيلات الصوتية في قواعد بياناتنا.' : 'Voice streams are processed in real-time and audio recordings are never stored.',
-              language === 'ar' ? 'نحن نستخدم Google Gemini Enterprise، والبيانات لا تُستخدم في تدريب نماذج Google العامة.' : 'Powered by Google Gemini Enterprise; your data is NOT used to train public models.'
+              language === 'ar' ? 'تتم معالجة الصوت عبر محرك ذكاء اصطناعي مؤسسي معتمد، وبياناتك لا تُستخدم في تدريب نماذج عامة.' : 'Voice runs on an accredited enterprise AI engine; your data is NOT used to train public models.'
             ].map((item, idx) => (
               <li key={idx} className="flex items-start gap-3">
                 <CheckCircle className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />

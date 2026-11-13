@@ -152,7 +152,7 @@ export function Integration() {
   const ownerId = user?.uid || 'merchant_abc123';
 
   // Resizing iframe loader script (Dynamic floating widget)
-  const iframeCode = `<!-- VoiceAI Dynamic Floating Widget Embed -->
+  const iframeCode = `<!-- SooVoice Dynamic Floating Widget Embed -->
 <script>
   (function() {
     var iframe = document.createElement('iframe');
@@ -185,9 +185,9 @@ export function Integration() {
 <\/script>`;
 
   // Traditional Custom Script
-  const scriptCode = `<!-- VoiceAI Full SDK Integration Code -->
+  const scriptCode = `<!-- SooVoice Full SDK Integration Code -->
 <script>
-  window.VoiceAIConfig = {
+  window.SooVoiceConfig = {
     apiKey: "YOUR_...EY",
     theme: "light",
     position: "bottom-right",
@@ -195,7 +195,7 @@ export function Integration() {
     storeId: "${ownerId}"
   };
 <\/script>
-<script src="https://cdn.voiceaisaas.com/widget.js" async defer><\/script>`;
+<script src="https://cdn.soovoice.app/widget.js" async defer><\/script>`;
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -265,8 +265,8 @@ export function Integration() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-VoiceAI-Signature': 'sha256_mock_sig_value_for_verification',
-          'User-Agent': 'VoiceAI-Webhook-Bot/1.0'
+          'X-SooVoice-Signature': 'sha256_mock_sig_value_for_verification',
+          'User-Agent': 'SooVoice-Webhook-Bot/1.0'
         },
         body: JSON.stringify(testPayload),
         signal: controller.signal
@@ -823,7 +823,7 @@ export function Integration() {
               <div className="space-y-1 bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner overflow-x-auto max-h-52">
                 <p className="text-slate-500">&gt; Initializing mock tableside checkout webhook trigger...</p>
                 <p className="text-slate-500">&gt; Dispatching POST to: <span className="text-slate-300">{webhookUrl}</span></p>
-                <p className="text-slate-500">&gt; Headers: Content-Type: application/json | X-VoiceAI-Signature: sha256_sig_...</p>
+                <p className="text-slate-500">&gt; Headers: Content-Type: application/json | X-SooVoice-Signature: sha256_sig_...</p>
                 {isTestingWebhook ? (
                   <p className="text-amber-400 animate-pulse">&gt; WAITING FOR EXTERNAL POS SERVER RESPONSE... (8000ms limit)</p>
                 ) : (

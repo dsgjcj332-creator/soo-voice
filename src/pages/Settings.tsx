@@ -139,8 +139,8 @@ export function Settings() {
               <Settings2 className="w-5 h-5 shrink-0 text-slate-400" />
               <p>
                 {language === 'ar' 
-                  ? 'يقوم نموذج جيميناي (Gemini) بتبني نبرة الصوت المحددة، بينما يتكفل الـ Prompt الديناميكي بتوجيه الذكاء الاصطناعي للتحدث باللهجة الصحيحة دون الحاجة لبناء نموذج جديد!'
-                  : 'Gemini adopts the selected voice tone output, while the dynamic prompt ensures the AI speaks exactly in your requested regional dialect!'}
+                  ? 'المحرك الصوتي الذكي يتبنّى نبرة الصوت المحددة، بينما يتكفل الـ Prompt الديناميكي بتوجيه الذكاء الاصطناعي للتحدث باللهجة الصحيحة دون الحاجة لبناء نموذج جديد!'
+                  : 'The SooVoice engine adopts the selected voice tone output, while the dynamic prompt ensures the AI speaks exactly in your requested regional dialect!'}
               </p>
             </div>
           </div>

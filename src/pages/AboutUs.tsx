@@ -10,7 +10,7 @@ export function AboutUs() {
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6 tracking-tight">
-            {language === 'ar' ? 'من نحن (About Us)' : 'About VoiceAI'}
+            {language === 'ar' ? 'من نحن — SooVoice' : 'About SooVoice'}
           </h1>
           <p className="text-lg text-slate-600 max-w-3xl mx-auto leading-relaxed">
             {language === 'ar' 

@@ -17,7 +17,7 @@ export function PrivacyPolicy() {
         <div className="prose prose-slate max-w-none text-slate-600 space-y-6">
           {language === 'ar' ? (
             <>
-              <p>مرحباً بك في تطبيق VoiceAI SaaS. نحن نقدر خصوصيتك ونلتزم بحماية بياناتك الشخصية.</p>
+              <p>مرحباً بك في تطبيق SooVoice. نحن نقدر خصوصيتك ونلتزم بحماية بياناتك الشخصية.</p>
               
               <h3 className="text-xl font-bold text-slate-800">1. البيانات التي نجمعها</h3>
               <p>عند استخدامك لتطبيقنا وتثبيته عبر منصات مثل شوبيفاي أو سلة، نقوم بجمع:</p>
@@ -31,14 +31,14 @@ export function PrivacyPolicy() {
               <p>نستخدم البيانات المدخلة حصراً لتوفير خدمة المساعد الصوتي لمتجرك، ولتحسين دقة استجابة الذكاء الاصطناعي بناءً على محتوى متجرك المرفوع إلى قاعدة المعرفة.</p>
 
               <h3 className="text-xl font-bold text-slate-800">3. مشاركة البيانات</h3>
-              <p>لا نقوم ببيع بياناتك لأي طرف ثالث. تتم معالجة الأوامر الصوتية والنصية عبر نماذج Google Gemini ضمن بيئة آمنة تخضع لسياسات Google الصارمة في الخصوصية.</p>
+              <p>لا نقوم ببيع بياناتك لأي طرف ثالث. تتم معالجة الأوامر الصوتية والنصية عبر محرك ذكاء اصطناعي مؤسسي معتمد ضمن بيئة آمنة تخضع لصارمة معايير الخصوصية.</p>
 
               <h3 className="text-xl font-bold text-slate-800">4. حقوقك كتاجر</h3>
               <p>بموجب القوانين ذات الصلة، يمكنك في أي وقت المطالبة بمسح كامل بياناتك وقوائمك من خوادمنا بمجرد إزالة تثبيت التطبيق (App Uninstall Webhook) من متجرك.</p>
             </>
           ) : (
             <>
-              <p>Welcome to VoiceAI SaaS. We respect your privacy and are committed to protecting your personal data.</p>
+              <p>Welcome to SooVoice. We respect your privacy and are committed to protecting your personal data.</p>
               
               <h3 className="text-xl font-bold text-slate-800">1. Data We Collect</h3>
               <p>When you install our app via platforms like Shopify or Salla, we collect:</p>
@@ -52,7 +52,7 @@ export function PrivacyPolicy() {
               <p>Data is strictly used to provide the voice agent service and enhance the AI's response accuracy based on your Knowledge Base.</p>
 
               <h3 className="text-xl font-bold text-slate-800">3. Data Sharing</h3>
-              <p>We do not sell your data. Voice processing relies on Google Gemini within a secure environment governed by Google's strict privacy rules.</p>
+              <p>We do not sell your data. Voice processing relies on an accredited enterprise AI engine within a secure environment governed by strict privacy standards.</p>
               
               <h3 className="text-xl font-bold text-slate-800">4. Merchant Rights</h3>
               <p>You can request complete deletion of your data. Uninstalling the app via your platform automatically triggers a webhook to erase your configurations.</p>
