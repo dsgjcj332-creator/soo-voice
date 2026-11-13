@@ -1,68 +1,374 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useSettings, Dialect, VoiceTone, BusinessType, Currency } from '../contexts/SettingsContext';
-import { Globe, Settings2, Sparkles, Star, Utensils, DollarSign, Database } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { useSettings, Dialect, VoiceTone, Currency } from '../contexts/SettingsContext';
+import {
+  Globe, Settings2, Sparkles, Star, Utensils, DollarSign, Database,
+  Store, MapPin, Phone, Mic, MicOff, Timer, Navigation, ShieldCheck, CheckCircle2,
+} from 'lucide-react';
 import { subscribeToGlobalVoices, GlobalVoice } from '../services/globalVoices';
 import { getSupabaseConfig } from '../lib/supabase';
 import { CURRENCY_LIST } from '../lib/currency';
+import { useStoreSettings, SESSION_MINUTES_OPTIONS, GEO_RADIUS_OPTIONS } from '../lib/storeSettings';
 
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+        checked ? 'bg-indigo-600' : 'bg-slate-300'
+      } ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+    </button>
+  );
+}
 
 export function Settings() {
   const { language } = useLanguage();
+  const { user } = useAuth();
   const { dialect, setDialect, voiceTone, setVoiceTone, currency, setCurrency } = useSettings();
   const [globalVoices, setGlobalVoices] = useState<GlobalVoice[]>([]);
-  
+  const { settings: storeSettings, update: updateStoreSettings } = useStoreSettings(
+    user?.uid,
+    user?.provider !== 'local'
+  );
+
+  // Geo capture status for the "use my location" flow
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'done' | 'error'>('idle');
+
+  // Cuisine concept — single top-level state (fixed: was a hook inside map)
+  const [selectedCuisine, setSelectedCuisine] = useState(() => localStorage.getItem('restaurant_cuisine') || 'fast_food');
+
   useEffect(() => {
     const unsubscribe = subscribeToGlobalVoices((voices) => setGlobalVoices(voices));
     return () => unsubscribe();
   }, []);
 
+  const isAr = language === 'ar';
+
   const standardVoices = [
-    { value: 'Zephyr', label: language === 'ar' ? 'زيفير (صوت أنثوي ناعم)' : 'Zephyr (Female, Soft)' },
-    { value: 'Charon', label: language === 'ar' ? 'كارون (صوت رجولي دافئ)' : 'Charon (Male, Warm)' },
-    { value: 'Fenrir', label: language === 'ar' ? 'فنرير (صوت رجولي قوي)' : 'Fenrir (Male, Deep)' },
-    { value: 'Kore', label: language === 'ar' ? 'كوري (صوت أنثوي حاد)' : 'Kore (Female, Clear)' },
+    { value: 'Zephyr', label: isAr ? 'زيفير (صوت أنثوي ناعم)' : 'Zephyr (Female, Soft)' },
+    { value: 'Charon', label: isAr ? 'كارون (صوت رجولي دافئ)' : 'Charon (Male, Warm)' },
+    { value: 'Fenrir', label: isAr ? 'فنرير (صوت رجولي قوي)' : 'Fenrir (Male, Deep)' },
+    { value: 'Kore', label: isAr ? 'كوري (صوت أنثوي حاد)' : 'Kore (Female, Clear)' },
   ];
+
+  const captureLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoStatus('error');
+      return;
+    }
+    setGeoStatus('locating');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        updateStoreSettings({
+          geoLat: Number(pos.coords.latitude.toFixed(6)),
+          geoLng: Number(pos.coords.longitude.toFixed(6)),
+        });
+        setGeoStatus('done');
+        setTimeout(() => setGeoStatus('idle'), 2500);
+      },
+      () => setGeoStatus('error'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  };
+
+  const sessionLabel = (m: number) => {
+    if (m === 0) return isAr ? 'مفتوح دائماً' : 'Always open';
+    if (m === 120) return isAr ? 'ساعتان' : '2 hours';
+    return isAr ? `${m} دقائق` : `${m} min`;
+  };
 
   return (
     <div className="p-8 max-w-4xl mx-auto font-sans">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800">
-          {language === 'ar' ? 'إعدادات المساعد الصوتي' : 'Voice Agent Settings'}
+          {isAr ? 'الإعدادات' : 'Settings'}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {language === 'ar' 
-            ? 'قم بتخصيص لهجة وصوت المساعد ليناسب هوية متجرك وعملائك.' 
-            : 'Customize your agent\'s dialect and voice to match your brand.'}
+          {isAr
+            ? 'كل ما يخص متجرك: بيانات المطعم، تجربة المنيو للزبون، والتحكم في الوصول والصوت.'
+            : 'Everything for your store: restaurant profile, menu experience, access control and voice.'}
         </p>
       </div>
 
+      {/* ============ Restaurant Profile Card ============ */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
+          <div className="h-10 w-10 bg-sky-100 text-sky-600 rounded-xl flex items-center justify-center">
+            <Store className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">
+              {isAr ? 'معلومات المطعم (هوية المتجر)' : 'Restaurant Profile'}
+            </h2>
+            <p className="text-sm text-slate-500">
+              {isAr
+                ? 'الاسم والبيانات دي تظهر للزبون في المنيو عند مسح الكود وعلى ستاند الـ QR.'
+                : 'These details appear on the customer menu and the printed QR stand.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              {isAr ? 'اسم المطعم (بالعربي)' : 'Restaurant name (Arabic)'}
+            </label>
+            <input
+              type="text"
+              value={storeSettings.restaurantName}
+              onChange={(e) => updateStoreSettings({ restaurantName: e.target.value })}
+              placeholder={isAr ? 'مثال: مطعم الأصالة' : 'e.g. El-Asala Restaurant'}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              {isAr ? 'اسم المطعم (بالإنجليزي — اختياري)' : 'Restaurant name (English — optional)'}
+            </label>
+            <input
+              type="text"
+              dir="ltr"
+              value={storeSettings.restaurantNameEn}
+              onChange={(e) => updateStoreSettings({ restaurantNameEn: e.target.value })}
+              placeholder={isAr ? 'e.g. Asala Restaurant' : 'e.g. Asala Restaurant'}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <Phone className="w-4 h-4 text-slate-400" />
+              {isAr ? 'رقم الهاتف / الواتساب' : 'Phone / WhatsApp'}
+            </label>
+            <input
+              type="tel"
+              dir="ltr"
+              value={storeSettings.phone}
+              onChange={(e) => updateStoreSettings({ phone: e.target.value })}
+              placeholder="+20 100 000 0000"
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-slate-400" />
+              {isAr ? 'عنوان المطعم' : 'Restaurant address'}
+            </label>
+            <input
+              type="text"
+              value={storeSettings.address}
+              onChange={(e) => updateStoreSettings({ address: e.target.value })}
+              placeholder={isAr ? 'مثال: 15 شارع التحرير، الدقي، الجيزة' : '15 Tahreer St., Dokki, Giza'}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <p className="md:col-span-2 text-[11px] text-slate-400 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+            {isAr
+              ? 'يتم الحفظ تلقائياً مع كل تعديل — لا حاجة لزر حفظ.'
+              : 'Changes save automatically with every edit — no save button needed.'}
+          </p>
+        </div>
+      </div>
+
+      {/* ============ Table Experience & Access Control Card ============ */}
+      <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
+          <div className="h-10 w-10 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">
+              {isAr ? 'تجربة الطاولة والتحكم في الوصول' : 'Table Experience & Access Control'}
+            </h2>
+            <p className="text-sm text-slate-500">
+              {isAr
+                ? 'اضبط المنيو زي ما تحب بالظبط: الصوت، المدة، والنطاق الجغرافي حول المطعم.'
+                : 'Fine-tune the menu exactly as you like: voice, session time, and geo-fence.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-8">
+          {/* Voice waiter visibility */}
+          <div className="flex items-start justify-between gap-4 p-4 rounded-2xl border border-slate-200">
+            <div className="flex items-start gap-3">
+              {storeSettings.showVoiceWidget ? (
+                <div className="h-10 w-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                  <Mic className="h-5 w-5" />
+                </div>
+              ) : (
+                <div className="h-10 w-10 bg-slate-100 text-slate-500 rounded-xl flex items-center justify-center shrink-0">
+                  <MicOff className="h-5 w-5" />
+                </div>
+              )}
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm">
+                  {isAr ? 'النادل الصوتي الذكي على المنيو' : 'AI Voice Waiter on the menu'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  {isAr
+                    ? 'لو أغلقت الخيار، المنيو يبقى يدوي فقط (تصفح وإضافة للطلب بدون مساعد صوتي). تقدر تفتحه أو تقفله في أي وقت.'
+                    : 'When off, the menu becomes manual-only (browse & add to order without the voice assistant). Toggle anytime.'}
+                </p>
+              </div>
+            </div>
+            <Toggle
+              checked={storeSettings.showVoiceWidget}
+              onChange={(v) => updateStoreSettings({ showVoiceWidget: v })}
+            />
+          </div>
+
+          {/* Session duration */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1 flex items-center gap-2">
+              <Timer className="w-4 h-4 text-indigo-500" />
+              {isAr ? 'مدة بقاء المنيو مفتوح بعد مسح الكود' : 'Menu stays open after scanning for'}
+            </label>
+            <p className="text-xs text-slate-500 mb-3">
+              {isAr
+                ? 'بعد انتهاء المدة، تظهر للزبون شاشة تنهي الجلسة ويحتاج مسح الكود من جديد.'
+                : 'After the duration ends, guests see a session-expired screen and must scan the code again.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {SESSION_MINUTES_OPTIONS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => updateStoreSettings({ sessionMinutes: m })}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                    storeSettings.sessionMinutes === m
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                  }`}
+                >
+                  {sessionLabel(m)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Geo-fence */}
+          <div className="p-4 rounded-2xl border border-slate-200 space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
+                  <Navigation className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    {isAr ? 'قفل النطاق الجغرافي (حول موقع المطعم)' : 'Geo-fence (around restaurant location)'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    {isAr
+                      ? 'المنيو يفتح فقط للزبون اللي جوه النطاق المحدد حول موقع المطعم — يعني الكود يشتغل في المكان نفسه فقط.'
+                      : 'The menu opens only for guests inside the selected radius around your restaurant — the code works on-site only.'}
+                  </p>
+                </div>
+              </div>
+              <Toggle
+                checked={storeSettings.geoEnabled}
+                disabled={!storeSettings.geoLat || !storeSettings.geoLng}
+                onChange={(v) => updateStoreSettings({ geoEnabled: v })}
+              />
+            </div>
+
+            {/* Location capture */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={captureLocation}
+                disabled={geoStatus === 'locating'}
+                className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              >
+                <MapPin className="w-4 h-4" />
+                {geoStatus === 'locating'
+                  ? (isAr ? 'جاري تحديد موقعك...' : 'Locating...')
+                  : (isAr ? 'استخدم موقعي الحالي كموقع المطعم' : 'Use my current location')}
+              </button>
+              {storeSettings.geoLat != null && storeSettings.geoLng != null && (
+                <span className="text-[11px] font-mono text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-1.5" dir="ltr">
+                  {storeSettings.geoLat.toFixed(5)}, {storeSettings.geoLng.toFixed(5)}
+                </span>
+              )}
+              {geoStatus === 'done' && (
+                <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {isAr ? 'تم حفظ الموقع' : 'Location saved'}
+                </span>
+              )}
+              {geoStatus === 'error' && (
+                <span className="text-[11px] font-bold text-red-500">
+                  {isAr ? 'مش قادرين نحدد الموقع — اسمح بصلاحية الموقع للمتصفح وحاول تاني.' : 'Could not get location — allow browser location permission and retry.'}
+                </span>
+              )}
+            </div>
+
+            {/* Radius picker */}
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-2">
+                {isAr ? 'نطاق الفتح حول المطعم' : 'Open radius around the restaurant'}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {GEO_RADIUS_OPTIONS.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => updateStoreSettings({ geoRadiusKm: r })}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                      storeSettings.geoRadiusKm === r
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
+                    }`}
+                  >
+                    {r < 1 ? `${Math.round(r * 1000)} ${isAr ? 'متر' : 'm'}` : `${r} ${isAr ? 'كم' : 'km'}`}
+                  </button>
+                ))}
+              </div>
+              {!storeSettings.geoLat && (
+                <p className="mt-2 text-[11px] text-amber-600 font-semibold">
+                  {isAr
+                    ? 'حدد موقع المطعم الأول (زر "استخدم موقعي الحالي") حتى يتفعل هذا القفل.'
+                    : 'Set the restaurant location first ("Use my current location") to enable this lock.'}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============ Language & Dialect Card ============ */}
+      <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
           <div className="h-10 w-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
             <Globe className="h-5 w-5" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {language === 'ar' ? 'اللغة واللهجة (AI Persona)' : 'Language & Dialect'}
+              {isAr ? 'اللغة واللهجة (AI Persona)' : 'Language & Dialect'}
             </h2>
             <p className="text-sm text-slate-500">
-              {language === 'ar' ? 'كيف سيتحدث الذكاء الاصطناعي مع عملائك؟' : 'How the AI will converse with your customers'}
+              {isAr ? 'كيف سيتحدث الذكاء الاصطناعي مع عملائك؟' : 'How the AI will converse with your customers'}
             </p>
           </div>
         </div>
-        
+
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
-              {language === 'ar' ? 'لهجة المساعد' : 'Agent Dialect'}
+              {isAr ? 'لهجة المساعد' : 'Agent Dialect'}
             </label>
             <div className="space-y-3">
               {[
-                { value: 'standard', label: language === 'ar' ? 'العربية الفصحى' : 'Standard Arabic' },
-                { value: 'egyptian', label: language === 'ar' ? 'المصرية العامية' : 'Egyptian' },
-                { value: 'gulf', label: language === 'ar' ? 'الخليجية' : 'Gulf' },
-                { value: 'levantine', label: language === 'ar' ? 'الشامية' : 'Levantine' },
+                { value: 'standard', label: isAr ? 'العربية الفصحى' : 'Standard Arabic' },
+                { value: 'egyptian', label: isAr ? 'المصرية العامية' : 'Egyptian' },
+                { value: 'gulf', label: isAr ? 'الخليجية' : 'Gulf' },
+                { value: 'levantine', label: isAr ? 'الشامية' : 'Levantine' },
               ].map((opt) => (
                 <label key={opt.value} className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${dialect === opt.value ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-indigo-300'}`}>
                   <input
@@ -81,7 +387,7 @@ export function Settings() {
 
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-              {language === 'ar' ? 'نبرة الصوت المتاحة (Voice Profiles)' : 'Voice Profiles'}
+              {isAr ? 'نبرة الصوت المتاحة (Voice Profiles)' : 'Voice Profiles'}
               <Sparkles className="w-4 h-4 text-amber-500" />
             </label>
             <div className="space-y-3">
@@ -92,15 +398,15 @@ export function Settings() {
                     name="voiceTone"
                     value={opt.value}
                     checked={voiceTone === opt.value}
-                    onChange={(e) => setVoiceTone(e.target.value as any)}
+                    onChange={(e) => setVoiceTone(e.target.value as VoiceTone)}
                     className="w-4 h-4 text-indigo-600 border-slate-300 focus:ring-indigo-600"
                   />
                   <span className="ms-3 font-semibold text-slate-800 text-sm">{opt.label}</span>
                 </label>
               ))}
-              
+
               {globalVoices.length > 0 && <hr className="my-4 border-slate-100" />}
-              
+
               {globalVoices.map((voice) => (
                 <label key={voice.id} className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${voiceTone === voice.name ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-indigo-300'}`}>
                   <input
@@ -108,26 +414,26 @@ export function Settings() {
                     name="voiceTone"
                     value={voice.name}
                     checked={voiceTone === voice.name}
-                    onChange={(e) => setVoiceTone(e.target.value as any)}
+                    onChange={(e) => setVoiceTone(e.target.value as VoiceTone)}
                     className="w-4 h-4 text-indigo-600 border-slate-300 focus:ring-indigo-600"
                   />
                   <span className="flex-1 ms-3 font-semibold text-slate-800 text-sm flex items-center justify-between">
                      {voice.name}
                      {voice.celebrity && (
                         <div className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full whitespace-nowrap">
-                           <Star className="w-3 h-3 fill-amber-500" /> 
-                           {language === 'ar' ? 'مشهور' : 'Celebrity'}
+                           <Star className="w-3 h-3 fill-amber-500" />
+                           {isAr ? 'مشهور' : 'Celebrity'}
                         </div>
                      )}
                   </span>
                 </label>
               ))}
             </div>
-            
+
             <div className="mt-6 bg-slate-50 p-4 rounded-xl border border-slate-100 flex gap-3 text-sm text-slate-600">
               <Settings2 className="w-5 h-5 shrink-0 text-slate-400" />
               <p>
-                {language === 'ar' 
+                {isAr
                   ? 'المحرك الصوتي الذكي يتبنّى نبرة الصوت المحددة، بينما يتكفل الـ Prompt الديناميكي بتوجيه الذكاء الاصطناعي للتحدث باللهجة الصحيحة دون الحاجة لبناء نموذج جديد!'
                   : 'The SooVoice engine adopts the selected voice tone output, while the dynamic prompt ensures the AI speaks exactly in your requested regional dialect!'}
               </p>
@@ -136,7 +442,7 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Currency Selection Card */}
+      {/* ============ Currency Card ============ */}
       <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
           <div className="h-10 w-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
@@ -144,10 +450,10 @@ export function Settings() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {language === 'ar' ? 'العملة الافتراضية' : 'Default Currency'}
+              {isAr ? 'العملة الافتراضية' : 'Default Currency'}
             </h2>
             <p className="text-sm text-slate-500">
-              {language === 'ar' ? 'اختر العملة التي ستظهر في الفواتير والمنيو' : 'Select the currency used across billing, invoices, and menu pricing'}
+              {isAr ? 'اختر العملة التي ستظهر في الفواتير والمنيو' : 'Select the currency used across billing, invoices, and menu pricing'}
             </p>
           </div>
         </div>
@@ -163,7 +469,7 @@ export function Settings() {
               >
                 <div>
                   <span className="font-bold text-slate-800 text-sm block">
-                    {language === 'ar' ? `${cur.labelAr} (${cur.code})` : `${cur.labelEn} (${cur.code})`}
+                    {isAr ? `${cur.labelAr} (${cur.code})` : `${cur.labelEn} (${cur.code})`}
                   </span>
                   <span className="text-[11px] text-slate-400" dir="ltr">{cur.symbol}</span>
                 </div>
@@ -172,7 +478,7 @@ export function Settings() {
                   name="currency"
                   value={cur.code}
                   checked={currency === cur.code}
-                  onChange={(e) => setCurrency(e.target.value as any)}
+                  onChange={(e) => setCurrency(e.target.value as Currency)}
                   className="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500"
                 />
               </label>
@@ -181,7 +487,7 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Restaurant Concept & Dine-in Experience Card */}
+      {/* ============ Restaurant Concept Card ============ */}
       <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
           <div className="h-10 w-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
@@ -189,10 +495,10 @@ export function Settings() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {language === 'ar' ? 'طابع المطعم والضيافة الصوتية (Restaurant Concept)' : 'Restaurant Concept & Hospitality'}
+              {isAr ? 'طابع المطعم والضيافة الصوتية (Restaurant Concept)' : 'Restaurant Concept & Hospitality'}
             </h2>
             <p className="text-sm text-slate-500">
-              {language === 'ar' ? 'تخصيص سلوك النادل الصوتي الذكي ونوع الضيافة وخدمة الطاولات' : 'Configure smart voice waiter persona, cuisine type, and table service'}
+              {isAr ? 'تخصيص سلوك النادل الصوتي الذكي ونوع الضيافة وخدمة الطاولات' : 'Configure smart voice waiter persona, cuisine type, and table service'}
             </p>
           </div>
         </div>
@@ -233,14 +539,13 @@ export function Settings() {
                 icon: '🍕'
               }
             ].map((cuisine) => {
-              const [selectedCuisine, setSelectedCuisine] = useState(() => localStorage.getItem('restaurant_cuisine') || 'fast_food');
               const isSelected = selectedCuisine === cuisine.id;
               return (
                 <div
                   key={cuisine.id}
                   onClick={() => {
-                    localStorage.setItem('restaurant_cuisine', cuisine.id);
                     setSelectedCuisine(cuisine.id);
+                    localStorage.setItem('restaurant_cuisine', cuisine.id);
                   }}
                   className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col gap-3 relative ${
                     isSelected ? 'border-emerald-600 bg-white ring-2 ring-emerald-100 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-75 hover:opacity-100'
@@ -250,31 +555,31 @@ export function Settings() {
                     <div className="flex items-center gap-3">
                       <span className="text-2xl">{cuisine.icon}</span>
                       <h3 className="font-bold text-slate-800 text-sm">
-                        {language === 'ar' ? cuisine.titleAr : cuisine.titleEn}
+                        {isAr ? cuisine.titleAr : cuisine.titleEn}
                       </h3>
                     </div>
                     {isSelected && (
                       <span className="text-[10px] bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold">
-                        {language === 'ar' ? 'طابع نشط' : 'Active Concept'}
+                        {isAr ? 'طابع نشط' : 'Active Concept'}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    {language === 'ar' ? cuisine.descAr : cuisine.descEn}
+                    {isAr ? cuisine.descAr : cuisine.descEn}
                   </p>
                 </div>
               );
             })}
           </div>
-          
+
           <div className="mt-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div>
               <h4 className="font-bold text-xs text-emerald-900">
-                {language === 'ar' ? 'تكامل الطاولات والمنيو الذكي' : 'Integrated Restaurant Dine-in Architecture'}
+                {isAr ? 'تكامل الطاولات والمنيو الذكي' : 'Integrated Restaurant Dine-in Architecture'}
               </h4>
               <p className="text-[11px] text-emerald-800 mt-1 leading-relaxed">
-                {language === 'ar' 
+                {isAr
                   ? 'تم تخصيص هذا التطبيق بالكامل كمنيو مطاعم وكافيهات صوتي. يقوم الزبون بالجلوس على الطاولة، مسح كود الـ QR، والتحدث مباشرة مع النادل الذكي لاختيار وجبته وإرسال الطلب فوراً إلى طابعة المطبخ أو نظام الكاشير (POS).'
                   : 'This application is exclusively architected for restaurant QR table ordering and digital voice menus. Guests scan the QR on their table, speak directly to the AI waiter, and submit orders straight to your kitchen/POS.'}
               </p>
@@ -283,7 +588,7 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Database Status Card - read-only; connection is managed server-side */}
+      {/* ============ Database Status Card ============ */}
       <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -292,10 +597,10 @@ export function Settings() {
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">
-                {language === 'ar' ? 'قاعدة البيانات' : 'Database'}
+                {isAr ? 'قاعدة البيانات' : 'Database'}
               </h2>
               <p className="text-sm text-slate-500">
-                {language === 'ar'
+                {isAr
                   ? 'اتصال قاعدة البيانات مُدار بأمان عبر إعدادات الخادم (Vercel) ولا يمكن عرضه أو تعديله من الواجهة.'
                   : 'The database connection is securely managed via server-side environment variables and cannot be viewed or edited from the UI.'}
               </p>
@@ -305,12 +610,12 @@ export function Settings() {
           {getSupabaseConfig().isConfigured ? (
             <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold flex items-center gap-1 shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              {language === 'ar' ? 'متصلة وآمنة' : 'Connected'}
+              {isAr ? 'متصلة وآمنة' : 'Connected'}
             </span>
           ) : (
             <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-bold flex items-center gap-1 shrink-0">
               <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              {language === 'ar' ? 'وضع محلي' : 'Local Mode'}
+              {isAr ? 'وضع محلي' : 'Local Mode'}
             </span>
           )}
         </div>
@@ -318,4 +623,3 @@ export function Settings() {
     </div>
   );
 }
-

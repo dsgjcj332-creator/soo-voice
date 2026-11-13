@@ -118,6 +118,23 @@ npm run clean   # remove dist/
 1. Push to GitHub and import the repo in Vercel.
 2. Set the server-side env vars from the table above in Project Settings.
 3. Build command: `npm run build` — API routes are picked up automatically from `api/`.
+4. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
+   `store_settings` table that powers the merchant store profile, voice-widget
+   visibility toggle, geo-fence and menu session duration. Until it is applied the
+   app degrades gracefully to localStorage-only persistence.
+
+## Store Access Control (QR dine-in)
+
+Merchants control the customer menu from **Settings → Table Experience & Access Control**:
+
+- **Restaurant profile** — Arabic/English name, phone, address; shown on the
+  customer menu, the QR stand and the browser tab.
+- **Voice waiter toggle** — hide the AI voice widget for a manual-only menu.
+- **Session duration** — the menu stays open 5/10/15/30/60/120 minutes after a QR
+  scan, or always. Expired sessions show a lock screen until the guest re-scans.
+- **Geo-fence** — the menu opens only within a configurable radius (100 m – 5 km)
+  of the restaurant's coordinates. Owners preview freely via `?preview=1` links;
+  real QR scans always enforce the lock.
 
 ## Roadmap
 

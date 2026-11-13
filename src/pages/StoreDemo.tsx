@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCart } from '../contexts/CartContext';
-import { ShoppingBag, Plus, Trash2, CreditCard, Sparkles, Key, Home, Car, MapPin } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, CreditCard, Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
@@ -8,6 +8,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { normalizeCurrency, formatPrice } from '../lib/currency';
 import { useSearchParams } from 'react-router-dom';
+import {
+  useStoreSettings, haversineKm, ensureSessionStart, resetSession,
+  sessionRemainingSeconds, formatCountdown,
+} from '../lib/storeSettings';
 
 
 export function StoreDemo() {
@@ -27,11 +31,83 @@ export function StoreDemo() {
   const urlOwnerId = searchParams.get('ownerId') || searchParams.get('storeId') || '';
   const resolvedOwnerId = urlOwnerId || user?.uid || 'demo_merchant';
 
+  // ---- Owner store settings (identity + voice visibility + access control) ----
+  const { settings: storeSettings, loading: storeLoading } = useStoreSettings(resolvedOwnerId);
+  // Only an explicit preview link (?preview=1) bypasses the access locks —
+  // owners testing the real QR experience see exactly what customers see.
+  const previewBypass = searchParams.get('preview') === '1';
+
+  // ---- Geo-fence gate ----
+  const [geoRetry, setGeoRetry] = React.useState(0);
+  const [geoState, setGeoState] = React.useState<'pending' | 'allowed' | 'denied' | 'error' | 'unsupported'>('pending');
+  React.useEffect(() => {
+    if (storeLoading) return;
+    if (!storeSettings.geoEnabled || storeSettings.geoLat == null || storeSettings.geoLng == null || previewBypass) {
+      setGeoState('allowed');
+      return;
+    }
+    if (!('geolocation' in navigator)) {
+      setGeoState('unsupported');
+      return;
+    }
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const dist = haversineKm(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          storeSettings.geoLat as number,
+          storeSettings.geoLng as number
+        );
+        setGeoState(dist <= storeSettings.geoRadiusKm ? 'allowed' : 'denied');
+      },
+      () => {
+        if (!cancelled) setGeoState('error');
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [storeSettings.geoEnabled, storeSettings.geoLat, storeSettings.geoLng, storeSettings.geoRadiusKm, storeLoading, previewBypass, geoRetry]);
+
+  // ---- Time-limited session countdown ----
+  const [sessionRemaining, setSessionRemaining] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (storeLoading) return;
+    if (!storeSettings.sessionMinutes || previewBypass) {
+      setSessionRemaining(null);
+      return;
+    }
+    const start = ensureSessionStart(resolvedOwnerId);
+    const tick = () => {
+      setSessionRemaining(sessionRemainingSeconds(start, storeSettings.sessionMinutes));
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [storeSettings.sessionMinutes, storeLoading, previewBypass, resolvedOwnerId]);
+
+  const sessionExpired = sessionRemaining !== null && sessionRemaining <= 0;
+  const geoLocked = geoState === 'denied' || geoState === 'error' || geoState === 'unsupported';
+  const accessBlocked = !storeLoading && (geoLocked || sessionExpired);
+  // While the geo verdict is pending we hold the menu back (no flash of content)
+  const geoPending = !storeLoading && !previewBypass
+    && storeSettings.geoEnabled && storeSettings.geoLat != null && storeSettings.geoLng != null
+    && geoState === 'pending';
+
   React.useEffect(() => {
     if (tableParam) {
       setSelectedTable(tableParam);
     }
   }, [tableParam]);
+
+  // Page title reflects the restaurant name
+  React.useEffect(() => {
+    const name = storeSettings.restaurantName || storeSettings.restaurantNameEn;
+    if (name) document.title = `${name} — SooVoice`;
+  }, [storeSettings.restaurantName, storeSettings.restaurantNameEn]);
 
   // Design customizer state loaded dynamically
   const [menuPrimaryColor, setMenuPrimaryColor] = React.useState<string>("indigo");
@@ -151,6 +227,16 @@ export function StoreDemo() {
       return () => {
         supabase.removeChannel(channel);
       };
+    } else {
+      // Local/demo mode: show the merchant's OWN locally saved catalog so the
+      // dine-in preview reflects exactly what was entered in Digital Menu
+      // (real merchant data — not mock content).
+      try {
+        const localItems = JSON.parse(localStorage.getItem(`local_menu_items_${resolvedOwnerId}`) || '[]');
+        setDbMenuItems(Array.isArray(localItems) ? localItems : []);
+      } catch {
+        setDbMenuItems([]);
+      }
     }
   }, [resolvedOwnerId]);
 
@@ -228,6 +314,9 @@ export function StoreDemo() {
       setTimeout(() => setCheckoutStatus('idle'), 3000);
     }
   };
+
+  const getRestaurantName = () =>
+    storeSettings.restaurantName || storeSettings.restaurantNameEn || getSectorTitle();
 
   const getSectorTitle = () => {
     return language === "ar" ? "قائمة الطعام والمنيو الذكي للطاولات" : "Smart Dine-In Menu & Voice Waiter";
@@ -370,6 +459,100 @@ export function StoreDemo() {
   const currentPrimary = primaryColorStyles[menuPrimaryColor as keyof typeof primaryColorStyles] || primaryColorStyles.indigo;
   const currentBgTheme = bgThemeStyles[menuBgStyle as keyof typeof bgThemeStyles] || bgThemeStyles["light-clean"];
 
+  // ---- Full-screen Access Gate (geo-fence verdict pending / denied / expired session) ----
+  if (geoPending || accessBlocked) {
+    const radiusLabel = storeSettings.geoRadiusKm < 1
+      ? `${Math.round(storeSettings.geoRadiusKm * 1000)} ${language === 'ar' ? 'متر' : 'm'}`
+      : `${storeSettings.geoRadiusKm} ${language === 'ar' ? 'كم' : 'km'}`;
+    return (
+      <div className={`min-h-screen flex items-center justify-center px-4 font-sans ${currentBgTheme.mainBg}`}>
+        <div className={`${currentBgTheme.cardBg} max-w-md w-full p-8 rounded-3xl text-center shadow-xl border`}>
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-900 text-white">
+            {sessionExpired ? <Timer className="h-8 w-8" /> : <ShieldAlert className="h-8 w-8" />}
+          </div>
+
+          {sessionExpired ? (
+            <>
+              <h1 className={`text-xl font-extrabold ${currentBgTheme.titleText}`}>
+                {language === 'ar' ? 'انتهت جلسة الطاولة' : 'Table session expired'}
+              </h1>
+              <p className={`mt-3 text-sm leading-relaxed ${currentBgTheme.descText}`}>
+                {language === 'ar'
+                  ? `مدة استخدام المنيو انتهت (${storeSettings.sessionMinutes} دقائق). امسح كود الـ QR الموجود على طاولتك من جديد لبدء جلسة جديدة.`
+                  : `Your ${storeSettings.sessionMinutes}-minute menu session has ended. Scan the QR code on your table again to start a new session.`}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  resetSession(resolvedOwnerId);
+                  window.location.reload();
+                }}
+                className="mt-6 w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-indigo-700"
+              >
+                <RefreshCcw className="w-4 h-4" />
+                {language === 'ar' ? 'ابدأ جلسة جديدة' : 'Start a new session'}
+              </button>
+            </>
+          ) : geoState === 'pending' ? (
+            <>
+              <h1 className={`text-xl font-extrabold ${currentBgTheme.titleText}`}>
+                {language === 'ar' ? 'جاري التحقق من موقعك...' : 'Checking your location...'}
+              </h1>
+              <p className={`mt-3 text-sm leading-relaxed ${currentBgTheme.descText}`}>
+                {language === 'ar'
+                  ? 'اسمح بصلاحية الموقع في المتصفح حتى نتأكد أنك داخل نطاق المطعم.'
+                  : 'Allow the browser location permission so we can confirm you are inside the restaurant area.'}
+              </p>
+              <div className="mt-6">
+                <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"></div>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className={`text-xl font-extrabold ${currentBgTheme.titleText}`}>
+                {geoState === 'denied'
+                  ? (language === 'ar' ? 'المنيو متاح داخل المطعم فقط' : 'This menu works inside the restaurant only')
+                  : (language === 'ar' ? 'لم نتمكن من تأكيد موقعك' : 'We could not confirm your location')}
+              </h1>
+              <p className={`mt-3 text-sm leading-relaxed ${currentBgTheme.descText}`}>
+                {geoState === 'denied'
+                  ? (language === 'ar'
+                    ? `هذا الكود مربوط بموقع المطعم ويفتح فقط داخل نطاق ${radiusLabel} حوله. لو أنت جوه المطعم، اسمح بصلاحية الموقع وحاول تاني.`
+                    : `This code is tied to the restaurant location and opens only within a ${radiusLabel} radius. If you are on-site, allow the location permission and try again.`)
+                  : (language === 'ar'
+                    ? 'اسمح بصلاحية الموقع للمتصفح ثم حاول مرة أخرى. (المنيو يفتح فقط داخل نطاق المطعم)'
+                    : 'Allow the browser location permission, then try again. (The menu opens only inside the restaurant area.)')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (geoState === 'error') {
+                    setGeoState('pending');
+                    setGeoRetry((n) => n + 1);
+                  } else {
+                    window.location.reload();
+                  }
+                }}
+                className="mt-6 w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-indigo-700"
+              >
+                <Navigation className="w-4 h-4" />
+                {language === 'ar' ? 'إعادة المحاولة' : 'Try again'}
+              </button>
+            </>
+          )}
+
+          {(storeSettings.restaurantName || storeSettings.restaurantNameEn || storeSettings.phone) && (
+            <div className={`mt-6 pt-4 border-t text-xs ${currentBgTheme.isDark ? 'border-slate-800 text-slate-400' : 'border-slate-100 text-slate-500'}`}>
+              {storeSettings.restaurantName && <p className="font-bold">{storeSettings.restaurantName}</p>}
+              {storeSettings.address && <p className="mt-1">{storeSettings.address}</p>}
+              {storeSettings.phone && <p className="mt-1" dir="ltr">{storeSettings.phone}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen transition-all duration-500 p-6 md:p-12 font-sans flex justify-center ${currentBgTheme.mainBg} relative overflow-hidden`}>
       {/* CSS Keyframes for magical elements */}
@@ -481,19 +664,45 @@ export function StoreDemo() {
                 )}
                 <div>
                   <h1 className={`text-3xl font-extrabold tracking-tight ${currentBgTheme.titleText}`}>
-                    {getSectorTitle()}
+                    {getRestaurantName()}
                   </h1>
                   <p className={`mt-2 text-sm leading-relaxed ${currentBgTheme.descText}`}>
                     {getSectorDescription()}
                   </p>
+                  {(storeSettings.address || storeSettings.phone) && (
+                    <div className={`mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs ${currentBgTheme.descText}`}>
+                      {storeSettings.address && (
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5" />
+                          {storeSettings.address}
+                        </span>
+                      )}
+                      {storeSettings.phone && (
+                        <a href={`tel:${storeSettings.phone}`} className="inline-flex items-center gap-1 font-semibold hover:underline" dir="ltr">
+                          <Phone className="w-3.5 h-3.5" />
+                          {storeSettings.phone}
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-              <span className={`font-extrabold text-xs px-3 py-1.5 rounded-full flex items-center gap-1 ${
-                currentBgTheme.isDark ? "bg-white/10 text-emerald-400" : "bg-emerald-50/80 text-emerald-600 border border-emerald-100"
-              }`}>
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
-                {language === 'ar' ? 'مساعد ذكي نشط' : 'Live Connected Assistant'}
-              </span>
+              <div className="flex flex-col items-end gap-2">
+                <span className={`font-extrabold text-xs px-3 py-1.5 rounded-full flex items-center gap-1 ${
+                  currentBgTheme.isDark ? "bg-white/10 text-emerald-400" : "bg-emerald-50/80 text-emerald-600 border border-emerald-100"
+                }`}>
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+                  {storeSettings.showVoiceWidget
+                    ? (language === 'ar' ? 'مساعد ذكي نشط' : 'Live Connected Assistant')
+                    : (language === 'ar' ? 'منيو يدوي' : 'Manual menu')}
+                </span>
+                {sessionRemaining !== null && (
+                  <span className="font-extrabold text-xs px-3 py-1.5 rounded-full flex items-center gap-1 bg-amber-50/80 text-amber-600 border border-amber-100" dir="ltr">
+                    <Timer className="w-3.5 h-3.5" />
+                    {formatCountdown(sessionRemaining)}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Category Filter Pills */}
@@ -625,8 +834,8 @@ export function StoreDemo() {
 
       </div>
       
-      {/* Widget Local to StoreDemo */}
-      <VoiceWidget />
+      {/* Voice waiter — hidden when the merchant disables it in Settings */}
+      {storeSettings.showVoiceWidget && <VoiceWidget />}
     </div>
   );
 }

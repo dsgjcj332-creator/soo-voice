@@ -3,44 +3,6 @@ import { useAuth } from './AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import type { CurrencyCode } from '../lib/currency';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface SupabaseErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string | null;
-    email?: string | null;
-    providerInfo?: {
-      providerId?: string | null;
-      email?: string | null;
-    }[];
-  };
-}
-
-function handleSupabaseError(error: unknown, operationType: OperationType, path: string | null) {
-  const currentUser = useAuth();
-  const errInfo: SupabaseErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    operationType,
-    path,
-    authInfo: {
-      userId: currentUser.user?.uid,
-      email: currentUser.user?.email || null,
-      providerInfo: currentUser.user ? [{ providerId: currentUser.user.provider, email: currentUser.user.email || '' }] : []
-    }
-  };
-  console.error('Supabase Error: ', JSON.stringify(errInfo));
-}
-
 export type Dialect = 'standard' | 'egyptian' | 'gulf' | 'levantine';
 export type VoiceTone = 'Zephyr' | 'Charon' | 'Fenrir' | 'Kore' | 'Puck' | 'Aoede';
 export type BusinessType = 'restaurant' | 'real_estate' | 'automotive' | 'general';

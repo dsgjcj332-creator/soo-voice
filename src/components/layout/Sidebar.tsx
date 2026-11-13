@@ -129,7 +129,7 @@ export function Sidebar() {
         {/* Live dine-in preview (opens in a new tab) */}
         <div className="pt-2 border-t border-slate-100">
           <NavLink
-            to={user?.uid ? `/store?ownerId=${user.uid}&table=1` : "/store"}
+            to={user?.uid ? `/store?ownerId=${user.uid}&table=1&preview=1` : "/store"}
             target="_blank"
             className="group flex items-center px-2 py-2 text-sm font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >

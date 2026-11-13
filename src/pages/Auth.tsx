@@ -46,23 +46,28 @@ export function Auth() {
       // deployed on the Supabase project). Fallback: native Supabase signup,
       // which works on any project — if email confirmation is enabled there,
       // the visitor gets the friendly "confirm your email" message below.
-      const { url } = getSupabaseConfig();
+      const { url, anonKey } = getSupabaseConfig();
       let accountCreated = false;
       try {
         const signupResponse = await fetch(`${url}/functions/v1/signup-test-no-confirmation`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(anonKey ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` } : {}),
+          },
           body: JSON.stringify({ email: email.trim(), password, fullName: name.trim() }),
         });
         if (signupResponse.ok) {
           accountCreated = true;
         } else {
           const signupResult = await signupResponse.json().catch(() => null);
-          const msg = String(signupResult?.error || '').toLowerCase();
-          const missing = signupResponse.status === 404 || signupResponse.status === 405
-            || msg.includes('not found') || msg.includes('no function');
-          // Surface real validation errors; only fall back when the function
-          // itself is not deployed on this Supabase project.
+          const msg = String(signupResult?.error || signupResult?.message || '').toLowerCase();
+          const status = signupResponse.status;
+          const missing = [401, 403, 404, 405].includes(status)
+            || msg.includes('not found') || msg.includes('no function')
+            || msg.includes('missing authorization') || msg.includes('jwt');
+          // Surface real validation errors; fall back when the function itself
+          // is not deployed (or is JWT-gated) on this Supabase project.
           if (!missing) {
             throw new Error(signupResult?.error || 'signup_failed');
           }

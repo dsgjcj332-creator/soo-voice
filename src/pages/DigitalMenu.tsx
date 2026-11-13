@@ -20,7 +20,8 @@ import {
   AlertCircle,
   Copy,
   ExternalLink,
-  Save
+  Save,
+  ShieldCheck
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -28,6 +29,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
 import { CURRENCY_LIST, normalizeCurrency, formatPrice, type CurrencyCode } from "../lib/currency";
+import { useStoreSettings } from "../lib/storeSettings";
 
 const COLOR_VARIANTS: Record<string, { bg: string; text: string; border: string; bgLight: string; ring: string }> = {
   indigo: { bg: "bg-indigo-600", text: "text-indigo-600", border: "border-indigo-600", bgLight: "bg-indigo-50", ring: "ring-indigo-500" },
@@ -98,6 +100,7 @@ export function DigitalMenu() {
   const { language } = useLanguage();
   const { user } = useAuth();
   const { businessType, currency, setCurrency } = useSettings();
+  const { settings: storeSettings } = useStoreSettings(user?.uid, user?.provider !== 'local');
   const isSupabaseMode = user?.provider !== 'local' && getSupabaseConfig().isConfigured;
   
   // State for menu items
@@ -1741,6 +1744,51 @@ export function DigitalMenu() {
                 </div>
               </div>
             </div>
+
+            {/* Access control summary — reflects the Settings page state */}
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm">
+              <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center gap-2 border-b pb-3">
+                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                {language === "ar" ? "حالة التحكم في الوصول" : "Access Control Status"}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {language === "ar" ? "النادل الصوتي" : "Voice Waiter"}
+                  </p>
+                  <p className={`text-xs font-extrabold ${storeSettings.showVoiceWidget ? "text-emerald-600" : "text-slate-500"}`}>
+                    {storeSettings.showVoiceWidget
+                      ? (language === "ar" ? "ظاهر للزبون" : "Visible")
+                      : (language === "ar" ? "مخفي — منيو يدوي" : "Hidden — manual")}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {language === "ar" ? "مدة الجلسة" : "Session"}
+                  </p>
+                  <p className="text-xs font-extrabold text-slate-700">
+                    {!storeSettings.sessionMinutes
+                      ? (language === "ar" ? "مفتوح دائماً" : "Always open")
+                      : `${storeSettings.sessionMinutes} ${language === "ar" ? "دقيقة" : "min"}`}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {language === "ar" ? "النطاق الجغرافي" : "Geo-fence"}
+                  </p>
+                  <p className={`text-xs font-extrabold ${storeSettings.geoEnabled ? "text-amber-600" : "text-slate-500"}`}>
+                    {storeSettings.geoEnabled
+                      ? `${storeSettings.geoRadiusKm < 1 ? Math.round(storeSettings.geoRadiusKm * 1000) + (language === "ar" ? " م" : "m") : storeSettings.geoRadiusKm + (language === "ar" ? " كم" : "km")}`
+                      : (language === "ar" ? "مفتوح للجميع" : "Open to everyone")}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] text-slate-400 leading-relaxed">
+                {language === "ar"
+                  ? "الضبط الكامل من صفحة الإعدادات ← «تجربة الطاولة والتحكم في الوصول». زر الاختبار أعلاه يفتح وضع معاينة بدون قيود؛ الزبون الحقيقي عبر الـ QR يخضع للقفل."
+                  : "Full configuration lives in Settings → \"Table Experience & Access Control\". The preview button above bypasses the locks; real QR scans follow them."}
+              </p>
+            </div>
           </div>
 
           {/* Right Column: QR Stand Acrylic Mockup Preview (2 cols) */}
@@ -1760,7 +1808,7 @@ export function DigitalMenu() {
                     🍽️
                   </div>
                   <h3 className="font-extrabold text-sm text-slate-800">
-                    {user?.displayName || (language === "ar" ? "مطعم الأصالة الفاخر" : "Gourmet Restaurant")}
+                    {storeSettings.restaurantName || storeSettings.restaurantNameEn || user?.displayName || (language === "ar" ? "مطعم الأصالة الفاخر" : "Gourmet Restaurant")}
                   </h3>
                   <div className={`text-[11px] font-extrabold ${currentScheme.text} uppercase tracking-wider mt-0.5`}>
                     {language === "ar" ? `📍 طاولة رقم ${tableNumber || "1"}` : `📍 Table No. ${tableNumber || "1"}`}
@@ -1818,13 +1866,13 @@ export function DigitalMenu() {
                   {tableTargetUrl}
                 </div>
                 <a
-                  href={tableTargetUrl}
+                  href={`${tableTargetUrl}&preview=1`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-1 w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl py-2 px-3 text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-md"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  {language === "ar" ? `اختبار تجربة الزبون (فتح طاولة ${tableNumber || "1"})` : `Test Dine-in (Open Table ${tableNumber || "1"})`}
+                  {language === "ar" ? `اختبار تجربة الزبون (معاينة طاولة ${tableNumber || "1"})` : `Preview Dine-in (Table ${tableNumber || "1"})`}
                 </a>
               </div>
 
