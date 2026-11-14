@@ -3,12 +3,23 @@ import {
   useLanguage,
 } from '../contexts/LanguageContext';
 import {
-  Plus, Trash2, QrCode, Copy, Download, GripHorizontal, Utensils,
+  Plus, Trash2, QrCode, Copy, Download, GripHorizontal, Utensils, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { generateQrDataUrl } from '../lib/qr';
 import { useStoreSettings } from '../lib/storeSettings';
+
+/** QR stand colors — the same palette used in the original stand customizer,
+ *  carried here so each table can pick its own acrylic color. */
+const QR_STAND_COLORS: Record<string, { bg: string; border: string; text: string; hex: string }> = {
+  indigo: { bg: 'bg-indigo-600', border: 'border-t-indigo-600', text: 'text-indigo-600', hex: '#4338ca' },
+  emerald: { bg: 'bg-emerald-600', border: 'border-t-emerald-600', text: 'text-emerald-600', hex: '#047857' },
+  amber: { bg: 'bg-amber-500', border: 'border-t-amber-500', text: 'text-amber-500', hex: '#b45309' },
+  rose: { bg: 'bg-rose-600', border: 'border-t-rose-600', text: 'text-rose-600', hex: '#be123c' },
+  violet: { bg: 'bg-violet-600', border: 'border-t-violet-600', text: 'text-violet-600', hex: '#6d28d9' },
+  gold: { bg: 'bg-yellow-700', border: 'border-t-yellow-700', text: 'text-yellow-700', hex: '#854d0e' },
+};
 
 /**
  * Restaurant floor plan.
@@ -29,6 +40,12 @@ import { useStoreSettings } from '../lib/storeSettings';
 interface FloorTable {
   id: string;
   label: string;
+  /** QR stand accent color — one of QR_STAND_COLORS. Defaults to 'indigo'. */
+  color: keyof typeof QR_STAND_COLORS;
+  /** Arabic guidance text shown below the QR on the printed stand. */
+  ctaTextAr: string;
+  /** English guidance text shown below the Arabic on the printed stand. */
+  ctaTextEn: string;
   /** Default menu language for this table — opened as `?lang=` on scan.
    *  'auto' (default) means follow the device/browser preference. */
   language: 'auto' | 'ar' | 'en' | 'fr' | 'it';
@@ -127,11 +144,24 @@ export function FloorPlan() {
     const label = `${isAr ? 'طاولة' : 'Table'} ${plan.tables.length + 1}`;
     const x = Math.max(0, CANVAS_W / 2 - TABLE_W / 2);
     const y = Math.max(0, CANVAS_H / 2 - TABLE_H / 2);
-    setPlan((p) => ({ tables: [...p.tables, { id, label, language: 'auto', x, y }] }));
+    setPlan((p) => ({ tables: [...p.tables, {
+      id, label, language: 'auto', color: 'indigo',
+      ctaTextAr: 'امسح لمشاهدة المنيو وسؤال المساعد الصوتي',
+      ctaTextEn: 'Scan to view the menu and ask the voice assistant',
+      x, y,
+    }] }));
   };
 
   const updateLabel = (id: string, label: string) => {
     setPlan((p) => ({ tables: p.tables.map((t) => (t.id === id ? { ...t, label } : t)) }));
+  };
+
+  const updateColor = (id: string, color: keyof typeof QR_STAND_COLORS) => {
+    setPlan((p) => ({ tables: p.tables.map((t) => (t.id === id ? { ...t, color } : t)) }));
+  };
+
+  const updateCta = (id: string, field: 'ctaTextAr' | 'ctaTextEn', value: string) => {
+    setPlan((p) => ({ tables: p.tables.map((t) => (t.id === id ? { ...t, [field]: value } : t)) }));
   };
 
   const updateLanguage = (id: string, language: FloorTable['language']) => {
@@ -209,7 +239,7 @@ export function FloorPlan() {
     if (!selectedTable) return;
     const restaurantName =
       storeSettings.restaurantName || storeSettings.restaurantNameEn || 'SooVoice';
-    // Build a printable A6 portrait HTML (105 × 148 mm), opened in a new window.
+    const scheme = QR_STAND_COLORS[selectedTable.color] || QR_STAND_COLORS.indigo;
     const printable = window.open('', '_blank', 'width=400,height=600');
     if (!printable) return;
     printable.document.write(buildPrintableStandHtml({
@@ -217,6 +247,9 @@ export function FloorPlan() {
       tableLabel: selectedTable.label,
       qrDataUrl,
       isAr,
+      accentHex: scheme.hex,
+      ctaAr: selectedTable.ctaTextAr,
+      ctaEn: selectedTable.ctaTextEn,
     }));
     printable.document.close();
     printable.focus();
@@ -361,10 +394,65 @@ export function FloorPlan() {
                     : 'When the guest scans, the menu opens in this language. Useful for tables reserved for international guests.'}
                 </p>
 
-                <div className="flex justify-center py-4 bg-slate-50 rounded-2xl mb-4">
-                  {qrDataUrl && (
-                    <img src={qrDataUrl} alt={`QR for ${selectedTable.label}`} className="w-32 h-32" />
-                  )}
+                {/* QR stand color */}
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  {isAr ? 'لون الستاند' : 'Stand accent color'}
+                </label>
+                <div className="flex gap-2.5 mb-4">
+                  {Object.keys(QR_STAND_COLORS).map((colorKey) => (
+                    <button
+                      key={colorKey}
+                      onClick={() => updateColor(selectedTable.id, colorKey as keyof typeof QR_STAND_COLORS)}
+                      className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${QR_STAND_COLORS[colorKey].bg} ${
+                        selectedTable.color === colorKey ? 'border-slate-800 scale-110' : 'border-transparent'
+                      }`}
+                      aria-label={colorKey}
+                    />
+                  ))}
+                </div>
+
+                {/* CTA text inputs */}
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  {isAr ? 'نص الإرشاد (عربي)' : 'Guidance text (Arabic)'}
+                </label>
+                <textarea
+                  value={selectedTable.ctaTextAr}
+                  onChange={(e) => updateCta(selectedTable.id, 'ctaTextAr', e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-800 outline-none transition-all font-medium resize-none mb-3"
+                />
+
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  {isAr ? 'نص الإرشاد (إنجليزي)' : 'Guidance text (English)'}
+                </label>
+                <textarea
+                  value={selectedTable.ctaTextEn}
+                  onChange={(e) => updateCta(selectedTable.id, 'ctaTextEn', e.target.value)}
+                  rows={2}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-800 outline-none transition-all font-medium resize-none mb-4"
+                />
+
+                {/* Acrylic stand preview */}
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
+                  {isAr ? 'معاينة الستاند' : 'Stand preview'}
+                </p>
+                <div className={`bg-white rounded-2xl p-5 text-slate-800 shadow-md border-t-4 ${QR_STAND_COLORS[selectedTable.color].border} flex flex-col items-center`}>
+                  <div className="text-center mb-3">
+                    <div className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${QR_STAND_COLORS[selectedTable.color].bg} text-white text-xs font-extrabold mb-1`}>
+                      🍽️
+                    </div>
+                    <h4 className="font-extrabold text-xs text-slate-800">
+                      {storeSettings.restaurantName || storeSettings.restaurantNameEn || (isAr ? 'مطعم الأصالة' : 'Asala Restaurant')}
+                    </h4>
+                    <div className={`text-[10px] font-extrabold ${QR_STAND_COLORS[selectedTable.color].text} uppercase tracking-wider mt-0.5`}>
+                      {isAr ? `طاولة ${selectedTable.label}` : `Table ${selectedTable.label}`}
+                    </div>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200 mb-3">
+                    {qrDataUrl && <img src={qrDataUrl} alt="QR preview" className="w-24 h-24" />}
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-800 text-center leading-tight mb-1">{selectedTable.ctaTextAr}</p>
+                  <p className="text-[9px] text-slate-500 text-center leading-tight">{selectedTable.ctaTextEn}</p>
                 </div>
 
                 <div className="space-y-2">
@@ -454,8 +542,11 @@ function buildPrintableStandHtml(params: {
   tableLabel: string;
   qrDataUrl: string;
   isAr: boolean;
+  accentHex: string;
+  ctaAr: string;
+  ctaEn: string;
 }): string {
-  const { restaurantName, tableLabel, qrDataUrl, isAr } = params;
+  const { restaurantName, tableLabel, qrDataUrl, isAr, accentHex, ctaAr, ctaEn } = params;
   return `<!doctype html>
 <html lang="${isAr ? 'ar' : 'en'}" dir="${isAr ? 'rtl' : 'ltr'}">
 <head>
@@ -477,15 +568,16 @@ function buildPrintableStandHtml(params: {
       justify-content: space-between;
       width: 105mm;
       height: 148mm;
-      padding: 14mm 10mm;
+      padding: 14mm 10mm 10mm;
       box-sizing: border-box;
+      border-top: 4mm solid ${accentHex};
     }
     .brand {
-      font-size: 11pt;
+      font-size: 10pt;
       font-weight: 700;
       letter-spacing: 0.15em;
       text-transform: uppercase;
-      color: #4f46e5;
+      color: ${accentHex};
       margin-bottom: 4mm;
     }
     .name {
@@ -510,17 +602,25 @@ function buildPrintableStandHtml(params: {
       border-bottom: 1px solid #e2e8f0;
       margin: 4mm 0;
     }
-    .hint {
+    .cta {
+      font-size: 10pt;
+      font-weight: 700;
+      text-align: center;
+      color: #1e293b;
+      margin-bottom: 1mm;
+    }
+    .cta-en {
       font-size: 8.5pt;
+      color: #64748b;
+      text-align: center;
+    }
+    .hint {
+      font-size: 7.5pt;
       color: #94a3b8;
       text-align: center;
-      margin-top: 3mm;
-    }
-    .cut-line {
-      width: 100%;
-      height: 1px;
-      border-top: 1px dashed #cbd5e1;
-      margin: 6mm 0;
+      margin-top: 2mm;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }
   </style>
 </head>
@@ -532,9 +632,10 @@ function buildPrintableStandHtml(params: {
     </div>
     <img class="qr" src="${qrDataUrl}" alt="QR for ${tableLabel}" />
     <div>
-      <div class="cut-line"></div>
-      <p class="table-label">${tableLabel}</p>
-      <p class="hint">${isAr ? 'امسح الكود لرؤية المنيو وسؤال المساعد الصوتي' : 'Scan to view the menu and ask the voice assistant'}</p>
+      <p class="cta">${ctaAr || ''}</p>
+      <p class="cta-en">${ctaEn || ''}</p>
+      <div class="table-label">${tableLabel}</div>
+      <p class="hint">soovoice</p>
     </div>
   </div>
 </body>

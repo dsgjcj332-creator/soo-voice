@@ -13,7 +13,8 @@ import {
   Utensils,
   ChefHat,
   Grid3x3,
-  Mic
+  Mic,
+  Palette
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -27,7 +28,8 @@ const getNavigationGroups = (t: (k: string) => string, language: string) => [
       { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
       { name: t("nav.conversations"), href: "/app/conversations", icon: MessageSquare },
       { name: t("nav.kitchen"), href: "/app/kitchen", icon: ChefHat },
-      { name: language === 'ar' ? 'المنيو الرقمي و QR' : 'Digital Menu & QR', href: "/app/digital-menu", icon: QrCode },
+      { name: language === 'ar' ? 'المنيو الرقمي' : 'Digital Menu', href: "/app/digital-menu", icon: QrCode },
+      { name: language === 'ar' ? 'مظهر المنيو' : 'Menu appearance', href: "/app/menu-designer", icon: Palette },
       { name: language === 'ar' ? 'مخطط الطاولات' : 'Floor plan', href: "/app/floor-plan", icon: Grid3x3 },
     ],
   },

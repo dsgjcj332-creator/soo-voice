@@ -1,23 +1,46 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
-  Bell,
-  Utensils,
-  CheckCircle2,
   RefreshCw,
-  Trash,
-  Filter,
-  HelpCircle,
-  Wifi,
+  Trash2,
   ExternalLink,
+  Check,
+  Clock,
+  ChefHat,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { formatPrice } from '../lib/currency';
 
+/**
+ * Kitchen — order display.
+ *
+ * Designed as a real kitchen ticket board, not a SaaS dashboard:
+ *
+ *   - Quiet palette — paper-cream, ink-slate, a single accent for the
+ *     status badge. No colored metric counters, no big indigo rings.
+ *   - Mono font for the order number, the items, and the total. This is
+ *     what a thermal printer would produce; the kitchen sees a ticket,
+ *     not a UI.
+ *   - Each ticket is a tall vertical card with a clear header (order
+ *     number + table + status) and a clear footer (the next action).
+ *   - The status filter is a single horizontal text selector, not a
+ *     row of pill buttons.
+ *   - The bottom "preview each table" block is replaced with a single
+ *     quiet link to the floor plan, since that's where the action lives.
+ */
+
+const STATUS_META: Record<string, { labelAr: string; labelEn: string; dot: string; ring: string }> = {
+  pending: { labelAr: 'بانتظار المطبخ', labelEn: 'Awaiting kitchen', dot: 'bg-amber-500', ring: 'border-amber-200' },
+  preparing: { labelAr: 'قيد التحضير', labelEn: 'In preparation', dot: 'bg-slate-700', ring: 'border-slate-300' },
+  completed: { labelAr: 'تم التقديم', labelEn: 'Served', dot: 'bg-emerald-600', ring: 'border-emerald-200' },
+  cancelled: { labelAr: 'ملغي', labelEn: 'Cancelled', dot: 'bg-rose-400', ring: 'border-rose-200' },
+};
+
 export function KitchenDisplay() {
   const { language } = useLanguage();
+  const isAr = language === 'ar';
   const { user } = useAuth();
   const { currency } = useSettings();
   const [orders, setOrders] = useState<any[]>([]);
@@ -93,8 +116,9 @@ export function KitchenDisplay() {
     }
   };
 
-  const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm(language === 'ar' ? 'هل أنت متأكد من أرشفة هذا الطلب؟' : 'Archive this order?')) return;
+  const handleArchiveOrder = async (orderId: string) => {
+    const msg = isAr ? 'هل تريد أرشفة هذا الطلب؟' : 'Archive this order?';
+    if (!confirm(msg)) return;
     try {
       const supabase = getSupabase();
       const { isConfigured } = getSupabaseConfig();
@@ -107,275 +131,217 @@ export function KitchenDisplay() {
     }
   };
 
-  const pendingOrders = orders.filter((o) => o.status === 'pending');
-  const preparingOrders = orders.filter((o) => o.status === 'preparing');
-  const completedOrders = orders.filter((o) => o.status === 'completed');
-  const filteredOrders = orders.filter((o) => {
-    if (statusFilter === 'all') return true;
-    return o.status === statusFilter;
-  });
+  const counts = {
+    all: orders.length,
+    pending: orders.filter((o) => o.status === 'pending').length,
+    preparing: orders.filter((o) => o.status === 'preparing').length,
+    completed: orders.filter((o) => o.status === 'completed').length,
+  };
+
+  const filteredOrders = orders.filter((o) =>
+    statusFilter === 'all' ? true : o.status === statusFilter
+  );
 
   const isDemo = user?.provider === 'local';
 
   return (
-    <div className="p-8 max-w-6xl mx-auto font-sans" id="kitchen-page-root">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-800">
-          {language === 'ar' ? 'المطبخ — شاشة الطلبات' : 'Kitchen — Order Display'}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {language === 'ar'
-            ? 'استقبال الطلبات لحظة وصولها من الطاولات، وتحديث حالتها حتى التقديم للضيف.'
-            : 'Receive orders the moment they arrive from the tables, and track each one until it is served.'}
-        </p>
-      </div>
+    <div className="min-h-full bg-stone-50 font-sans" id="kitchen-page-root">
+      <div className="max-w-6xl mx-auto p-6 md:p-10">
+        {/* Header — editorial, not dashboard-y */}
+        <header className="mb-10">
+          <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-slate-400 mb-2">
+            {isAr ? 'المطبخ' : 'Kitchen'}
+          </p>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">
+            {isAr ? 'شاشة الطلبات' : 'Order tickets'}
+          </h1>
+          <p className="mt-2 text-sm text-slate-500 max-w-2xl leading-relaxed">
+            {isAr
+              ? 'كل طلب يصل من الطاولة يظهر هنا فورًا. كل تذكرة تصعد حتى تُقدّم.'
+              : 'Every order from a table arrives here at once. Each ticket moves up until it is served.'}
+          </p>
+        </header>
 
-      {isDemo && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-700 p-4 rounded-xl text-sm font-medium">
-          {language === 'ar'
-            ? 'وضع التجربة المحلي — الطلبات تُحفظ على هذا الجهاز فقط ولا تصل إلى شاشة المطبخ.'
-            : 'Local demo mode — orders stay on this device and do not reach the kitchen display.'}
-        </div>
-      )}
-
-      <div className="space-y-6">
-        {/* Summary Metric Counters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white border border-amber-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                {language === 'ar' ? 'طلبات قيد الانتظار' : 'Pending'}
-              </p>
-              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{pendingOrders.length}</h3>
-            </div>
-            <div className="bg-amber-100 text-amber-700 p-3 rounded-xl">
-              <Bell className="w-5 h-5" />
-            </div>
+        {isDemo && (
+          <div className="mb-8 bg-amber-50 border border-amber-200 text-amber-800 px-5 py-3.5 rounded-lg text-sm">
+            {isAr
+              ? 'وضع التجربة — الطلبات تبقى على هذا الجهاز ولا تصل إلى المطبخ.'
+              : 'Demo mode — orders stay on this device and do not reach the kitchen.'}
           </div>
+        )}
 
-          <div className="bg-white border border-indigo-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
-                {language === 'ar' ? 'جاري التحضير' : 'In Preparation'}
-              </p>
-              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{preparingOrders.length}</h3>
-            </div>
-            <div className="bg-indigo-100 text-indigo-700 p-3 rounded-xl">
-              <Utensils className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-white border border-emerald-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
-                {language === 'ar' ? 'تم التقديم' : 'Served'}
-              </p>
-              <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{completedOrders.length}</h3>
-            </div>
-            <div className="bg-emerald-100 text-emerald-700 p-3 rounded-xl">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* Filter Pills */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider me-2 flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" />
-            {language === 'ar' ? 'تصفية:' : 'Filter:'}
-          </span>
+        {/* Status filter — single horizontal text selector, not a pill row */}
+        <div className="mb-10 flex items-center gap-6 border-b border-stone-200 pb-3 overflow-x-auto scrollbar-none">
           {[
-            { key: 'all', labelAr: 'الكل', labelEn: 'All', count: orders.length },
-            { key: 'pending', labelAr: 'قيد الانتظار', labelEn: 'Pending', count: pendingOrders.length },
-            { key: 'preparing', labelAr: 'جاري التحضير', labelEn: 'Preparing', count: preparingOrders.length },
-            { key: 'completed', labelAr: 'مكتمل', labelEn: 'Served', count: completedOrders.length },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setStatusFilter(f.key as any)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                statusFilter === f.key
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {language === 'ar' ? f.labelAr : f.labelEn} ({f.count})
-            </button>
-          ))}
+            { key: 'all', labelAr: 'الكل', labelEn: 'All', count: counts.all },
+            { key: 'pending', labelAr: 'بانتظار', labelEn: 'Awaiting', count: counts.pending },
+            { key: 'preparing', labelAr: 'قيد التحضير', labelEn: 'Preparing', count: counts.preparing },
+            { key: 'completed', labelAr: 'تم التقديم', labelEn: 'Served', count: counts.completed },
+          ].map((f) => {
+            const active = statusFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                onClick={() => setStatusFilter(f.key as any)}
+                className={`shrink-0 text-sm transition-colors cursor-pointer ${
+                  active ? 'text-slate-900 font-bold' : 'text-slate-400 hover:text-slate-700 font-medium'
+                }`}
+              >
+                {isAr ? f.labelAr : f.labelEn}
+                <span className={`ms-2 ${active ? 'text-slate-400' : 'text-slate-300'}`}>
+                  {f.count}
+                </span>
+                {active && <span className="block h-px bg-slate-900 -mb-3 mt-1" />}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Orders Stream Grid */}
+        {/* Orders stream */}
         {loadingOrders ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 font-medium">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-slate-400" />
-            {language === 'ar' ? 'جاري الاتصال بقاعدة البيانات...' : 'Connecting to live feed...'}
+          <div className="py-20 text-center text-slate-400 font-mono text-sm flex flex-col items-center gap-3">
+            <RefreshCw className="w-5 h-5 animate-spin text-slate-300" />
+            {isAr ? 'جاري الاتصال بالطاولات...' : 'Connecting to tables...'}
           </div>
         ) : filteredOrders.length === 0 ? (
-          <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center max-w-lg mx-auto">
-            <Utensils className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <h4 className="font-bold text-slate-700">
-              {language === 'ar' ? 'لا توجد طلبات في هذه الحالة الآن' : 'No orders in this state right now'}
-            </h4>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
-              {language === 'ar'
-                ? 'سيظهر أول طلب هنا تلقائياً لحظة وصوله من طاولاتك.'
-                : 'Your first order will appear here automatically the moment it arrives from your tables.'}
+          <div className="py-24 text-center">
+            <ChefHat className="w-10 h-10 mx-auto mb-4 text-slate-300" />
+            <p className="text-slate-500 font-medium">
+              {isAr ? 'لا توجد طلبات في هذه الحالة الآن.' : 'No tickets in this state right now.'}
+            </p>
+            <p className="text-xs text-slate-400 mt-1.5 max-w-md mx-auto leading-relaxed">
+              {isAr
+                ? 'أول طلب من طاولاتك سيظهر هنا لحظة وصوله.'
+                : 'Your first order from the tables will appear here the moment it arrives.'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredOrders.map((order) => {
-              const statusColors: Record<string, string> = {
-                pending: 'bg-amber-50 text-amber-700 border-amber-200/80',
-                preparing: 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
-                completed: 'bg-green-50 text-green-700 border-green-200/80',
-                cancelled: 'bg-rose-50 text-rose-700 border-rose-200/80',
-              };
+              const meta = STATUS_META[order.status] || STATUS_META.pending;
+              const time = new Date(order.createdAt).toLocaleTimeString(
+                isAr ? 'ar-EG' : 'en-US',
+                { hour: '2-digit', minute: '2-digit' }
+              );
               return (
-                <div
+                <article
                   key={order.id}
-                  className={`bg-white border-2 rounded-2xl p-5 shadow-sm transition-all hover:shadow-md flex flex-col justify-between ${
-                    order.status === 'pending' ? 'border-amber-400 ring-2 ring-amber-400/10' : 'border-slate-100'
-                  }`}
+                  className={`bg-white border ${meta.ring} rounded-lg overflow-hidden flex flex-col transition-shadow hover:shadow-sm`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
-                      <span className="font-extrabold text-slate-800 text-sm">#{order.id.replace('order_', '')}</span>
-                      <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${statusColors[order.status] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
-                        {order.status === 'pending' && (language === 'ar' ? 'قيد الانتظار' : 'Pending')}
-                        {order.status === 'preparing' && (language === 'ar' ? 'يجري التجهيز' : 'Preparing')}
-                        {order.status === 'completed' && (language === 'ar' ? 'تم التقديم' : 'Served')}
-                        {order.status === 'cancelled' && (language === 'ar' ? 'ملغي' : 'Cancelled')}
+                  {/* Ticket header */}
+                  <header className="px-5 py-3 border-b border-stone-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                      <span className="font-mono text-xs font-bold text-slate-500">
+                        №{order.id.replace('order_', '')}
                       </span>
                     </div>
-                    <div className="mb-4 flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                      <span className="text-xs font-bold text-slate-500">
-                        {language === 'ar' ? 'طاولة التقديم:' : 'Table:'}
-                      </span>
-                      <span className="bg-indigo-600 text-white font-extrabold text-xs px-3 py-1 rounded-lg">
-                        {language === 'ar' ? `طاولة ${order.tableNumber}` : `Table ${order.tableNumber}`}
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-400 font-mono">{time}</span>
                     </div>
-                    <div className="space-y-2 mb-4">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        {language === 'ar' ? 'الأطباق' : 'Items'}
-                      </p>
-                      <div className="max-h-36 overflow-y-auto space-y-2 pr-1">
-                        {order.items?.map((item: any, idx: number) => (
-                          <div key={idx} className="flex justify-between text-xs font-medium text-slate-700">
-                            <span>
-                              {item.name} <span className="text-indigo-600 font-extrabold ms-1">x{item.quantity}</span>
-                            </span>
-                            <span className="font-mono text-slate-500" dir="ltr">
-                              {formatPrice(item.price * item.quantity, currency)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  </header>
+
+                  {/* Table */}
+                  <div className="px-5 py-4 border-b border-stone-100">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+                      {isAr ? 'الطاولة' : 'Table'}
+                    </p>
+                    <p className="text-lg font-bold text-slate-900 tracking-tight">
+                      {order.tableNumber || (isAr ? 'سفري' : 'Walk-in')}
+                    </p>
                   </div>
-                  <div className="border-t border-slate-100 pt-3 mt-3">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-xs font-bold text-slate-500">
-                        {language === 'ar' ? 'الإجمالي:' : 'Total:'}
+
+                  {/* Items */}
+                  <div className="px-5 py-4 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                      {isAr ? 'الأطباق' : 'Items'}
+                    </p>
+                    <ul className="space-y-2.5">
+                      {order.items?.map((item: any, idx: number) => (
+                        <li key={idx} className="flex items-baseline justify-between gap-3 font-mono text-xs">
+                          <span className="text-slate-700 flex-1">
+                            <span className="font-bold text-slate-900">{item.quantity}×</span>
+                            <span className="ms-1.5">{item.name}</span>
+                          </span>
+                          <span className="text-slate-400 shrink-0" dir="ltr">
+                            {formatPrice(item.price * item.quantity, currency)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Footer: status + action */}
+                  <footer className="px-5 py-3.5 border-t border-stone-100 flex items-center justify-between">
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        {isAr ? 'الإجمالي' : 'Total'}
                       </span>
-                      <span className="text-base font-extrabold text-indigo-600 font-mono" dir="ltr">
+                      <span className="font-mono text-sm font-bold text-slate-900" dir="ltr">
                         {formatPrice(order.total, currency)}
                       </span>
                     </div>
-                    <div className="flex gap-2">
+
+                    <div className="flex items-center gap-2">
                       {order.status === 'pending' && (
                         <button
                           onClick={() => handleUpdateOrderStatus(order.id, 'preparing')}
-                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                          className="text-xs font-bold text-slate-900 bg-stone-100 hover:bg-stone-200 px-3 py-1.5 rounded-md transition-colors cursor-pointer flex items-center gap-1.5"
                         >
-                          {language === 'ar' ? 'بدء التحضير' : 'Start Prep'}
+                          <Clock className="w-3 h-3" />
+                          {isAr ? 'ابدأ' : 'Begin'}
                         </button>
                       )}
                       {order.status === 'preparing' && (
                         <button
                           onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                          className="text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 px-3 py-1.5 rounded-md transition-colors cursor-pointer flex items-center gap-1.5"
                         >
-                          {language === 'ar' ? 'تم التقديم' : 'Serve'}
+                          <Check className="w-3 h-3" />
+                          {isAr ? 'قُدّم' : 'Served'}
                         </button>
                       )}
                       {order.status !== 'completed' && order.status !== 'cancelled' && (
                         <button
                           onClick={() => handleUpdateOrderStatus(order.id, 'cancelled')}
-                          className="bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer"
-                          title={language === 'ar' ? 'إلغاء الطلب' : 'Cancel'}
+                          title={isAr ? 'إلغاء' : 'Cancel'}
+                          className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-1"
                         >
-                          <XIcon className="w-4 h-4" />
+                          <XIcon className="w-3.5 h-3.5" />
                         </button>
                       )}
                       <button
-                        onClick={() => handleDeleteOrder(order.id)}
-                        className="bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 font-bold px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer border border-slate-200/50"
-                        title={language === 'ar' ? 'أرشفة' : 'Archive'}
+                        onClick={() => handleArchiveOrder(order.id)}
+                        title={isAr ? 'أرشفة' : 'Archive'}
+                        className="text-slate-300 hover:text-slate-500 transition-colors cursor-pointer p-1"
                       >
-                        <Trash className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  </div>
-                </div>
+                  </footer>
+                </article>
               );
             })}
           </div>
         )}
 
-        {/* Live Table Preview */}
-        <div className="bg-slate-50 border border-slate-200/60 rounded-3xl p-6 md:p-8 space-y-4 mt-8">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-100 p-2.5 rounded-xl text-indigo-600">
-              <HelpCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-800 text-sm md:text-base">
-                {language === 'ar' ? 'معاينة المنيو لكل طاولة' : 'Preview each table menu'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {language === 'ar'
-                  ? 'افتح رابط أي طاولة لمعاينة ما يراه ضيوفك على هاتفهم.'
-                  : 'Open any table link to preview what your guests see on their phones.'}
-              </p>
-            </div>
+        {/* Footer link — quiet, not a "table preview" card */}
+        {!loadingOrders && orders.length > 0 && (
+          <div className="mt-12 pt-6 border-t border-stone-200 flex items-center justify-between text-sm">
+            <p className="text-slate-400">
+              {isAr
+                ? 'ترتيب الطاولات وأكواد الـ QR من صفحة «مخطط الطاولات».'
+                : 'Table placement and QR codes live on the floor plan page.'}
+            </p>
+            <a
+              href="/app/floor-plan"
+              className="text-slate-600 hover:text-slate-900 font-bold flex items-center gap-1.5 transition-colors"
+            >
+              {isAr ? 'مخطط الطاولات' : 'Floor plan'}
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 5].map((tbl) => {
-              const demoUrl = `/store?ownerId=${ownerId}&table=${tbl}`;
-              return (
-                <div
-                  key={tbl}
-                  className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="bg-indigo-50 text-indigo-600 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                        {language === 'ar' ? `طاولة ${tbl}` : `Table ${tbl}`}
-                      </span>
-                      <Wifi className="w-3.5 h-3.5 text-green-500 animate-pulse" />
-                    </div>
-                    <p className="text-[11px] font-mono text-slate-400 select-all truncate mb-3">
-                      {window.location.origin}
-                      {demoUrl}
-                    </p>
-                  </div>
-                  <a
-                    href={demoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 text-xs font-bold text-center py-2 rounded-xl transition-all flex items-center justify-center gap-1.5"
-                  >
-                    {language === 'ar' ? 'فتح' : 'Open'}
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
