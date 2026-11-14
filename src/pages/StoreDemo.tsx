@@ -1,6 +1,5 @@
 import React from 'react';
-import { useCart } from '../contexts/CartContext';
-import { ShoppingBag, Plus, Trash2, CreditCard, Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert } from 'lucide-react';
+import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
@@ -18,8 +17,6 @@ export function StoreDemo() {
   const { language } = useLanguage();
   const { businessType } = useSettings();
   const { user } = useAuth();
-  const { items, addToCart, removeFromCart, total, clearCart } = useCart();
-  const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'processing' | 'success'>('idle');
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
 
   // Search parameters for tableside QR code scanning
@@ -249,109 +246,17 @@ export function StoreDemo() {
     return cat.includes(filter) || filter.includes(cat);
   });
 
-  const handleCheckout = async () => {
-    setCheckoutStatus('processing');
-    try {
-      const orderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
-      const newOrder = {
-        id: orderId,
-        ownerId: resolvedOwnerId,
-        tableNumber: effectiveTable,
-        items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
-        total: total,
-        status: 'pending',
-        createdAt: Date.now()
-      };
-
-      // 1. Save order
-      const supabase = getSupabase();
-      const { isConfigured } = getSupabaseConfig();
-
-      if (!isConfigured || !supabase) {
-        throw new Error('Order storage is not configured');
-      }
-
-      const { error: orderError } = await supabase
-        .from('orders')
-        .insert(newOrder);
-      if (orderError) throw orderError;
-
-      // 2. Load merchant webhook settings and dispatch event
-      if (isConfigured && supabase) {
-        try {
-          const { data: whSettings } = await supabase
-            .from('webhook_settings')
-            .select('*')
-            .eq('ownerId', resolvedOwnerId)
-            .single();
-
-          if (whSettings?.webhookUrl) {
-            // Non-blocking fetch dispatch
-            fetch(whSettings.webhookUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                event: 'order.created',
-                timestamp: Date.now(),
-                webhook_secret: whSettings.webhookSecret,
-                data: newOrder
-              })
-            }).catch(e => console.warn("Background webhook fetch failed:", e));
-          }
-        } catch (whErr) {
-          console.warn("Non-blocking Webhook loading error:", whErr);
-        }
-      }
-
-      setCheckoutStatus('success');
-      clearCart();
-    } catch (err) {
-      console.error("Error during tableside checkout:", err);
-      setCheckoutStatus('idle');
-    } finally {
-      setTimeout(() => setCheckoutStatus('idle'), 3000);
-    }
-  };
-
   const getRestaurantName = () =>
     storeSettings.restaurantName || storeSettings.restaurantNameEn || getSectorTitle();
 
   const getSectorTitle = () => {
-    return language === "ar" ? "قائمة الطعام والمنيو الذكي للطاولات" : "Smart Dine-In Menu & Voice Waiter";
+    return language === "ar" ? "قائمة الطعام للطاولات" : "Dine-In Menu";
   };
 
   const getSectorDescription = () => {
     return language === "ar"
-      ? "تحدث مع النادل الصوتي الذكي بالأسفل لطلب الطعام مباشرة أو الاستفسار عن المكونات واقتراحات الشيف!"
-      : "Talk to our Voice AI Waiter below to order food directly, query ingredients, or get chef recommendations!";
-  };
-
-  const getSectorCartTitle = () => {
-    return language === "ar" 
-      ? `طلبات طاولة رقم ${effectiveTable}` 
-      : `Table ${effectiveTable} Order`;
-  };
-
-  const getSectorCartEmptyDesc = () => {
-    return language === "ar" 
-      ? "تحدث مع النادل الصوتي لإضافة وجبات ومشروبات شهية لطاولتك!" 
-      : "Ask the voice assistant to add delicious meals and drinks to your table!";
-  };
-
-  const getSectorCheckoutText = () => {
-    return {
-      idle: language === "ar" 
-        ? `إرسال طلب طاولة ${effectiveTable} للمطبخ` 
-        : `Send Table ${effectiveTable} Order to Kitchen`,
-      processing: language === "ar" ? "جاري الإرسال للمطبخ..." : "Sending to Kitchen...",
-      success: language === "ar" ? "تم إرسال الطلب للمطبخ بنجاح!" : "Order Sent to Kitchen!"
-    };
-  };
-
-  const getSectorAddButtonText = () => {
-    return language === "ar" ? "إضافة للطلب" : "Add to Order";
+      ? "تحدث مع المساعد الصوتي بالأسفل للاستفسار عن المكونات واقتراحات الشيف ووصف الأطباق."
+      : "Speak with the voice assistant below for ingredients, chef recommendations, and dish details.";
   };
 
   const primaryColorStyles = {
@@ -597,10 +502,10 @@ export function StoreDemo() {
         </div>
       )}
 
-      <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10">
+      <div className="max-w-6xl w-full relative z-10">
         
         {/* Menu Section */}
-        <div className="lg:col-span-2">
+        <div>
           <div className={`${currentBgTheme.cardBg} p-8 rounded-3xl transition-all duration-300`}>
             {tableParam ? (
               <div className="mb-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-md animate-fade-in">
@@ -732,7 +637,7 @@ export function StoreDemo() {
               ))}
             </div>
             
-            <div className={`grid gap-6 mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+            <div className={`grid gap-6 mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>
               {filteredMenuItems.map((item) => (
                 <div key={item.id} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
@@ -744,91 +649,9 @@ export function StoreDemo() {
                     </div>
                     <p className={`text-xs mb-4 line-clamp-3 min-h-[48px] ${currentBgTheme.descText}`}>{item.description || (language === 'ar' ? 'لا يوجد وصف متاح.' : 'No description available.')}</p>
                   </div>
-                  <button
-                    onClick={() => addToCart(item)}
-                    className={`w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-xs shadow-xs ${currentPrimary.buttonBg}`}
-                  >
-                    <Plus className="w-4 h-4" /> 
-                    {getSectorAddButtonText()}
-                  </button>
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* Cart Section */}
-        <div className="lg:col-span-1">
-          <div className={`${currentBgTheme.cardBg} p-8 sticky top-8 rounded-3xl transition-all duration-300`}>
-            <div className={`flex items-center gap-3 mb-6 border-b pb-4 ${currentBgTheme.isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-              <ShoppingBag className={`w-6 h-6 ${currentBgTheme.titleText}`} />
-              <h2 className={`text-xl font-extrabold ${currentBgTheme.titleText}`}>
-                {getSectorCartTitle()}
-              </h2>
-            </div>
-            
-            {items.length === 0 ? (
-              <div className={`text-center py-10 ${currentBgTheme.descText}`}>
-                <p className="font-extrabold">{language === 'ar' ? 'قائمتك فارغة حالياً' : 'Empty selection'}</p>
-                <p className="text-xs mt-2 opacity-75">
-                  {getSectorCartEmptyDesc()}
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {items.map((item) => (
-                  <div key={item.id} className={`flex items-center justify-between pb-3 border-b border-black/5 last:border-none`}>
-                    <div>
-                      <p className={`font-bold text-sm line-clamp-1 ${currentBgTheme.titleText}`}>{item.name}</p>
-                      <p className={`text-xs ${currentBgTheme.descText}`} dir="ltr">
-                        {item.quantity} x {formatPrice(item.price, menuCurrency)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`font-extrabold text-sm ${currentBgTheme.titleText}`} dir="ltr">
-                        {formatPrice(item.quantity * item.price, menuCurrency)}
-                      </span>
-                      <button 
-                        onClick={() => removeFromCart(item.id)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                <div className={`border-t mt-4 pt-4 ${currentBgTheme.isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                  <div className="flex justify-between items-center mb-6">
-                    <span className={`font-bold ${currentBgTheme.descText}`}>
-                      {language === 'ar' ? 'المجموع الإجمالي' : 'Total Value'}
-                    </span>
-                    <span className={`text-2xl font-extrabold ${currentBgTheme.titleText}`} dir="ltr">
-                      {formatPrice(total, menuCurrency)}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={handleCheckout}
-                    disabled={checkoutStatus !== 'idle'}
-                    className={`w-full flex items-center justify-center gap-2 text-white transition-all py-4 rounded-2xl font-bold text-base disabled:opacity-50 shadow-md ${currentPrimary.bg}`}
-                  >
-                    {checkoutStatus === 'idle' && (
-                      <>
-                        <CreditCard className="w-5 h-5" />
-                        {getSectorCheckoutText().idle}
-                      </>
-                    )}
-                    {checkoutStatus === 'processing' && (
-                      getSectorCheckoutText().processing
-                    )}
-                    {checkoutStatus === 'success' && (
-                      getSectorCheckoutText().success
-                    )}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 

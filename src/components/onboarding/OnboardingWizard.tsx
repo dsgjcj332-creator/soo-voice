@@ -4,7 +4,7 @@ import { useSettings, Dialect, VoiceTone, BusinessType } from '../../contexts/Se
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   Store, Home, Car, Boxes, Languages, Volume2, ArrowRight, ArrowLeft, 
-  CheckCircle2, Copy, Sparkles, HelpCircle, Code
+  CheckCircle2, Copy, Sparkles, Code
 } from 'lucide-react';
 import { Logo } from '../brand/Logo';
 import { VoiceWidget } from '../widget/VoiceWidget';
@@ -216,9 +216,9 @@ export function OnboardingWizard() {
                   {language === 'ar' ? 'ما هو طابع وقائمة مطعمك أو مقهاك؟' : 'What is your restaurant or café concept?'}
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  {language === 'ar' 
-                    ? 'سنقوم بتدريب النادل الصوتي الذكي وتجهيز قائمة طعام افتراضية مطابقة فوراً لدخولك.'
-                    : 'We will configure your AI Voice Waiter and initialize ready-to-order menu items for your restaurant.'}
+                  {language === 'ar'
+                    ? 'سنجهّز المساعد الصوتي ونبدأ قائمة طعام افتراضية فور دخولك.'
+                    : 'We will configure your voice assistant and start a default menu as you sign in.'}
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
@@ -376,22 +376,9 @@ export function OnboardingWizard() {
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
                   {language === 'ar'
-                    ? 'كيف يعمل نظام التكامل والودجت؟'
-                    : 'How does the SaaS widget integration work?'}
+                    ? 'انسخ الكود وضعه على موقعك لإطلاق المساعد.'
+                    : 'Copy the snippet and paste it on your site to launch the assistant.'}
                 </p>
-
-                {/* Conceptual SaaS integration explanation */}
-                <div className="mt-4 bg-indigo-50/70 border border-indigo-100 p-4 rounded-2xl text-xs text-indigo-950 leading-relaxed">
-                  <div className="font-bold flex items-center gap-1.5 mb-1 text-indigo-900">
-                    <HelpCircle className="w-4 h-4 text-indigo-600" />
-                    {language === 'ar' ? 'فكرة الـ SaaS والودجت العائم:' : 'The concept of SaaS widgets:'}
-                  </div>
-                  <p>
-                    {language === 'ar'
-                      ? 'جميع إعدادات المساعد الصوتي والذكاء الاصطناعي وقائمة منتجاتك مرفوعة بشكل آمن على السيرفر المركزي هنا. عندما تضيف هذا الودجت العائم إلى أي موقع خارجي آخر (مثل ووردبريس أو سلة أو شوبيفاي)، سيقوم الكود باستدعاء لوحة التحكم لدينا ديناميكياً لخدمة زوار موقعك والرد بالصوت واللهجة والمنتجات التي اخترتها فوراً دون الحاجة لبرمجة أي خادم آخر!'
-                      : 'All your AI agent settings, documents, and product catalogs are securely hosted centrally on our server dashboard. When you paste the widget script onto any third-party external website, the script dynamically pulls these configurations from our central portal to instantly run the floating voice widget for your site visitors!'}
-                  </p>
-                </div>
 
                 <div className="mt-5">
                   <div className="flex items-center justify-between mb-2">

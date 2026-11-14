@@ -19,9 +19,9 @@ import { VoiceWidget } from "./components/widget/VoiceWidget";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { LandingPage } from "./pages/LandingPage";
 import { StoreDemo } from "./pages/StoreDemo";
-import { CartProvider } from "./contexts/CartContext";
 import { Auth } from "./pages/Auth";
 import { Integration } from "./pages/Integration";
+import { KitchenDisplay } from "./pages/KitchenDisplay";
 import { DigitalMenu } from "./pages/DigitalMenu";
 import { Billing } from "./pages/Billing";
 import { WidgetStandalone } from "./pages/WidgetStandalone";
@@ -73,6 +73,7 @@ function AppRoutes() {
           <Route index element={<DashboardOverview />} />
           <Route path="knowledge-base" element={<KnowledgeBase />} />
           <Route path="conversations" element={<Conversations />} />
+          <Route path="kitchen" element={<KitchenDisplay />} />
           <Route path="settings" element={<Settings />} />
           <Route path="integration" element={<Integration />} />
           <Route path="digital-menu" element={<DigitalMenu />} />
@@ -91,9 +92,7 @@ export default function App() {
       <AuthProvider>
         <SettingsProvider>
           <KnowledgeProvider>
-            <CartProvider>
-              <AppRoutes />
-            </CartProvider>
+            <AppRoutes />
           </KnowledgeProvider>
         </SettingsProvider>
       </AuthProvider>

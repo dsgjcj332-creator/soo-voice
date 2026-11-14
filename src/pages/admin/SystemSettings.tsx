@@ -90,35 +90,35 @@ export function AdminSystemSettings() {
          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
             <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-6 text-lg">
                 <AppWindow className="w-5 h-5 text-slate-400" />
-                {language === 'ar' ? 'تطبيقات المتاجر (App Stores)' : 'Platform App Stores'}
+                {language === 'ar' ? 'طرق التسجيل والربط' : 'Signup & integration channels'}
             </h3>
             
             <div className="space-y-4">
                 <div className="flex items-center justify-between py-3 border-b border-slate-100">
                     <div>
-                        <div className="font-bold text-sm text-slate-700">{language === 'ar' ? 'دمج Shopify' : 'Shopify Integration'}</div>
-                        <div className="text-xs text-slate-500 mt-1">{language === 'ar' ? 'قبول المتاجر القادمة من متجر شوبيفاي.' : 'Accept incoming merchants from Shopify via OAuth.'}</div>
+                        <div className="font-bold text-sm text-slate-700">{language === 'ar' ? 'التسجيل من الويب' : 'Web sign-up'}</div>
+                        <div className="text-xs text-slate-500 mt-1">{language === 'ar' ? 'قبول المطاعم الجديدة من الموقع مباشرةً.' : 'Accept new restaurants signing up directly from the website.'}</div>
                     </div>
-                    <button 
-                       onClick={() => handleToggleIntegration('shopify')}
+                    <button
+                       onClick={() => handleToggleIntegration('web')}
                        disabled={saving}
-                       className={`w-11 h-6 rounded-full relative transition-colors ${settings.integrations?.shopify !== false ? 'bg-indigo-600' : 'bg-slate-200'}${saving ? ' opacity-50' : ''}`}
+                       className={`w-11 h-6 rounded-full relative transition-colors ${settings.integrations?.web !== false ? 'bg-indigo-600' : 'bg-slate-200'}${saving ? ' opacity-50' : ''}`}
                     >
-                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${settings.integrations?.shopify !== false ? 'left-[calc(100%-22px)]' : 'left-0.5'}`}></div>
+                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${settings.integrations?.web !== false ? 'left-[calc(100%-22px)]' : 'left-0.5'}`}></div>
                     </button>
                 </div>
 
                 <div className="flex items-center justify-between py-3 border-b border-slate-100">
                     <div>
-                        <div className="font-bold text-sm text-slate-700">{language === 'ar' ? 'دمج منصة سلة' : 'Salla Integration'}</div>
-                        <div className="text-xs text-slate-500 mt-1">{language === 'ar' ? 'تفعيل تطبيق سلة للرد الآلي.' : 'Enable Salla app for automated voice agent.'}</div>
+                        <div className="font-bold text-sm text-slate-700">{language === 'ar' ? 'الربط المخصص' : 'Custom integration'}</div>
+                        <div className="text-xs text-slate-500 mt-1">{language === 'ar' ? 'السماح بالربط عبر الويب هوك وتضمين الأداة.' : 'Allow webhook + widget embed integrations.'}</div>
                     </div>
-                    <button 
-                       onClick={() => handleToggleIntegration('salla')}
+                    <button
+                       onClick={() => handleToggleIntegration('custom')}
                        disabled={saving}
-                       className={`w-11 h-6 rounded-full relative transition-colors ${settings.integrations?.salla !== false ? 'bg-indigo-600' : 'bg-slate-200'}${saving ? ' opacity-50' : ''}`}
+                       className={`w-11 h-6 rounded-full relative transition-colors ${settings.integrations?.custom !== false ? 'bg-indigo-600' : 'bg-slate-200'}${saving ? ' opacity-50' : ''}`}
                     >
-                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${settings.integrations?.salla !== false ? 'left-[calc(100%-22px)]' : 'left-0.5'}`}></div>
+                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${settings.integrations?.custom !== false ? 'left-[calc(100%-22px)]' : 'left-0.5'}`}></div>
                     </button>
                 </div>
             </div>

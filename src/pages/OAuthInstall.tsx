@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { CheckCircle2, ShieldCheck, Loader2, Database, Blocks, LogIn } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Loader2, Database, LogIn } from "lucide-react";
 import { Logo } from '../components/brand/Logo';
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -12,7 +12,7 @@ export function OAuthInstall() {
   const { language } = useLanguage();
   const { user } = useAuth();
   
-  const platform = searchParams.get("platform") || "Shopify";
+  const platform = searchParams.get("platform") || "Web";
   const shopName = searchParams.get("shop") || "mystore.com";
   
   const [status, setStatus] = useState<"review" | "login" | "installing" | "success" | "error">("review");
@@ -142,26 +142,12 @@ export function OAuthInstall() {
                 <Database className="w-6 h-6 text-indigo-500 shrink-0" />
                 <div>
                   <p className="font-bold text-slate-800 text-sm">
-                    {language === 'ar' ? 'قراءة المنتجات والطلبات' : 'Read Products & Orders'}
+                    {language === 'ar' ? 'قراءة المنيو والطلبات' : 'Read Menu & Orders'}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    {language === 'ar' 
-                      ? 'لكي يتمكن المساعد الصوتي من الإجابة عن المنتجات وتفاصيلها نيابة عنك.' 
-                      : 'Allows the AI to answer catalog questions accurately.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <Blocks className="w-6 h-6 text-emerald-500 shrink-0" />
-                <div>
-                  <p className="font-bold text-slate-800 text-sm">
-                    {language === 'ar' ? 'تعديل سلة المشتريات (Cart)' : 'Modify Cart States'}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {language === 'ar' 
-                      ? 'للسماح للعملاء بإضافة المنتجات صوتياً مباشرة دون تدخل.' 
-                      : 'Allows voice commands to dynamically add items to user carts.'}
+                    {language === 'ar'
+                      ? 'حتى يتمكن المساعد الصوتي من الإجابة عن الأطباق وتفاصيلها نيابةً عنك.'
+                      : 'Allows the assistant to answer menu questions accurately.'}
                   </p>
                 </div>
               </div>
@@ -173,8 +159,8 @@ export function OAuthInstall() {
                     {language === 'ar' ? 'حقن السكربت (Theme App Extension)' : 'Theme Script Injection'}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    {language === 'ar' 
-                      ? 'يقوم التطبيق بتركيب المايكروفون الخاص بنا بأمان دون لمس أو تخريب أكوادك الأصلية نهائياً.' 
+                    {language === 'ar'
+                      ? 'يقوم التطبيق بتركيب المايكروفون الخاص بنا بأمان دون لمس أو تخريب أكوادك الأصلية نهائياً.'
                       : 'Securely renders the voice widget on your storefront without manual code edits.'}
                   </p>
                 </div>

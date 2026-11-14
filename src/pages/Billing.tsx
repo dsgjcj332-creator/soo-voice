@@ -30,7 +30,6 @@ export function Billing() {
   // ROI Calculator states
   const [monthlyVisitors, setMonthlyVisitors] = useState(10000);
   const [averageOrderValue, setAverageOrderValue] = useState(50);
-  const [integrationTab, setIntegrationTab] = useState("shopify");
 
   // Single shared currency map (src/lib/currency.ts)
   const symbol = currencySymbol(currency);
@@ -88,14 +87,14 @@ export function Billing() {
         "محادثات غير محدودة للذكاء",
         "أصوات مخصصة احترافية",
         "ستاندات طاولة QR غير محدودة",
-        "ربط تلقائي مع سلة وشوبيفاي"
+        "ربط تلقائي عبر الويب هوك"
       ],
       featuresEn: [
         "Up to 1,000 active products",
         "Unlimited AI conversations",
         "Custom premium voice selection",
         "Unlimited QR stand generation",
-        "Shopify & Salla deep sync"
+        "Webhook & embed sync"
       ],
       popular: true
     },
@@ -268,64 +267,18 @@ export function Billing() {
               </pre>
             </div>
 
-            {/* Platform Guides Tabs */}
+            {/* Platform Guides */}
             <div className="mt-8 border-t pt-6">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                {language === "ar" ? "دليل الربط السريع حسب المنصة" : "Quick Integration Guide by Platform"}
+                {language === "ar" ? "دليل التضمين على أي موقع" : "Embed on your website"}
               </h3>
-              
-              <div className="flex border-b border-slate-100 mb-4 flex-wrap gap-2">
-                {["shopify", "salla", "woocommerce", "custom"].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setIntegrationTab(tab)}
-                    className={`px-4 py-2 text-xs font-bold transition-all border-b-2 capitalize ${
-                      integrationTab === tab 
-                        ? "border-indigo-600 text-indigo-600" 
-                        : "border-transparent text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
 
-              {/* Instructions content */}
               <div className="text-xs font-semibold text-slate-600 leading-relaxed bg-slate-50 rounded-2xl p-4">
-                {integrationTab === "shopify" && (
-                  <ol className="list-decimal list-inside space-y-2">
-                    <li>{language === "ar" ? "ادخل للوحة تحكم شوبيفاي ثم اختر 'Themes'." : "Log into Shopify Admin and go to Themes."}</li>
-                    <li>{language === "ar" ? "اضغط على النقاط الثلاث واختر 'Edit Code'." : "Click the three dots next to your theme and choose 'Edit Code'."}</li>
-                    <li>{language === "ar" ? "افتح ملف theme.liquid وضَع الكود المنسوخ قبل وسم </body> مباشرة." : "Open theme.liquid and paste the embed script right before the </body> tag."}</li>
-                    <li>{language === "ar" ? "احفظ التغييرات وسيظهر المساعد الصوتي فوراً!" : "Save changes and watch the Voice AI float live on your storefront!"}</li>
-                  </ol>
-                )}
-
-                {integrationTab === "salla" && (
-                  <ol className="list-decimal list-inside space-y-2">
-                    <li>{language === "ar" ? "ادخل للوحة تحكم سلة وتوجه إلى 'متجر التطبيقات'." : "Go to your Salla Merchant Dashboard and open the App Store."}</li>
-                    <li>{language === "ar" ? "اختر 'ربط مخصص للموقع / Custom Code'." : "Find and select 'Custom Script / Custom Tag' integration."}</li>
-                    <li>{language === "ar" ? "الصق كود الـ script في خانة الهيدر والفوتر واضغط حفظ." : "Paste the script snippet in the header script box and click Activate."}</li>
-                    <li>{language === "ar" ? "سيتم تفعيل الودجت لعملائك لطلب المنتجات مباشرة." : "The widget will run on Salla to allow customers to order directly by speaking."}</li>
-                  </ol>
-                )}
-
-                {integrationTab === "woocommerce" && (
-                  <ol className="list-decimal list-inside space-y-2">
-                    <li>{language === "ar" ? "ادخل للوحة تحكم ووردبريس، ثم اختر 'Plugins' ثم 'Add New'." : "Log into WordPress Admin, go to Plugins -> Add New."}</li>
-                    <li>{language === "ar" ? "ابحث عن إضافة 'Insert Headers and Footers' وقم بتثبيتها." : "Search and install the 'Insert Headers and Footers' plugin."}</li>
-                    <li>{language === "ar" ? "توجّه للإعدادات والصق الكود في المربع الخاص بـ 'Scripts in Footer'." : "Go to Settings -> Insert Headers and Footers and paste code into scripts footer."}</li>
-                    <li>{language === "ar" ? "اضغط حفظ لتفعيل المساعد الذكي." : "Click Save to activate your AI store assistant."}</li>
-                  </ol>
-                )}
-
-                {integrationTab === "custom" && (
-                  <ol className="list-decimal list-inside space-y-2">
-                    <li>{language === "ar" ? "افتح ملف index.html أو قالب التصميم الرئيسي لموقعك." : "Open your HTML template file (index.html, App.js, etc.)."}</li>
-                    <li>{language === "ar" ? "الصق وسم <script> المنسوخ في نهاية الكود." : "Paste the <script> embed tag at the bottom of your root HTML body."}</li>
-                    <li>{language === "ar" ? "احفظ وارفع التحديث للسرفر." : "Deploy and push changes to your production container."}</li>
-                  </ol>
-                )}
+                <ol className="list-decimal list-inside space-y-2">
+                  <li>{language === "ar" ? "افتح ملف index.html أو قالب التصميم الرئيسي لموقعك." : "Open your HTML template file (index.html, App.js, etc.)."}</li>
+                  <li>{language === "ar" ? "الصق وسم <script> المنسوخ قبل وسم </body> مباشرة." : "Paste the <script> embed tag right before the </body> tag."}</li>
+                  <li>{language === "ar" ? "احفظ وارفع التحديث للسيرفر، وسيظهر المساعد الصوتي فورًا." : "Save and deploy — the assistant appears on your site instantly."}</li>
+                </ol>
               </div>
             </div>
           </div>
@@ -410,28 +363,6 @@ export function Billing() {
             </div>
           </div>
 
-          {/* Expert Suggestion for SaaS Business */}
-          <div className="bg-indigo-50 border border-indigo-100 rounded-3xl p-6">
-            <h3 className="font-extrabold text-indigo-900 text-sm flex items-center gap-1.5 mb-2">
-              <Sparkles className="w-4 h-4 text-indigo-600" />
-              {language === "ar" ? "توصية أعمال الذكاء الاصطناعي" : "SaaS Launch Advisory"}
-            </h3>
-            <p className="text-xs text-indigo-800/90 leading-relaxed space-y-2">
-              {language === "ar" ? (
-                <>
-                  <span><strong>القرار الصائب:</strong> قم بنشره كموديل اشتراكات للجميع (SaaS) وليس لمتجرك فقط!</span>
-                  <br />
-                  <span>أصحاب المتاجر والمطاعم في سلة وشوبيفاي والمواقع المستقلة مستعدون للاشتراك الشهري في باقة Pro للحصول على منيو رقمي ذكي مع مساعد صوتي، ليوفروا مبيعات متجرهم على مدار الساعة وبدون عمولات للموظفين. يمكنك تحقيق دخل متكرر (MRR) مذهل!</span>
-                </>
-              ) : (
-                <>
-                  <span><strong>The Verdict:</strong> Build and scale this as a public SaaS product!</span>
-                  <br />
-                  <span>Merchants on Shopify, Salla, and independent websites are eager to subscribe monthly to the Growth Pro plan to add interactive voice shopping widgets and tableside QR ordering, saving on human order processing and increasing their conversion rates.</span>
-                </>
-              )}
-            </p>
-          </div>
         </div>
 
       </div>

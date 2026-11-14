@@ -3,18 +3,16 @@ import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 export interface SystemSettings {
   allowNewRegistrations: boolean;
   integrations: {
-    shopify: boolean;
-    salla: boolean;
-    mnmknk: boolean;
+    web: boolean;
+    custom: boolean;
   };
 }
 
 const DEFAULT_SETTINGS: SystemSettings = {
   allowNewRegistrations: true,
   integrations: {
-    shopify: true,
-    salla: true,
-    mnmknk: true
+    web: true,
+    custom: true
   }
 };
 

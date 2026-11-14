@@ -6,15 +6,13 @@ import {
   MoreHorizontal,
   Settings,
   Volume2,
-  ShoppingBag,
   Send,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useSettings, Dialect, VoiceTone, BusinessType } from "../../contexts/SettingsContext";
 import { useKnowledge } from "../../contexts/KnowledgeContext";
-import { GoogleGenAI, Modality, LiveServerMessage, Type } from "@google/genai";
-import { useCart } from "../../contexts/CartContext";
+import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
 import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 import { currencyPromptLabel } from "../../lib/currency";
@@ -43,7 +41,6 @@ export function VoiceWidget() {
 
   const contextSettings = useSettings();
   const contextKnowledge = useKnowledge();
-  const { items, addToCart, total, clearCart } = useCart();
   const tableParam = searchParams.get('table') || searchParams.get('tableNumber') || '';
   
   const [activeDialect, setActiveDialect] = useState<Dialect>("standard");
@@ -420,23 +417,23 @@ STRICT SYSTEM GUARDRAILS:
       const currencyLineAr = `\nعملة الأسعار المعتمدة: ${currencyPromptLabel(activeCurrency, 'ar')}. كل الأسعار في القائمة أعلاه بهذه العملة — اذكرها دائماً عند ذكر أي سعر ولا تستخدم أي عملة أخرى.`;
       const currencyLineEn = `\nOfficial currency: ${currencyPromptLabel(activeCurrency, 'en')}. All prices in the catalog above are in this currency — always state prices in this currency and never use any other.`;
 
-      const baseInstructionAr = `أنت نادل ومساعد ضيافة ذكي ومضياف لمطعمنا وكافيهنا. هذه قائمة الأطعمة والمشروبات والحلويات المتاحة للطلب:
+      const baseInstructionAr = `أنت مضيف ومساعد ضيافة لمطعمنا. هذه قائمة الأطعمة والمشروبات والحلويات المتاحة:
 ${JSON.stringify(allMenuItems)}
 ${currencyLineAr}${emptyMenuNoticeAr}
 ${structuredProfilePromptAr}
 ${structuredFaqsPromptAr}
 ${standardDocsPromptAr}
 ${strictGuardrailsAr}
-أجب بوضوح وإيجاز ولباقة بناءً على المعلومات المتاحة لك فقط. وجّه العميل للأطباق المميزة واجعل تجربته ممتعة وجذابة. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على أطباق سرية أو وجبات خاصة للشيف (isAiOnly = true)، إذا سألك العميل عنها، أكد له توفرها فوراً وأخبره بسعرها ومكوناتها ويمكنك إضافتها لطلب طاولته! إذا طلب العميل إضافة شيء، استخدم أداة add_to_cart باستخدام ID الخاص بالعنصر. إذا قال العميل أنه انتهى من الاختيار أو يريد تأكيد الطلب أو إرساله للمطبخ أو الدفع، استخدم أداة place_order لإرسال وتأكيد الطلب بالكامل.`;
+أجب بوضوح وإيجاز ولباقة بناءً على المعلومات المتاحة لك فقط. وجّه العميل للأطباق المميزة واقترح ما يناسب ذوقه. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على أطباق سرية أو وجبات خاصة للشيف (isAiOnly = true)، فإذا سألك العميل عنها، أكد له توفرها وأخبره بسعرها ومكوناتها. دورك يقتصر على الإجابة والاقتراح وإرشاد الضيف لمنيو المطعم، ولا يُطلب منك استقبال الطلبات أو إرسالها للمطبخ — إذا أراد الضيف الطلب، أرشده بكل لباقة لمناداة النادل أو مسح كود الطاولة المعروض أمامه.`;
 
-      const baseInstructionEn = `You are a friendly and smart restaurant host and table ordering assistant. Here is our menu catalog including main courses, drinks, and desserts:
+      const baseInstructionEn = `You are a host and hospitality assistant for our restaurant. Here is our menu including main courses, drinks, and desserts:
 ${JSON.stringify(allMenuItems)}
 ${currencyLineEn}${emptyMenuNoticeEn}
 ${structuredProfilePromptEn}
 ${structuredFaqsPromptEn}
 ${standardDocsPromptEn}
 ${strictGuardrailsEn}
-Answer briefly, courteously and clearly based ONLY on the provided information. Guide the guest to popular meals and provide mouth-watering recommendations. Note: Some dishes are marked 'isAiOnly = true' (secret chef menu items). If the customer asks for special off-menu dishes, confirm we have them, state the price, and offer to add it to their order! If the customer asks to order or add to cart, use the add_to_cart tool with the item's ID. If the customer says they are ready to finalize their selection, confirm their order, or checkout, use the place_order tool to submit their entire order directly to the kitchen/POS.`;
+Answer briefly, courteously and clearly based ONLY on the provided information. Guide the guest to notable dishes and suggest what suits their taste. Note: Some dishes are marked 'isAiOnly = true' (secret chef menu items). If the guest asks about them, confirm we have them and state the price and ingredients. Your role is limited to answering questions and making recommendations — you do not place orders or send them to the kitchen. If a guest wishes to order, politely direct them to call a waiter or scan the table code shown in front of them.`;
 
       const sessionPromise = ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
@@ -448,32 +445,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
           // Enable transcription
           outputAudioTranscription: {},
           inputAudioTranscription: {},
-          tools: [{
-            functionDeclarations: [
-              {
-                name: "add_to_cart",
-                description: "Add a menu item to the user's shopping cart.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    itemId: { type: Type.STRING, description: "The ID of the item to add" },
-                    quantity: { type: Type.INTEGER, description: "How many to add" }
-                  },
-                  required: ["itemId", "quantity"]
-                }
-              },
-              {
-                name: "place_order",
-                description: "Submit or finalize the user's order to the kitchen / original system. Call this when the user says they want to complete the order, checkout, or confirm their selection.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {},
-                  required: []
-                }
-              }
-            ]
-          }],
-          systemInstruction: language === 'ar' 
+          systemInstruction: language === 'ar'
             ? baseInstructionAr
             : baseInstructionEn,
         },
@@ -531,124 +503,6 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
                 // Append any text transcription from the AI
                 if (part.text) {
                   modelTransferredText += part.text;
-                }
-                
-                // Handle Function Call
-                if (part.functionCall) {
-                  const { name, args, id } = part.functionCall;
-                  if (name === "add_to_cart") {
-                    const itemArgs = args as { itemId: string, quantity: number };
-                    const item = allMenuItems.find(i => String(i.id) === String(itemArgs.itemId));
-                    if (item) {
-                      addToCart(item, itemArgs.quantity || 1);
-                      setTranscript(`Added ${itemArgs.quantity || 1}x ${item.name} to cart.`);
-                      
-                      // Notify model of success
-                      sessionPromise.then(session => {
-                        session.sendToolResponse({
-                          functionResponses: [{
-                            name,
-                            id,
-                            response: { result: "Success, item added to cart" }
-                          }]
-                        });
-                      });
-                    } else {
-                      // Item not found in the real catalog — never fake it
-                      sessionPromise.then(session => {
-                        session.sendToolResponse({
-                          functionResponses: [{
-                            name,
-                            id,
-                            response: { status: "error", message: language === "ar" ? "المنتج غير موجود في قائمة المنتجات الحالية." : "Item not found in the current product catalog." }
-                          }]
-                        });
-                      });
-                    }
-                  } else if (name === "place_order") {
-                    if (items.length === 0) {
-                      sessionPromise.then(session => {
-                        session.sendToolResponse({
-                          functionResponses: [{
-                            name,
-                            id,
-                            response: { status: "error", message: language === "ar" ? "السلة فارغة حالياً. لا يوجد منتجات لإرسالها." : "Your cart is currently empty." }
-                          }]
-                        });
-                      });
-                    } else {
-                      const orderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
-                      const finalOwnerId = urlOwnerId || 'demo_merchant';
-                      const newOrder = {
-                        id: orderId,
-                        ownerId: finalOwnerId,
-                        tableNumber: tableParam || 'Walk-in',
-                        items: items.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
-                        total: total,
-                        status: 'pending',
-                        createdAt: Date.now()
-                      };
-
-                      const widgetSupabase = getSupabase();
-
-                      if (!widgetSupabase) {
-                        clearCart();
-                        setTranscript(language === "ar" ? "تم تسجيل طلبك بنجاح!" : "Order placed successfully!");
-                        sessionPromise.then(session => {
-                          session.sendToolResponse({
-                            functionResponses: [{
-                              name,
-                              id,
-                              response: { status: "success", message: language === "ar" ? "تم تسجيل طلبك بنجاح!" : "Order placed successfully!" }
-                            }]
-                          });
-                        });
-                      } else {
-                        widgetSupabase.from('orders').insert(newOrder)
-                          .then(async ({ error: orderError }) => {
-                            if (!orderError) {
-                              try {
-                                const { data: whSettings } = await widgetSupabase
-                                  .from('webhook_settings')
-                                  .select('*')
-                                  .eq('ownerId', finalOwnerId)
-                                  .single();
-
-                                if (whSettings?.webhookUrl) {
-                                  fetch(whSettings.webhookUrl, {
-                                    method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json'
-                                    },
-                                    body: JSON.stringify({
-                                      event: 'order.created',
-                                      timestamp: Date.now(),
-                                      webhook_secret: whSettings.webhookSecret,
-                                      data: newOrder
-                                    })
-                                  }).catch(e => console.warn("Widget background webhook dispatch failed:", e));
-                                }
-                              } catch (err) {
-                                console.warn(err);
-                              }
-
-                              clearCart();
-                              setTranscript(language === "ar" ? `تم إرسال طلبك بنجاح من طاولة رقم ${tableParam || "سفري"}` : `Order confirmed successfully for Table ${tableParam || "Walk-in"}`);
-
-                              sessionPromise.then(session => {
-                                session.sendToolResponse({
-                                  functionResponses: [{
-                                    name,
-                                    id,
-                                    response: { status: "success", message: language === "ar" ? `تم تسجيل طلبك بنجاح للمطبخ. رقم طلبك هو: ${orderId}` : `Order sent successfully to the kitchen. Your order ID is: ${orderId}` }
-                                  }]
-                                });
-                              });
-                            }
-                          });
-                      }
-                    }
-                  }
                 }
               }
 

@@ -20,7 +20,7 @@ export function PrivacyPolicy() {
               <p>مرحباً بك في تطبيق SooVoice. نحن نقدر خصوصيتك ونلتزم بحماية بياناتك الشخصية.</p>
               
               <h3 className="text-xl font-bold text-slate-800">1. البيانات التي نجمعها</h3>
-              <p>عند استخدامك لتطبيقنا وتثبيته عبر منصات مثل شوبيفاي أو سلة، نقوم بجمع:</p>
+              <p>عند إنشائك لحساب على SooVoice أو تثبيت الأداة على موقعك، نقوم بجمع:</p>
               <ul className="list-disc ms-5">
                 <li>معلومات المتجر الأساسية (الاسم، البريد الإلكتروني).</li>
                 <li>قائمة المنتجات والأسعار (لغرض تدريب المساعد الصوتي فقط).</li>
@@ -41,7 +41,7 @@ export function PrivacyPolicy() {
               <p>Welcome to SooVoice. We respect your privacy and are committed to protecting your personal data.</p>
               
               <h3 className="text-xl font-bold text-slate-800">1. Data We Collect</h3>
-              <p>When you install our app via platforms like Shopify or Salla, we collect:</p>
+              <p>When you create a SooVoice account or install the widget on your website, we collect:</p>
               <ul className="list-disc ms-5">
                 <li>Basic store info (Name, Email).</li>
                 <li>Product catalog and pricing (for the purpose of training the AI agent).</li>

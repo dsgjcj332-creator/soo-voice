@@ -52,9 +52,6 @@ export function PublicLayout() {
           <a href="/#features" onClick={handleScrollToFeatures} className="hover:text-indigo-600 transition-colors">
             {language === 'ar' ? 'المميزات' : 'Features'}
           </a>
-          <Link to="/store" className="hover:text-indigo-600 transition-colors">
-            {language === 'ar' ? 'المتجر التجريبي' : 'Demo Store'}
-          </Link>
           <Link to="/about" className="hover:text-indigo-600 transition-colors">
             {language === 'ar' ? 'من نحن' : 'About Us'}
           </Link>
@@ -90,17 +87,17 @@ export function PublicLayout() {
               <span className="font-bold text-xl text-white tracking-tight">SooVoice</span>
             </Link>
             <p className="text-slate-400 text-sm leading-relaxed mb-6">
-              {language === 'ar' 
-                ? 'الحل الأمثل لتمكين المتاجر من بيع المزيد باستخدام قوة الذكاء الاصطناعي الصوتي والمحادثات المباشرة.' 
-                : 'The ultimate solution empowering robust commerce via AI-driven conversational voice agents.'}
+              {language === 'ar'
+                ? 'مساعد صوتي مخصّص للمطاعم والفنادق الراقية — يستقبل ضيوفك عند الطاولة ويجيب عن المنيو بدقة واحتراف.'
+                : 'A voice assistant for restaurants and hotels of note — greeting guests at the table and answering menu questions with precision.'}
             </p>
           </div>
 
           <div>
-            <h4 className="text-slate-50 font-bold mb-4">{language === 'ar' ? 'المنتجات' : 'Product'}</h4>
+            <h4 className="text-slate-50 font-bold mb-4">{language === 'ar' ? 'المنتج' : 'Product'}</h4>
             <ul className="space-y-3 text-sm text-slate-400">
-              <li><Link to="/auth" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'تسجيل الدخول للتجار' : 'Merchant Login'}</Link></li>
-              <li><Link to="/store" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'المركب التجريبي' : 'Store Sandbox'}</Link></li>
+              <li><Link to="/auth" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'دخول المطاعم' : 'Restaurant Login'}</Link></li>
+              <li><Link to="/store" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'معاينة المنيو' : 'Menu Preview'}</Link></li>
             </ul>
           </div>
 
@@ -108,7 +105,6 @@ export function PublicLayout() {
             <h4 className="text-slate-50 font-bold mb-4">{language === 'ar' ? 'الشركة' : 'Company'}</h4>
             <ul className="space-y-3 text-sm text-slate-400">
               <li><Link to="/about" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'من نحن' : 'About Us'}</Link></li>
-              <li><a href="#" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'اتصل بنا' : 'Contact Sales'}</a></li>
             </ul>
           </div>
 

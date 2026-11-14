@@ -84,9 +84,9 @@ export function AdminMerchants() {
                  {language === 'ar' ? 'لا توجد متاجر في قاعدة البيانات' : 'No Merchants in Database'}
              </h3>
              <p className="text-sm text-slate-500 max-w-sm">
-                 {language === 'ar' 
-                    ? 'عند تسجيل التجار من خلال شوبيفاي أو سلة أو التسجيل اليدوي، سيظهرون هنا.' 
-                    : 'When merchants register via Shopify, Salla, or manually, they will appear here.'}
+                 {language === 'ar'
+                    ? 'عند تسجيل المطاعم من خلال الموقع أو التسجيل اليدوي، سيظهرون هنا.'
+                    : 'When restaurants register via the website or manually, they will appear here.'}
              </p>
            </>
          ) : (
@@ -109,13 +109,8 @@ export function AdminMerchants() {
                            <div className="text-xs text-slate-400">{merchant.email}</div>
                         </td>
                         <td className="px-6 py-4">
-                           <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                               merchant.platform === 'Shopify' ? 'bg-green-100 text-green-700' :
-                               merchant.platform === 'Salla' ? 'bg-teal-100 text-teal-700' :
-                               merchant.platform === 'WooCommerce' ? 'bg-purple-100 text-purple-700' :
-                               'bg-slate-100 text-slate-700'
-                           }`}>
-                               {merchant.platform}
+                           <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-700">
+                              {merchant.platform}
                            </span>
                         </td>
                         <td className="px-6 py-4">

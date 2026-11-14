@@ -18,13 +18,13 @@ export function TermsOfService() {
           {language === 'ar' ? (
             <>
               <h3 className="text-xl font-bold text-slate-800">1. قبول الشروط</h3>
-              <p>باستخدام منصة SooVoice وتثبيت إضافاتنا على متجرك (سواء عبر شوبيفاي، سلة، أو الربط المباشر)، فإنك توافق على الالتزام بهذه الشروط.</p>
+              <p>باستخدامك لمنصة SooVoice وتثبيت الأداة على موقعك، فإنك توافق على الالتزام بهذه الشروط.</p>
               
               <h3 className="text-xl font-bold text-slate-800">2. ترخيص الاستخدام</h3>
               <p>نمنحك ترخيصًا محدودًا وغير حصري وقابل للإلغاء لاستخدام الـ Widget الصوتي الخاص بنا ودمجه في متجرك لخدمة عملائك، طالما أن اشتراكك فعال.</p>
 
               <h3 className="text-xl font-bold text-slate-800">3. المسؤولية عن المخرجات</h3>
-              <p>الذكاء الاصطناعي الخاص بنا (محرّك SooVoice الصوتي) مُدرب على تقديم إجابات دقيقة بناءً على قاعدة المعرفة (Knowledge Base) التي تقدمها أنت. ومع ذلك، لا نتحمل المسؤولية القانونية عن أي "أخطاء هلوسة AI" (الهلوسة) قد تؤدي لخلافات بينك وبين المشتري بشأن الأسعار أو العروض؛ يجب الرجوع لأسعار السلة النهائية دائمًا.</p>
+              <p>المساعد الصوتي من SooVoice مُصمّم لإعطاء إجابات دقيقة استنادًا إلى قاعدة المعرفة التي تقدمها أنت. ومع ذلك، لا نتحمل المسؤولية القانونية عن أي "هلوسة" قد تؤدي لاختلاف بين ما يقوله المساعد وبين الأسعار الفعلية في منشأتك؛ يجب الرجوع لقائمتك المعتمدة دائمًا.</p>
 
               <h3 className="text-xl font-bold text-slate-800">4. الاستخدام العادل (Fair Use)</h3>
               <p>يخضع النظام لسياسة الاستخدام العادل. في حال اكتشاف محاولات لهندسة عكسية (Reverse Engineering) للاستعلامات أو استهلاك هائل ومفتعل (DDoS) بغرض استنفاد أوامر الذكاء الاصطناعي، يحق لنا إيقاف الخدمة مؤقتًا لحمايتك وحماية مواردنا.</p>
@@ -32,13 +32,13 @@ export function TermsOfService() {
           ) : (
             <>
               <h3 className="text-xl font-bold text-slate-800">1. Acceptance of Terms</h3>
-              <p>By installing and using SooVoice on your store (via Shopify, Salla, or custom snippet), you agree to be bound by these Terms of Service.</p>
+              <p>By installing and using SooVoice on your website, you agree to be bound by these Terms of Service.</p>
               
               <h3 className="text-xl font-bold text-slate-800">2. License to Use</h3>
               <p>We grant you a limited, non-exclusive, revocable license to use our Voice Widget and integrate it into your storefront to serve your customers, provided your subscription remains active.</p>
 
               <h3 className="text-xl font-bold text-slate-800">3. Liability Regarding Outputs</h3>
-              <p>Our AI (the SooVoice voice engine) is designed to be highly accurate based on the Knowledge Base you provide. However, we are not legally liable for any "AI hallucinations" that may cause discrepancies between the AI's stated price and the actual cart price. The final cart checkout determines the legally binding price.</p>
+              <p>The SooVoice voice assistant is designed to be accurate based on the knowledge base you provide. However, we are not legally liable for any "hallucinations" that may cause discrepancies between what the assistant says and your actual menu. Your officially published menu is always the binding reference.</p>
 
               <h3 className="text-xl font-bold text-slate-800">4. Fair Use Policy</h3>
               <p>The system is subject to a fair use policy. In the event of detected reverse-engineering attempts or artificial consumption spikes (DDoS) intended to exhaust AI quotas, we reserve the right to temporarily suspend the widget connection to protect resources.</p>

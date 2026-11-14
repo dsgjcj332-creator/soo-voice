@@ -3,11 +3,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings, Dialect, VoiceTone, Currency } from '../contexts/SettingsContext';
 import {
-  Globe, Settings2, Sparkles, Star, Utensils, DollarSign, Database,
+  Globe, Settings2, Sparkles, Star, DollarSign,
   Store, MapPin, Phone, Mic, MicOff, Timer, Navigation, ShieldCheck, CheckCircle2,
 } from 'lucide-react';
 import { subscribeToGlobalVoices, GlobalVoice } from '../services/globalVoices';
-import { getSupabaseConfig } from '../lib/supabase';
 import { CURRENCY_LIST } from '../lib/currency';
 import { useStoreSettings, SESSION_MINUTES_OPTIONS, GEO_RADIUS_OPTIONS } from '../lib/storeSettings';
 
@@ -40,9 +39,6 @@ export function Settings() {
 
   // Geo capture status for the "use my location" flow
   const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'done' | 'error'>('idle');
-
-  // Cuisine concept — single top-level state (fixed: was a hook inside map)
-  const [selectedCuisine, setSelectedCuisine] = useState(() => localStorage.getItem('restaurant_cuisine') || 'fast_food');
 
   useEffect(() => {
     const unsubscribe = subscribeToGlobalVoices((voices) => setGlobalVoices(voices));
@@ -210,12 +206,12 @@ export function Settings() {
               )}
               <div>
                 <h3 className="font-bold text-slate-800 text-sm">
-                  {isAr ? 'النادل الصوتي الذكي على المنيو' : 'AI Voice Waiter on the menu'}
+                  {isAr ? 'المساعد الصوتي على المنيو' : 'Voice assistant on the menu'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                   {isAr
-                    ? 'لو أغلقت الخيار، المنيو يبقى يدوي فقط (تصفح وإضافة للطلب بدون مساعد صوتي). تقدر تفتحه أو تقفله في أي وقت.'
-                    : 'When off, the menu becomes manual-only (browse & add to order without the voice assistant). Toggle anytime.'}
+                    ? 'لو أغلقت الخيار، المنيو يبقى يدوي فقط (تصفح فقط). تقدر تفتحه أو تقفله في أي وقت.'
+                    : 'When off, the menu becomes manual-only (browse only). Toggle anytime.'}
                 </p>
               </div>
             </div>
@@ -350,10 +346,10 @@ export function Settings() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {isAr ? 'اللغة واللهجة (AI Persona)' : 'Language & Dialect'}
+              {isAr ? 'اللغة واللهجة' : 'Language & Dialect'}
             </h2>
             <p className="text-sm text-slate-500">
-              {isAr ? 'كيف سيتحدث الذكاء الاصطناعي مع عملائك؟' : 'How the AI will converse with your customers'}
+              {isAr ? 'بأي لغة ولهجة يتحدث المساعد مع ضيوفك؟' : 'How the assistant converses with your guests'}
             </p>
           </div>
         </div>
@@ -434,8 +430,8 @@ export function Settings() {
               <Settings2 className="w-5 h-5 shrink-0 text-slate-400" />
               <p>
                 {isAr
-                  ? 'المحرك الصوتي الذكي يتبنّى نبرة الصوت المحددة، بينما يتكفل الـ Prompt الديناميكي بتوجيه الذكاء الاصطناعي للتحدث باللهجة الصحيحة دون الحاجة لبناء نموذج جديد!'
-                  : 'The SooVoice engine adopts the selected voice tone output, while the dynamic prompt ensures the AI speaks exactly in your requested regional dialect!'}
+                  ? 'يستخدم المساعد النبرة الصوتية المختارة ويلتزم باللهجة المحددة عند الحديث مع الضيف.'
+                  : 'The assistant uses the selected voice tone and follows the chosen dialect when speaking with guests.'}
               </p>
             </div>
           </div>
@@ -487,139 +483,6 @@ export function Settings() {
         </div>
       </div>
 
-      {/* ============ Restaurant Concept Card ============ */}
-      <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-          <div className="h-10 w-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-            <Utensils className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">
-              {isAr ? 'طابع المطعم والضيافة الصوتية (Restaurant Concept)' : 'Restaurant Concept & Hospitality'}
-            </h2>
-            <p className="text-sm text-slate-500">
-              {isAr ? 'تخصيص سلوك النادل الصوتي الذكي ونوع الضيافة وخدمة الطاولات' : 'Configure smart voice waiter persona, cuisine type, and table service'}
-            </p>
-          </div>
-        </div>
-
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              {
-                id: 'fast_food',
-                titleAr: 'وجبات سريعة وبرجر (Fast Casual & Burgers)',
-                titleEn: 'Fast Casual & Burgers',
-                descAr: 'اقتراح الوجبات، الكومبو، البطاطس، الصوصات الإضافية والمشروبات بسرعة فائقة وسلاسة.',
-                descEn: 'Ultra-fast ordering with combos, extra sauces, fries, and beverage upsells.',
-                icon: '🍔'
-              },
-              {
-                id: 'cafe_bakery',
-                titleAr: 'كافيه ومخبوزات وحلويات (Café & Specialty Coffee)',
-                titleEn: 'Café & Specialty Coffee',
-                descAr: 'تفاصيل درجات تحميص البن، أنواع الحليب (شوفان/لوز)، اقتراح الحلويات المرافقة للقهوة.',
-                descEn: 'Roast profiles, milk options, and pairing desserts with hot & iced specialty drinks.',
-                icon: '☕'
-              },
-              {
-                id: 'oriental_grill',
-                titleAr: 'مشاوي ومأكولات شرقية (Grill & Traditional Dining)',
-                titleEn: 'Grill & Traditional Dining',
-                descAr: 'ضيافة عربية دافئة، اقتراح المقبلات الباردة والساخنة، السلطات، وطواجن اللحوم والمشاوي.',
-                descEn: 'Warm traditional hospitality, hot/cold mezze, premium meats, and family platters.',
-                icon: '🥩'
-              },
-              {
-                id: 'italian_pizza',
-                titleAr: 'بيتزا وباستا إيطالية (Pizzeria & Italian Trattoria)',
-                titleEn: 'Pizzeria & Italian Trattoria',
-                descAr: 'شرح المكونات الطازجة، أنواع الأجبان، الإضافات المخصصة، والمقبلات الإيطالية الأصيلة.',
-                descEn: 'Fresh doughs, cheese types, pasta sauces, and classic Italian appetizers.',
-                icon: '🍕'
-              }
-            ].map((cuisine) => {
-              const isSelected = selectedCuisine === cuisine.id;
-              return (
-                <div
-                  key={cuisine.id}
-                  onClick={() => {
-                    setSelectedCuisine(cuisine.id);
-                    localStorage.setItem('restaurant_cuisine', cuisine.id);
-                  }}
-                  className={`p-5 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col gap-3 relative ${
-                    isSelected ? 'border-emerald-600 bg-white ring-2 ring-emerald-100 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-75 hover:opacity-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{cuisine.icon}</span>
-                      <h3 className="font-bold text-slate-800 text-sm">
-                        {isAr ? cuisine.titleAr : cuisine.titleEn}
-                      </h3>
-                    </div>
-                    {isSelected && (
-                      <span className="text-[10px] bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold">
-                        {isAr ? 'طابع نشط' : 'Active Concept'}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    {isAr ? cuisine.descAr : cuisine.descEn}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold text-xs text-emerald-900">
-                {isAr ? 'تكامل الطاولات والمنيو الذكي' : 'Integrated Restaurant Dine-in Architecture'}
-              </h4>
-              <p className="text-[11px] text-emerald-800 mt-1 leading-relaxed">
-                {isAr
-                  ? 'تم تخصيص هذا التطبيق بالكامل كمنيو مطاعم وكافيهات صوتي. يقوم الزبون بالجلوس على الطاولة، مسح كود الـ QR، والتحدث مباشرة مع النادل الذكي لاختيار وجبته وإرسال الطلب فوراً إلى طابعة المطبخ أو نظام الكاشير (POS).'
-                  : 'This application is exclusively architected for restaurant QR table ordering and digital voice menus. Guests scan the QR on their table, speak directly to the AI waiter, and submit orders straight to your kitchen/POS.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ============ Database Status Card ============ */}
-      <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center">
-              <Database className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800">
-                {isAr ? 'قاعدة البيانات' : 'Database'}
-              </h2>
-              <p className="text-sm text-slate-500">
-                {isAr
-                  ? 'اتصال قاعدة البيانات مُدار بأمان عبر إعدادات الخادم (Vercel) ولا يمكن عرضه أو تعديله من الواجهة.'
-                  : 'The database connection is securely managed via server-side environment variables and cannot be viewed or edited from the UI.'}
-              </p>
-            </div>
-          </div>
-
-          {getSupabaseConfig().isConfigured ? (
-            <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-bold flex items-center gap-1 shrink-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              {isAr ? 'متصلة وآمنة' : 'Connected'}
-            </span>
-          ) : (
-            <span className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-bold flex items-center gap-1 shrink-0">
-              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-              {isAr ? 'وضع محلي' : 'Local Mode'}
-            </span>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

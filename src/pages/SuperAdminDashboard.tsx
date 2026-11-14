@@ -159,12 +159,7 @@ export function SuperAdminDashboard() {
                        <div className="text-xs text-slate-400">{reg.email}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                          reg.platform === 'Shopify' ? 'bg-green-100 text-green-700' :
-                          reg.platform === 'Salla' ? 'bg-teal-100 text-teal-700' :
-                          reg.platform === 'WooCommerce' ? 'bg-purple-100 text-purple-700' :
-                          'bg-indigo-100 text-indigo-700'
-                      }`}>
+                      <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-indigo-100 text-indigo-700">
                           {reg.platform}
                       </span>
                     </td>

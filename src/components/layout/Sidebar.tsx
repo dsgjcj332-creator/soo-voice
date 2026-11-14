@@ -7,11 +7,11 @@ import {
   Settings,
   Code,
   CreditCard,
-  Store,
   ExternalLink,
   LogOut,
   QrCode,
-  Utensils
+  Utensils,
+  ChefHat
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -24,6 +24,7 @@ const getNavigationGroups = (t: (k: string) => string, language: string) => [
     items: [
       { name: t("nav.overview"), href: "/app", icon: LayoutDashboard },
       { name: t("nav.conversations"), href: "/app/conversations", icon: MessageSquare },
+      { name: t("nav.kitchen"), href: "/app/kitchen", icon: ChefHat },
       { name: language === 'ar' ? 'المنيو الرقمي و QR' : 'Digital Menu & QR', href: "/app/digital-menu", icon: QrCode },
     ],
   },

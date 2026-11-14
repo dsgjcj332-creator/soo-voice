@@ -1021,27 +1021,29 @@ export function DigitalMenu() {
             {language === "ar" ? "رقمنة المنيو وصانع الـ QR" : "Digital Menu & QR Builder"}
           </h1>
           <p className="text-slate-500 mt-1 text-sm md:text-base">
-            {language === "ar" 
-              ? "تحويل محلك لمنيو رقمي متفاعل مع مساعد صوتي ذكي للزباين لزيادة مبيعاتك بنسبة 35%." 
-              : "Digitalize your shop into a responsive menu with a voice AI assistant to boost sales."}
+            {language === "ar"
+              ? "أنشئ قائمتك الرقمية، صمّم مظهرها، وأنشئ أكواد QR لكل طاولة."
+              : "Build your digital menu, design its look, and generate QR codes for each table."}
           </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleBulkAISeeding}
-            className="flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors px-4 py-2.5 rounded-xl font-bold text-sm"
-          >
-            <Sparkles className="w-4 h-4" />
-            {language === "ar" ? "إضافة منتجات تجريبية (15 منتج)" : "Add Sample Catalog (15 items)"}
-          </button>
+          {user?.provider === 'local' && (
+            <button
+              onClick={handleBulkAISeeding}
+              className="flex items-center gap-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors px-4 py-2.5 rounded-xl font-bold text-sm"
+            >
+              <Sparkles className="w-4 h-4" />
+              {language === "ar" ? "إضافة منتجات تجريبية (15 منتج)" : "Add sample catalog (15 items)"}
+            </button>
+          )}
 
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:-translate-y-0.5 transform"
           >
             <Upload className="w-4 h-4" />
-            {language === "ar" ? "استيراد ملف (CSV/JSON)" : "Import File (CSV/JSON)"}
+            {language === "ar" ? "استيراد ملف (CSV/JSON)" : "Import file (CSV/JSON)"}
           </button>
           
           <button
@@ -1103,12 +1105,12 @@ export function DigitalMenu() {
             </div>
             <div>
               <h3 className="font-extrabold text-indigo-900 text-sm md:text-base">
-                {language === "ar" ? "فكرة منيو المطاعم الذكي والأطباق السرية (Off-Menu)" : "Smart Restaurant Menu & Hidden Chef Dishes (Off-Menu)"}
+                {language === "ar" ? "الأصناف المخفية للضيف (Off-Menu)" : "Hidden items (Off-Menu)"}
               </h3>
               <p className="text-xs md:text-sm text-indigo-800/80 mt-1.5 leading-relaxed">
                 {language === "ar"
-                  ? "لست مضطراً لجعل المنيو البصري للعميل مزدحماً! يمكنك إبقاء الوجبات الأكثر طلباً ظاهرة للعين في المنيو، وتفعيل خيار 'للذكاء الاصطناعي فقط' على الأطباق السرية الخاصة، الإضافات المخصصة، أو تفاصيل المكونات والنكهات والحساسية. عندما يتحدث الزبون مع النادل الصوتي الذكي على الطاولة، سيبحث الذكاء الاصطناعي فوراً في كامل الأصناف ويقترحها عليه أو يضيفها لسلة طاولته!"
-                  : "Keep your visual table menu clean and elegant while marking secret chef specials, dietary allergen details, or special modifications as 'AI-Only / Hidden'. When dining guests talk with the Voice AI Waiter at their table, the AI will recommend these items and effortlessly add them to their bill!"}
+                  ? "حافظ على منيو الطاولة أنيقاً بضبط خيار 'للمساعد فقط' على الأصناف السرية أو الإضافات. يستطيع المساعد الصوتي رؤيتها واقتراحها للضيف، لكنها لا تظهر في المنيو المباشر."
+                  : "Keep the table menu elegant by marking secret chef items or extras as 'assistant-only'. The voice assistant can see and recommend them, but they don't appear in the live menu."}
               </p>
             </div>
           </div>
@@ -1147,22 +1149,22 @@ export function DigitalMenu() {
                   {language === "ar" ? "المنيو فارغ تماماً حالياً" : "Your Digital Menu is Empty"}
                 </h3>
                 <p className="text-sm text-slate-400 max-w-sm mx-auto mt-2">
-                  {language === "ar" 
-                    ? "ابدأ بإضافة منتجك الأول، أو استورد ملف CSV/JSON، أو جرّب زر 'إضافة منتجات تجريبية' لتعبئة الكتالوج بسرعة واختبار المساعد الصوتي."
-                    : "Add your first item, import a CSV/JSON file, or use 'Add Sample Catalog' to quickly populate the menu and test the voice agent."}
+                  {language === "ar"
+                    ? "ابدأ بإضافة أول طبق، أو استورد قائمتك من ملف CSV/JSON."
+                    : "Add your first dish, or import your list from a CSV/JSON file."}
                 </p>
                 <div className="mt-6 flex justify-center gap-3">
-                  <button
-                    onClick={handleBulkAISeeding}
-                    className="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-100"
-                  >
-                    {language === "ar" ? "منتجات تجريبية سريعة" : "Add Sample Catalog"}
-                  </button>
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-700"
                   >
-                    {language === "ar" ? "إضافة منتج يدوي" : "Add Item"}
+                    {language === "ar" ? "إضافة طبق" : "Add dish"}
+                  </button>
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-100"
+                  >
+                    {language === "ar" ? "استيراد ملف" : "Import file"}
                   </button>
                 </div>
               </div>
@@ -1568,10 +1570,10 @@ export function DigitalMenu() {
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-none relative z-10">
                     <div className="text-center py-2">
                       <h4 className="font-extrabold text-xs">
-                        {language === "ar" ? "منيو المأكولات والمشروبات الر��مي" : "Fresh Digital Dining Menu"}
+                        {language === "ar" ? "منيو المأكولات والمشروبات الرقمي" : "Fresh Digital Dining Menu"}
                       </h4>
                       <p className="text-[9px] opacity-70 mt-0.5">
-                        {language === "ar" ? "تصفح واطلب وسلّم النادل الصوتي الذكي!" : "Browse and order with our Voice AI Waiter!"}
+                        {language === "ar" ? "تصفّح واسأل المساعد الصوتي عن الأطباق." : "Browse and ask the voice assistant about dishes."}
                       </p>
                     </div>
 
