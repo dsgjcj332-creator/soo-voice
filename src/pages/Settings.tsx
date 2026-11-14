@@ -124,6 +124,40 @@ export function Settings() {
               className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
             />
           </div>
+
+          {/* Logo URL */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <Store className="w-4 h-4 text-slate-400" />
+              {isAr ? 'رابط شعار المطعم (لوجو)' : 'Restaurant logo URL'}
+            </label>
+            <div className="flex items-center gap-4">
+              <input
+                type="url"
+                dir="ltr"
+                value={storeSettings.logoUrl}
+                onChange={(e) => updateStoreSettings({ logoUrl: e.target.value })}
+                placeholder={isAr ? 'https://example.com/logo.png' : 'https://example.com/logo.png'}
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+              {storeSettings.logoUrl && (
+                <div className="w-12 h-12 rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
+                  <img
+                    src={storeSettings.logoUrl}
+                    alt="Logo preview"
+                    className="max-w-full max-h-full object-contain"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              {isAr
+                ? 'يظهر اللوجو في المنيو والفاتورة وستاند الـ QR. ضع رابط صورة مباشر.'
+                : 'Appears on the menu, invoice, and QR stand. Paste a direct image URL.'}
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
               <Phone className="w-4 h-4 text-slate-400" />

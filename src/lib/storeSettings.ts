@@ -19,6 +19,8 @@ export interface StoreSettings {
   restaurantNameEn: string;
   phone: string;
   address: string;
+  /** Optional logo URL — shown on the guest menu header, invoice, and QR stand. */
+  logoUrl: string;
   /** Working hours, free-text (Arabic-friendly). Shown on the customer menu
    *  near the address, and read by the voice assistant when asked about hours. */
   workingHours: string;
@@ -43,6 +45,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   restaurantNameEn: '',
   phone: '',
   address: '',
+  logoUrl: '',
   workingHours: '',
   instagram: '',
   facebook: '',

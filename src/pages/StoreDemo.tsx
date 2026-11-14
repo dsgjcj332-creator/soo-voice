@@ -345,9 +345,13 @@ export function StoreDemo() {
     }
   };
 
-  // Live tracking — subscribe to the order's status changes via Supabase realtime
+  // Live tracking — subscribe to the order's status changes via Supabase
+  // realtime. Stays active as long as lastOrder exists (not just when the
+  // tracking modal is open) so the floating button always shows the right
+  // status dot.
   React.useEffect(() => {
-    if (!trackingOrder) {
+    const orderId = lastOrder?.id || trackingOrder;
+    if (!orderId) {
       setTrackingStatus('pending');
       return;
     }
@@ -356,17 +360,17 @@ export function StoreDemo() {
     if (!isConfigured || !supabase) return;
 
     // Initial fetch
-    supabase.from('orders').select('status').eq('id', trackingOrder).single().then(({ data }: any) => {
+    supabase.from('orders').select('status').eq('id', orderId).single().then(({ data }: any) => {
       if (data?.status) setTrackingStatus(data.status);
     });
 
     const channel = supabase
-      .channel(`track-${trackingOrder}`)
+      .channel(`track-${orderId}`)
       .on('postgres_changes', {
-        event: 'UPDATE',
+        event: '*',
         schema: 'public',
         table: 'orders',
-        filter: `id=eq.${trackingOrder}`,
+        filter: `id=eq.${orderId}`,
       }, (payload) => {
         if (payload.new) setTrackingStatus((payload.new as any).status);
       })
@@ -375,78 +379,140 @@ export function StoreDemo() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [trackingOrder]);
+  }, [lastOrder?.id, trackingOrder]);
 
-  // Download invoice as an image (canvas) — works offline, no server needed
-  const handleDownloadInvoice = () => {
+  // Download invoice as an image (canvas) — works offline, no server needed.
+  // Includes the restaurant logo if available.
+  const handleDownloadInvoice = async () => {
     if (!lastOrder) return;
     const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 500 + lastOrder.items.length * 30;
+    const W = 400;
+    const H = 580 + lastOrder.items.length * 32;
+    canvas.width = W;
+    canvas.height = H;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // White background
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, W, H);
 
-    // Header
+    // Top accent bar
+    ctx.fillStyle = '#4f46e5';
+    ctx.fillRect(0, 0, W, 6);
+
+    let logoImg: HTMLImageElement | null = null;
+    if (storeSettings.logoUrl) {
+      try {
+        logoImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('logo load failed'));
+          img.src = storeSettings.logoUrl;
+        });
+      } catch { logoImg = null; }
+    }
+
+    // Logo or fallback emoji
+    if (logoImg) {
+      const logoSize = 50;
+      ctx.drawImage(logoImg, (W - logoSize) / 2, 30, logoSize, logoSize);
+    } else {
+      ctx.font = '32px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🍽️', W / 2, 65);
+    }
+
+    // Restaurant name
     ctx.fillStyle = '#1e293b';
     ctx.font = 'bold 18px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(storeSettings.restaurantName || storeSettings.restaurantNameEn || 'SooVoice', 200, 35);
+    const name = storeSettings.restaurantName || storeSettings.restaurantNameEn || 'SooVoice';
+    ctx.fillText(name, W / 2, 110);
 
-    ctx.font = '11px Inter, sans-serif';
+    // Subtitle
+    ctx.font = '10px Inter, sans-serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText('soovoice', 200, 55);
-
-    // Order ID
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = '#475569';
-    ctx.fillText(`№ ${lastOrder.id.replace('order_', '')}`, 200, 85);
-
-    // Table
-    ctx.font = '12px Inter, sans-serif';
-    ctx.fillStyle = '#1e293b';
-    ctx.textAlign = 'left';
-    ctx.fillText(`${language === 'ar' ? 'الطاولة' : 'Table'}: ${lastOrder.tableNumber}`, 30, 110);
-
-    // Date
-    const date = new Date(lastOrder.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US');
-    ctx.fillText(date, 30, 130);
+    ctx.fillText('soovoice', W / 2, 128);
 
     // Divider
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(30, 145, 340, 1);
+    ctx.fillRect(40, 145, W - 80, 1);
+
+    // Order info row
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#475569';
+    ctx.textAlign = 'left';
+    ctx.fillText(`№ ${lastOrder.id.replace('order_', '')}`, 40, 168);
+
+    ctx.textAlign = 'right';
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#1e293b';
+    ctx.fillText(`${language === 'ar' ? 'طاولة' : 'Table'} ${lastOrder.tableNumber}`, W - 40, 168);
+
+    // Date
+    ctx.textAlign = 'left';
+    ctx.font = '10px Inter, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    const date = new Date(lastOrder.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US');
+    ctx.fillText(date, 40, 185);
+
+    // Divider
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(40, 200, W - 80, 1);
+
+    // Items header
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'left';
+    ctx.fillText(language === 'ar' ? 'الصنف' : 'ITEM', 40, 220);
+    ctx.textAlign = 'right';
+    ctx.fillText(language === 'ar' ? 'السعر' : 'PRICE', W - 40, 220);
 
     // Items
-    let y = 170;
-    ctx.font = '11px Inter, sans-serif';
-    ctx.fillStyle = '#1e293b';
+    let y = 245;
+    ctx.font = '12px Inter, sans-serif';
     lastOrder.items.forEach((item) => {
-      const line = `${item.quantity}× ${item.name}`;
-      ctx.fillText(line, 30, y);
-      const price = formatPrice(item.price * item.quantity, menuCurrency);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#64748b';
-      ctx.fillText(price, 370, y);
       ctx.textAlign = 'left';
       ctx.fillStyle = '#1e293b';
-      y += 30;
+      ctx.font = 'bold 12px Inter, sans-serif';
+      ctx.fillText(`${item.quantity}×`, 40, y);
+      ctx.font = '12px Inter, sans-serif';
+      const nameText = item.name.length > 28 ? item.name.substring(0, 28) + '…' : item.name;
+      ctx.fillText(nameText, 65, y);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(formatPrice(item.price * item.quantity, menuCurrency), W - 40, y);
+      y += 32;
     });
 
     // Divider
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(30, y, 340, 1);
+    ctx.fillRect(40, y, W - 80, 1);
     y += 25;
 
     // Total
-    ctx.font = 'bold 14px Inter, sans-serif';
+    ctx.font = 'bold 16px Inter, sans-serif';
     ctx.fillStyle = '#1e293b';
     ctx.textAlign = 'left';
-    ctx.fillText(language === 'ar' ? 'الإجمالي' : 'Total', 30, y);
+    ctx.fillText(language === 'ar' ? 'الإجمالي' : 'TOTAL', 40, y);
     ctx.textAlign = 'right';
-    ctx.fillText(formatPrice(lastOrder.total, menuCurrency), 370, y);
+    ctx.fillStyle = '#4f46e5';
+    ctx.fillText(formatPrice(lastOrder.total, menuCurrency), W - 40, y);
+    y += 20;
+
+    // Order number for tracking
+    ctx.font = '10px Inter, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      language === 'ar'
+        ? `احتفظ برقم الطلب لتتبعه: ${lastOrder.id.replace('order_', '')}`
+        : `Keep your order number to track: ${lastOrder.id.replace('order_', '')}`,
+      W / 2, y + 10
+    );
 
     // Download
     canvas.toBlob((blob) => {
@@ -1060,8 +1126,22 @@ export function StoreDemo() {
       {checkoutStatus === 'success' && lastOrder && (
         <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 text-center">
+            {/* Accent bar + logo */}
+            <div className="h-2 bg-indigo-600" />
+            <div className="p-6 text-center">
+              {/* Logo */}
+              <div className="flex justify-center mb-3">
+                {storeSettings.logoUrl ? (
+                  <img
+                    src={storeSettings.logoUrl}
+                    alt="Restaurant logo"
+                    className="w-14 h-14 rounded-2xl object-contain"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-indigo-100 flex items-center justify-center text-2xl">🍽️</div>
+                )}
+              </div>
               <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
                 <Send className="w-6 h-6" />
               </div>
@@ -1231,6 +1311,25 @@ export function StoreDemo() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ============ Persistent floating tracking button ============ */}
+      {/* Shows after the invoice screen is closed, as long as the order
+          hasn't been served yet. The guest can tap it any time to see
+          the live status without reopening anything. */}
+      {lastOrder && checkoutStatus !== 'success' && trackingStatus !== 'completed' && (
+        <button
+          onClick={() => setTrackingOrder(lastOrder.id)}
+          className={`fixed bottom-24 ${language === 'ar' ? 'left-6' : 'right-6'} z-[14000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in`}
+        >
+          <Clock className="w-4 h-4" />
+          <span className="font-bold text-xs">№ {lastOrder.id.replace('order_', '')}</span>
+          <span className={`w-2 h-2 rounded-full ${
+            trackingStatus === 'pending' ? 'bg-amber-400 animate-pulse' :
+            trackingStatus === 'preparing' ? 'bg-indigo-400 animate-pulse' :
+            'bg-slate-500'
+          }`} />
+        </button>
       )}
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
