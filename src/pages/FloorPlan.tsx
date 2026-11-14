@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { generateQrDataUrl } from '../lib/qr';
+import { useQr } from '../lib/qrReact';
 import { useStoreSettings } from '../lib/storeSettings';
 
 /** QR stand colors — the same palette used in the original stand customizer,
@@ -240,10 +241,8 @@ export function FloorPlan() {
     return u.toString();
   }, [selectedTable, ownerId, origin]);
 
-  const qrDataUrl = useMemo(
-    () => (selectedTable ? generateQrDataUrl(tableQrUrl, { scale: 8 }) : ''),
-    [selectedTable, tableQrUrl]
-  );
+  // QR for the selected table — async via the useQr hook
+  const qrDataUrl = useQr(selectedTable ? tableQrUrl : '', { scale: 8 });
 
   const handleCopyUrl = () => {
     if (!selectedTable) return;
@@ -253,10 +252,11 @@ export function FloorPlan() {
   };
 
   const handleDownloadQr = () => {
-    if (!selectedTable) return;
+    if (!selectedTable || !qrDataUrl) return;
+    // qrDataUrl is now a PNG data URL — downloads open in any viewer
     const link = document.createElement('a');
     link.href = qrDataUrl;
-    link.download = `${selectedTable.label.replace(/\s+/g, '_')}_qr.svg`;
+    link.download = `${selectedTable.label.replace(/\s+/g, '_')}_qr.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -476,7 +476,10 @@ export function FloorPlan() {
                     </div>
                   </div>
                   <div className="bg-white p-2 rounded-lg border border-slate-200 mb-3">
-                    {qrDataUrl && <img src={qrDataUrl} alt="QR preview" className="w-24 h-24" />}
+                    {qrDataUrl
+                      ? <img src={qrDataUrl} alt="QR preview" className="w-24 h-24" />
+                      : <div className="w-24 h-24 bg-slate-100 animate-pulse rounded" />
+                    }
                   </div>
                   <p className="text-[10px] font-bold text-slate-800 text-center leading-tight mb-1">{selectedTable.ctaTextAr}</p>
                   <p className="text-[9px] text-slate-500 text-center leading-tight">{selectedTable.ctaTextEn}</p>
@@ -492,7 +495,8 @@ export function FloorPlan() {
                   </button>
                   <button
                     onClick={handleDownloadQr}
-                    className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    disabled={!qrDataUrl}
+                    className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     {isAr ? 'تنزيل QR كصورة' : 'Download QR image'}
@@ -577,120 +581,156 @@ export function FloorPlan() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {plan.tables.map((t) => {
-              const tUrl = (() => {
-                const u = new URL(`${origin}/store`);
-                u.searchParams.set('ownerId', ownerId);
-                u.searchParams.set('table', t.label);
-                if (t.language !== 'auto') u.searchParams.set('lang', t.language);
-                return u.toString();
-              })();
-              const tQr = generateQrDataUrl(tUrl, { scale: 6 });
-              const tScheme = QR_STAND_COLORS[t.color] || QR_STAND_COLORS.indigo;
-              return (
-                <div
-                  key={t.id}
-                  className={`bg-white border ${selectedTableId === t.id ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'} rounded-2xl p-4 flex flex-col transition-all hover:shadow-md cursor-pointer`}
-                  onClick={() => setSelectedTableId(t.id)}
-                >
-                  {/* Header */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h3 className="font-bold text-slate-800 text-sm">{t.label}</h3>
-                      {t.language !== 'auto' && (
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          {t.language === 'ar' ? (isAr ? 'عربي' : 'AR') :
-                           t.language === 'en' ? 'EN' :
-                           t.language === 'fr' ? 'FR' : 'IT'}
-                        </span>
-                      )}
-                    </div>
-                    <span className={`w-5 h-5 rounded-full ${tScheme.bg}`} aria-label={t.color} />
-                  </div>
-
-                  {/* Mini QR */}
-                  <div className="flex justify-center py-3 bg-slate-50 rounded-xl mb-3">
-                    <img src={tQr} alt={`QR for ${t.label}`} className="w-24 h-24" />
-                  </div>
-
-                  {/* URL preview */}
-                  <p className="text-[10px] text-slate-400 font-mono truncate mb-3" dir="ltr">
-                    {tUrl.replace(origin, '')}
-                  </p>
-
-                  {/* Quick actions */}
-                  <div className="mt-auto grid grid-cols-2 gap-1.5">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); window.open(tUrl, '_blank', 'noopener,noreferrer'); }}
-                      className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
-                      title={isAr ? 'فتح الرابط' : 'Open URL'}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      {isAr ? 'فتح' : 'Open'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const a = document.createElement('a');
-                        a.href = tQr;
-                        a.download = `${t.label.replace(/\s+/g, '_')}_qr.svg`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }}
-                      className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
-                      title={isAr ? 'تنزيل QR' : 'Download QR'}
-                    >
-                      <Download className="w-3 h-3" />
-                      {isAr ? 'تنزيل' : 'QR'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(tUrl);
-                      }}
-                      className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
-                      title={isAr ? 'نسخ الرابط' : 'Copy URL'}
-                    >
-                      <Copy className="w-3 h-3" />
-                      {isAr ? 'نسخ' : 'Copy'}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedTableId(t.id);
-                        // Scroll up to the side panel — gentle nudge.
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
-                      title={isAr ? 'طباعة الستاند' : 'Print stand'}
-                    >
-                      <Download className="w-3 h-3" />
-                      {isAr ? 'ستاند' : 'Stand'}
-                    </button>
-                  </div>
-
-                  {/* Delete — subtle, at the bottom */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!confirm(isAr ? `حذف ${t.label}؟` : `Delete ${t.label}?`)) return;
-                      removeTable(t.id);
-                    }}
-                    className="mt-2 text-[10px] text-slate-400 hover:text-rose-600 transition-colors flex items-center justify-center gap-1"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    {isAr ? 'حذف الطاولة' : 'Delete table'}
-                  </button>
-                </div>
-              );
-            })}
+            {plan.tables.map((t) => (
+              <TableQrCard
+                key={t.id}
+                table={t}
+                origin={origin}
+                ownerId={ownerId}
+                isAr={isAr}
+                isSelected={selectedTableId === t.id}
+                onSelect={() => setSelectedTableId(t.id)}
+                onDelete={(id) => removeTable(id)}
+                onPrint={() => {
+                  setSelectedTableId(t.id);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            ))}
           </div>
         </div>
       )}
     </div>
   );
 }
+
+/* ============ Per-table QR card (extracted so it can use hooks) ============ */
+
+const TableQrCard: React.FC<{
+  table: FloorTable;
+  origin: string;
+  ownerId: string;
+  isAr: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: (id: string) => void;
+  onPrint: () => void;
+}> = (props) => {
+  const { table, origin, ownerId, isAr, isSelected, onSelect, onDelete, onPrint } = props;
+  // Build the URL once per render
+  const tUrl = useMemo(() => {
+    const u = new URL(`${origin}/store`);
+    u.searchParams.set('ownerId', ownerId);
+    u.searchParams.set('table', table.label);
+    if (table.language !== 'auto') u.searchParams.set('lang', table.language);
+    return u.toString();
+  }, [origin, ownerId, table.label, table.language]);
+
+  // PNG QR — async via hook
+  const tQr = useQr(tUrl, { scale: 6 });
+  const tScheme = QR_STAND_COLORS[table.color] || QR_STAND_COLORS.indigo;
+
+  return (
+    <div
+      className={`bg-white border ${isSelected ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'} rounded-2xl p-4 flex flex-col transition-all hover:shadow-md cursor-pointer`}
+      onClick={onSelect}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="font-bold text-slate-800 text-sm">{table.label}</h3>
+          {table.language !== 'auto' && (
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {table.language === 'ar' ? (isAr ? 'عربي' : 'AR') :
+               table.language === 'en' ? 'EN' :
+               table.language === 'fr' ? 'FR' : 'IT'}
+            </span>
+          )}
+        </div>
+        <span className={`w-5 h-5 rounded-full ${tScheme.bg}`} aria-label={table.color} />
+      </div>
+
+      {/* Mini QR */}
+      <div className="flex justify-center py-3 bg-slate-50 rounded-xl mb-3">
+        {tQr ? (
+          <img src={tQr} alt={`QR for ${table.label}`} className="w-24 h-24" />
+        ) : (
+          <div className="w-24 h-24 bg-slate-200 animate-pulse rounded" />
+        )}
+      </div>
+
+      {/* URL preview */}
+      <p className="text-[10px] text-slate-400 font-mono truncate mb-3" dir="ltr">
+        {tUrl.replace(origin, '')}
+      </p>
+
+      {/* Quick actions */}
+      <div className="mt-auto grid grid-cols-2 gap-1.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); window.open(tUrl, '_blank', 'noopener,noreferrer'); }}
+          className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+          title={isAr ? 'فتح الرابط' : 'Open URL'}
+        >
+          <ExternalLink className="w-3 h-3" />
+          {isAr ? 'فتح' : 'Open'}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!tQr) return;
+            const a = document.createElement('a');
+            a.href = tQr;
+            a.download = `${table.label.replace(/\s+/g, '_')}_qr.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+          disabled={!tQr}
+          className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 disabled:opacity-50 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+          title={isAr ? 'تنزيل QR (PNG)' : 'Download QR (PNG)'}
+        >
+          <Download className="w-3 h-3" />
+          {isAr ? 'تنزيل' : 'QR'}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(tUrl);
+          }}
+          className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+          title={isAr ? 'نسخ الرابط' : 'Copy URL'}
+        >
+          <Copy className="w-3 h-3" />
+          {isAr ? 'نسخ' : 'Copy'}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrint();
+          }}
+          className="text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+          title={isAr ? 'طباعة الستاند' : 'Print stand'}
+        >
+          <Download className="w-3 h-3" />
+          {isAr ? 'ستاند' : 'Stand'}
+        </button>
+      </div>
+
+      {/* Delete — subtle, at the bottom */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!confirm(isAr ? `حذف ${table.label}؟` : `Delete ${table.label}?`)) return;
+          onDelete(table.id);
+        }}
+        className="mt-2 text-[10px] text-slate-400 hover:text-rose-600 transition-colors flex items-center justify-center gap-1"
+      >
+        <Trash2 className="w-3 h-3" />
+        {isAr ? 'حذف الطاولة' : 'Delete table'}
+      </button>
+    </div>
+  );
+};
 
 /* ============ Printable QR stand HTML ============ */
 
