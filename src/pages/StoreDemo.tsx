@@ -17,6 +17,7 @@ import {
   useStoreSettings, haversineKm, ensureSessionStart, resetSession,
   sessionRemainingSeconds, formatCountdown,
 } from '../lib/storeSettings';
+import { playChime, haptic } from '../lib/chime';
 
 
 export function StoreDemo() {
@@ -30,6 +31,19 @@ export function StoreDemo() {
   const [lastOrder, setLastOrder] = React.useState<{ id: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
   const [trackingOrder, setTrackingOrder] = React.useState<string | null>(null); // order id being tracked
   const [trackingStatus, setTrackingStatus] = React.useState<string>('pending');
+
+  // Chime bookkeeping for the order tracking flow.
+  //   - prevTrackingStatusRef: the last status we displayed to the guest.
+  //     Used to detect real transitions (pending → preparing → completed)
+  //     and fire the appropriate chime + haptic.
+  //   - trackingInitializedRef: false until the first poll/realtime message
+  //     arrives. We DON'T chime on the first poll — if the user re-opens
+  //     the tracking modal on an order that's already in 'preparing' or
+  //     'completed', we don't want a surprise fanfare on modal open. The
+  //     chimes are only for real transitions the guest is actively
+  //     watching for.
+  const prevTrackingStatusRef = React.useRef<string>('pending');
+  const trackingInitializedRef = React.useRef<boolean>(false);
 
   // Search parameters for tableside QR code scanning
   const [searchParams] = useSearchParams();
@@ -381,15 +395,65 @@ export function StoreDemo() {
   // requires the orders table to have an anon-read RLS policy. Polling
   // guarantees the status updates even if realtime silently fails (which
   // is the most common issue when tracking "doesn't sync with kitchen").
+  //
+  // On every real status transition we fire a chime + haptic so the guest
+  // hears the kitchen's progress without staring at the screen:
+  //   pending → preparing : 3-note ascending major triad (C-E-G)
+  //   → completed        : 4-note ascending fanfare (E-G-B-E)
+  // See src/lib/chime.ts for the chime shapes. iOS unlocks the AudioContext
+  // via the "Add to order" tap earlier in the flow, so these chimes work
+  // even though they're triggered by polling rather than a user gesture.
   React.useEffect(() => {
     const orderId = lastOrder?.id || trackingOrder;
     if (!orderId) {
       setTrackingStatus('pending');
+      prevTrackingStatusRef.current = 'pending';
+      trackingInitializedRef.current = false;
       return;
     }
     const supabase = getSupabase();
     const { isConfigured } = getSupabaseConfig();
     if (!isConfigured || !supabase) return;
+
+    // Reset the chime bookkeeping for this tracking session — every
+    // time the order being tracked changes (new order placed, user
+    // re-opens the tracking modal), we start fresh and only chime on
+    // transitions observed AFTER this point.
+    prevTrackingStatusRef.current = 'pending';
+    trackingInitializedRef.current = false;
+
+    // Apply a new status: diff against the previous one, fire the
+    // appropriate chime + haptic on real transitions, and update state.
+    const applyTrackingStatus = (next: string) => {
+      if (!next) return;
+      // First time we see any data — just record it, don't chime.
+      // This handles the case where the user opens the tracking modal
+      // on an order that's already in 'preparing' or 'completed'.
+      if (!trackingInitializedRef.current) {
+        prevTrackingStatusRef.current = next;
+        setTrackingStatus(next);
+        trackingInitializedRef.current = true;
+        return;
+      }
+      // No change — nothing to do.
+      if (next === prevTrackingStatusRef.current) return;
+
+      const prev = prevTrackingStatusRef.current;
+
+      // Real transition — fire chimes.
+      if (prev === 'pending' && next === 'preparing') {
+        // Kitchen started cooking — bright 3-note ascending triad.
+        playChime('preparing');
+        haptic([20, 40, 20]);
+      } else if (next === 'completed' && prev !== 'completed') {
+        // Order served — celebratory 4-note fanfare.
+        playChime('served');
+        haptic([30, 30, 30, 60]);
+      }
+
+      prevTrackingStatusRef.current = next;
+      setTrackingStatus(next);
+    };
 
     // Polling fetch — runs every 3 seconds, updates status if changed.
     // This is the safety net that works even without realtime/RLS.
@@ -397,7 +461,7 @@ export function StoreDemo() {
       Promise.resolve(
         supabase.from('orders').select('status').eq('id', orderId).maybeSingle()
       ).then(({ data }: any) => {
-        if (data?.status) setTrackingStatus(data.status);
+        if (data?.status) applyTrackingStatus(data.status);
       }).catch(() => {});
     };
 
@@ -416,7 +480,7 @@ export function StoreDemo() {
         table: 'orders',
         filter: `id=eq.${orderId}`,
       }, (payload) => {
-        if (payload.new) setTrackingStatus((payload.new as any).status);
+        if (payload.new) applyTrackingStatus((payload.new as any).status);
       })
       .subscribe();
 

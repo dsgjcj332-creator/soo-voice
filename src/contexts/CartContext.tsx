@@ -1,18 +1,16 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { playChime, haptic } from '../lib/chime';
 
 /**
  * Cart for the guest-facing menu (/store).
  *
- * The earlier version stored items as in-memory state inside CartProvider.
- * This version keeps the same shape but adds:
- *   - An audible chime whenever an item is added (generated from a short
- *     sine burst — no external audio file needed, works offline)
- *   - A small haptic on supported devices (navigator.vibrate)
- *   - A counter for the floating cart button
- *
  * The provider renders nothing visible — the floating button is in the
  * consumer (StoreDemo) so it can be positioned relative to its own layout.
  * The provider just exposes useCart().
+ *
+ * The audible "added to cart" chime + haptic now live in `lib/chime.ts`
+ * so they can be shared with the order-tracking flow, which fires its
+ * own chimes when the kitchen changes the order's status.
  */
 
 export interface CartItem {
@@ -34,44 +32,6 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-/* ---------- Audio chime ---------- */
-let audioCtx: AudioContext | null = null;
-
-function playChime() {
-  try {
-    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return;
-    if (!audioCtx) audioCtx = new Ctx();
-    // Two quick ascending notes — a subtle, hospitality-appropriate ding.
-    const now = audioCtx.currentTime;
-    const notes = [
-      { freq: 880, start: 0,    duration: 0.09 },
-      { freq: 1320, start: 0.07, duration: 0.16 },
-    ];
-    for (const n of notes) {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = n.freq;
-      // Attack-decay envelope so the chime feels discrete, not buzzy
-      gain.gain.setValueAtTime(0, now + n.start);
-      gain.gain.linearRampToValueAtTime(0.18, now + n.start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + n.start + n.duration);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start(now + n.start);
-      osc.stop(now + n.start + n.duration + 0.02);
-    }
-  } catch (err) {
-    // AudioContext can fail before any user gesture; ignore silently.
-  }
-}
-
-function haptic(pattern: number | number[]) {
-  try {
-    if ('vibrate' in navigator) navigator.vibrate(pattern);
-  } catch {}
-}
-
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
@@ -87,7 +47,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       return [...prev, { ...newItem, quantity }];
     });
-    playChime();
+    // The 'cart' chime is a short ascending 2-note (A5 → E6) — discreet,
+    // hospitality-appropriate. The shared chime lib also fires a small
+    // haptic on supported devices.
+    playChime('cart');
     haptic(15);
   }, []);
 
