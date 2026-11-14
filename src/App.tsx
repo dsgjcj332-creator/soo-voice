@@ -32,6 +32,8 @@ import { OAuthInstall } from "./pages/OAuthInstall";
 import { TermsOfService } from "./pages/TermsOfService";
 import { Security } from "./pages/Security";
 import { AboutUs } from "./pages/AboutUs";
+import { Blog } from "./pages/Blog";
+import { BlogArticle } from "./pages/BlogArticle";
 import { SuperAdminLayout } from "./components/layout/SuperAdminLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
@@ -52,6 +54,8 @@ function AppRoutes() {
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/security" element={<Security />} />
           <Route path="/about" element={<AboutUs />} />
+          <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<BlogArticle />} />
         </Route>
 
         <Route path="/auth" element={user ? <Navigate to="/app" /> : <Auth />} />

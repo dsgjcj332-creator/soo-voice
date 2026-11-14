@@ -52,6 +52,9 @@ export function PublicLayout() {
           <a href="/#features" onClick={handleScrollToFeatures} className="hover:text-indigo-600 transition-colors">
             {language === 'ar' ? 'المميزات' : 'Features'}
           </a>
+          <Link to="/blog" className="hover:text-indigo-600 transition-colors">
+            {language === 'ar' ? 'المدونة' : 'Blog'}
+          </Link>
           <Link to="/about" className="hover:text-indigo-600 transition-colors">
             {language === 'ar' ? 'من نحن' : 'About Us'}
           </Link>
@@ -105,6 +108,7 @@ export function PublicLayout() {
             <h4 className="text-slate-50 font-bold mb-4">{language === 'ar' ? 'الشركة' : 'Company'}</h4>
             <ul className="space-y-3 text-sm text-slate-400">
               <li><Link to="/about" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'من نحن' : 'About Us'}</Link></li>
+              <li><Link to="/blog" className="hover:text-indigo-400 transition-colors">{language === 'ar' ? 'المدونة' : 'Blog'}</Link></li>
             </ul>
           </div>
 
