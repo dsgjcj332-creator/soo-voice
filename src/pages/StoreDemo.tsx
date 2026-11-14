@@ -8,6 +8,11 @@ import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { normalizeCurrency, formatPrice } from '../lib/currency';
 import { useSearchParams } from 'react-router-dom';
 import {
+  loadLocalCategories,
+  fetchCategoriesRemote,
+  MenuCategory,
+} from '../lib/menuCategories';
+import {
   useStoreSettings, haversineKm, ensureSessionStart, resetSession,
   sessionRemainingSeconds, formatCountdown,
 } from '../lib/storeSettings';
@@ -37,6 +42,19 @@ export function StoreDemo() {
   const effectiveTable = tableParam || selectedTable || '1';
   const urlOwnerId = searchParams.get('ownerId') || searchParams.get('storeId') || '';
   const resolvedOwnerId = urlOwnerId || user?.uid || 'demo_merchant';
+
+  // ---- Owner menu categories (dynamic per merchant) ----
+  const [categories, setCategories] = React.useState<MenuCategory[]>(() =>
+    loadLocalCategories(resolvedOwnerId)
+  );
+  React.useEffect(() => {
+    // 1. Instant local paint
+    setCategories(loadLocalCategories(resolvedOwnerId));
+    // 2. Cloud copy wins when reachable
+    fetchCategoriesRemote(resolvedOwnerId).then((remote) => {
+      if (remote && remote.length > 0) setCategories(remote);
+    });
+  }, [resolvedOwnerId]);
 
   // ---- Owner store settings (identity + voice visibility + access control) ----
   const { settings: storeSettings, loading: storeLoading } = useStoreSettings(resolvedOwnerId);
@@ -620,16 +638,23 @@ export function StoreDemo() {
               </div>
             </div>
 
-            {/* Category Filter Pills */}
+            {/* Category Filter Pills — built from the merchant's own categories */}
             <div className="flex gap-2 overflow-x-auto pb-2 mt-6 scrollbar-none">
-              {[
-                { id: 'all', labelAr: '🍽️ كل القائمة', labelEn: '🍽️ All Menu' },
-                { id: 'Main Course', labelAr: '🍔 أطباق رئيسية', labelEn: '🍔 Main Course' },
-                { id: 'Appetizers', labelAr: '🍟 مقبلات وجوانب', labelEn: '🍟 Appetizers' },
-                { id: 'Drinks', labelAr: '☕ مشروبات وقهوة', labelEn: '☕ Drinks' },
-                { id: 'Desserts', labelAr: '🍰 حلويات', labelEn: '🍰 Desserts' },
-                { id: 'Secret Menu', labelAr: '✨ أطباق سرية للشيف', labelEn: '✨ Chef Specials' },
-              ].map((cat) => (
+              <button
+                key="all"
+                type="button"
+                onClick={() => setActiveCategory('all')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  activeCategory === 'all'
+                    ? `${currentPrimary.bg} text-white shadow-xs`
+                    : currentBgTheme.isDark
+                      ? 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {language === 'ar' ? '🍽️ كل القائمة' : '🍽️ All Menu'}
+              </button>
+              {categories.map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
@@ -642,6 +667,7 @@ export function StoreDemo() {
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
+                  {cat.emoji ? `${cat.emoji} ` : ''}
                   {language === 'ar' ? cat.labelAr : cat.labelEn}
                 </button>
               ))}
