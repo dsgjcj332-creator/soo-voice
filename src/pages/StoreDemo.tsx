@@ -337,7 +337,11 @@ export function StoreDemo() {
         createdAt: Date.now(),
       });
       setCartOpen(false);
-      clearCart();
+      // Defer clearCart to avoid a Safari "removeChild on Node" error
+      // that fires when the cart slide-over unmounts while the invoice
+      // modal mounts in the same tick. Waiting one tick lets React
+      // process the unmount first, then the cart state change.
+      setTimeout(() => clearCart(), 100);
     } catch (err) {
       console.error('Order submit error:', err);
       setCheckoutStatus('error');
@@ -1162,10 +1166,22 @@ export function StoreDemo() {
 
             {/* Receipt body */}
             <div className="p-6">
+              {/* Order number — prominent, boxed, so guest remembers it */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4 text-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                  {language === 'ar' ? 'رقم الطلب' : 'ORDER NUMBER'}
+                </p>
+                <p className="font-mono text-lg font-extrabold text-slate-900 tracking-wider">
+                  {lastOrder.id.replace('order_', '')}
+                </p>
+              </div>
+
               <div className="flex items-center justify-between mb-4 text-sm">
-                <span className="text-slate-400 font-mono">№ {lastOrder.id.replace('order_', '')}</span>
+                <span className="text-slate-400">
+                  {language === 'ar' ? 'الطاولة' : 'Table'}
+                </span>
                 <span className="font-bold text-slate-700">
-                  {language === 'ar' ? `طاولة ${lastOrder.tableNumber}` : `Table ${lastOrder.tableNumber}`}
+                  {lastOrder.tableNumber}
                 </span>
               </div>
 
@@ -1211,13 +1227,21 @@ export function StoreDemo() {
                 <button
                   onClick={() => {
                     setCheckoutStatus('idle');
-                    setLastOrder(null);
+                    // Keep lastOrder so the tracking button stays visible.
+                    // Don't setLastOrder(null) — that would hide the
+                    // floating tracking button the guest needs.
                   }}
                   className="w-full text-xs text-slate-400 hover:text-slate-600 font-bold transition-colors py-2"
                 >
                   {language === 'ar' ? 'إغلاق ومتابعة التصفّح' : 'Close and continue browsing'}
                 </button>
               </div>
+
+              <p className="text-center text-[11px] text-slate-400 mt-4 leading-relaxed">
+                {language === 'ar'
+                  ? 'زر التتبع سيظل ظاهرًا في أسفل الشاشة لتتابع طلبك حتى يُقدّم.'
+                  : 'A tracking button stays on-screen to follow your order until it is served.'}
+              </p>
             </div>
           </div>
         </div>
@@ -1318,24 +1342,30 @@ export function StoreDemo() {
         </div>
       )}
 
-      {/* ============ Persistent floating tracking button ============ */}
-      {/* Shows after the invoice screen is closed, as long as the order
-          hasn't been served yet. The guest can tap it any time to see
-          the live status without reopening anything. */}
-      {lastOrder && checkoutStatus !== 'success' && trackingStatus !== 'completed' && (
-        <button
-          onClick={() => setTrackingOrder(lastOrder.id)}
-          className={`fixed bottom-24 ${language === 'ar' ? 'left-6' : 'right-6'} z-[14000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in`}
-        >
-          <Clock className="w-4 h-4" />
-          <span className="font-bold text-xs">№ {lastOrder.id.replace('order_', '')}</span>
-          <span className={`w-2 h-2 rounded-full ${
-            trackingStatus === 'pending' ? 'bg-amber-400 animate-pulse' :
-            trackingStatus === 'preparing' ? 'bg-indigo-400 animate-pulse' :
-            'bg-slate-500'
-          }`} />
-        </button>
-      )}
+      {/* ============ Persistent tracking button — always rendered, just
+           visually hidden when there's no active order. This avoids the
+           Safari "removeChild on Node" error caused by conditional
+           mount/unmount of fixed-position elements. ============ */}
+      <div
+        onClick={() => { if (lastOrder) setTrackingOrder(lastOrder.id); }}
+        className={`fixed bottom-24 ${language === 'ar' ? 'left-4' : 'right-4'} z-[14000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl transition-all duration-300 cursor-pointer ${
+          lastOrder && checkoutStatus !== 'success' && trackingStatus !== 'completed'
+            ? 'opacity-100 translate-y-0 pointer-events-auto'
+            : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}
+      >
+        <Clock className="w-4 h-4" />
+        {lastOrder && (
+          <>
+            <span className="font-bold text-xs">№ {lastOrder.id.replace('order_', '')}</span>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${
+              trackingStatus === 'pending' ? 'bg-amber-400 animate-pulse' :
+              trackingStatus === 'preparing' ? 'bg-indigo-400 animate-pulse' :
+              'bg-slate-500'
+            }`} />
+          </>
+        )}
+      </div>
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
       {storeSettings.showVoiceWidget && <VoiceWidget />}
