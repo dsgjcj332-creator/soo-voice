@@ -30,6 +30,7 @@ import { Billing } from "./pages/Billing";
 import { WidgetStandalone } from "./pages/WidgetStandalone";
 import { SettingsProvider } from "./contexts/SettingsContext";
 import { KnowledgeProvider } from "./contexts/KnowledgeContext";
+import { CartProvider } from "./contexts/CartContext";
 import { PrivacyPolicy } from "./pages/PrivacyPolicy";
 import { OAuthInstall } from "./pages/OAuthInstall";
 import { TermsOfService } from "./pages/TermsOfService";
@@ -102,7 +103,9 @@ export default function App() {
       <AuthProvider>
         <SettingsProvider>
           <KnowledgeProvider>
-            <AppRoutes />
+            <CartProvider>
+              <AppRoutes />
+            </CartProvider>
           </KnowledgeProvider>
         </SettingsProvider>
       </AuthProvider>

@@ -148,18 +148,31 @@ export function KitchenDisplay() {
     <div className="min-h-full bg-stone-50 font-sans" id="kitchen-page-root">
       <div className="max-w-6xl mx-auto p-6 md:p-10">
         {/* Header — editorial, not dashboard-y */}
-        <header className="mb-10">
-          <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-slate-400 mb-2">
-            {isAr ? 'المطبخ' : 'Kitchen'}
-          </p>
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">
-            {isAr ? 'شاشة الطلبات' : 'Order tickets'}
-          </h1>
-          <p className="mt-2 text-sm text-slate-500 max-w-2xl leading-relaxed">
-            {isAr
-              ? 'كل طلب يصل من الطاولة يظهر هنا فورًا. كل تذكرة تصعد حتى تُقدّم.'
-              : 'Every order from a table arrives here at once. Each ticket moves up until it is served.'}
-          </p>
+        <header className="mb-10 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-slate-400 mb-2">
+              {isAr ? 'المطبخ' : 'Kitchen'}
+            </p>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">
+              {isAr ? 'شاشة الطلبات' : 'Order tickets'}
+            </h1>
+            <p className="mt-2 text-sm text-slate-500 max-w-2xl leading-relaxed">
+              {isAr
+                ? 'كل طلب يصل من الطاولة يظهر هنا فورًا. كل تذكرة تصعد حتى تُقدّم.'
+                : 'Every order from a table arrives here at once. Each ticket moves up until it is served.'}
+            </p>
+          </div>
+          {/* Open this kitchen in a full-screen tab — useful for a wall-mounted display */}
+          <a
+            href={`/app/kitchen`}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 flex items-center gap-2 text-sm font-bold text-slate-700 bg-white border border-slate-200 hover:border-slate-400 hover:bg-slate-50 px-4 py-2.5 rounded-xl transition-colors"
+            title={isAr ? 'افتح هذه الشاشة في نافذة جديدة — مناسب للعرض على حائط المطبخ' : 'Open this screen in a new window — useful for a kitchen wall display'}
+          >
+            <ExternalLink className="w-4 h-4" />
+            {isAr ? 'فتح في صفحة أخرى' : 'Open in a new tab'}
+          </a>
         </header>
 
         {isDemo && (

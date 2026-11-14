@@ -1,9 +1,10 @@
 import React from 'react';
-import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert } from 'lucide-react';
+import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert, ShoppingBag, Plus, Minus, X, Send, Instagram, Facebook, MessageCircle } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
 import { useAuth } from '../contexts/AuthContext';
+import { useCart } from '../contexts/CartContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { normalizeCurrency, formatPrice } from '../lib/currency';
 import { useSearchParams } from 'react-router-dom';
@@ -22,7 +23,10 @@ export function StoreDemo() {
   const { language, setLanguage } = useLanguage();
   const { businessType } = useSettings();
   const { user } = useAuth();
+  const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount } = useCart();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
+  const [cartOpen, setCartOpen] = React.useState(false);
+  const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
 
   // Search parameters for tableside QR code scanning
   const [searchParams] = useSearchParams();
@@ -285,6 +289,50 @@ export function StoreDemo() {
     return language === "ar"
       ? "تحدث مع المساعد الصوتي بالأسفل للاستفسار عن المكونات واقتراحات الشيف ووصف الأطباق."
       : "Speak with the voice assistant below for ingredients, chef recommendations, and dish details.";
+  };
+
+  // Submit the table order to the kitchen (Supabase `orders` table + webhook).
+  const handleSubmitOrder = async () => {
+    if (cartItems.length === 0) return;
+    setCheckoutStatus('sending');
+    try {
+      const orderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
+      const newOrder = {
+        id: orderId,
+        ownerId: resolvedOwnerId,
+        tableNumber: effectiveTable,
+        items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
+        total: cartTotal,
+        status: 'pending',
+        createdAt: Date.now(),
+      };
+
+      const supabase = getSupabase();
+      const { isConfigured } = getSupabaseConfig();
+      if (isConfigured && supabase) {
+        const { error } = await supabase.from('orders').insert(newOrder);
+        if (error) throw error;
+        // Dispatch webhook if configured (non-blocking)
+        try {
+          const { data: wh } = await supabase.from('webhook_settings').select('*').eq('ownerId', resolvedOwnerId).single();
+          if (wh?.webhookUrl) {
+            fetch(wh.webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ event: 'order.created', timestamp: Date.now(), webhook_secret: wh.webhookSecret, data: newOrder }),
+            }).catch(() => {});
+          }
+        } catch {}
+      }
+
+      setCheckoutStatus('success');
+      clearCart();
+      setTimeout(() => setCheckoutStatus('idle'), 3000);
+    } catch (err) {
+      console.error('Order submit error:', err);
+      setCheckoutStatus('error');
+      setTimeout(() => setCheckoutStatus('idle'), 3000);
+    }
   };
 
   const primaryColorStyles = {
@@ -674,7 +722,10 @@ export function StoreDemo() {
             </div>
             
             <div className={`grid gap-6 mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>
-              {filteredMenuItems.map((item) => (
+              {filteredMenuItems.map((item) => {
+                // Existing quantity in cart (for showing +1 / + buttons instead of just Add)
+                const inCart = cartItems.find((c) => c.id === item.id);
+                return (
                 <div key={item.id} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
                     <div className="flex justify-between items-start mb-2 gap-2">
@@ -685,14 +736,199 @@ export function StoreDemo() {
                     </div>
                     <p className={`text-xs mb-4 line-clamp-3 min-h-[48px] ${currentBgTheme.descText}`}>{item.description || (language === 'ar' ? 'لا يوجد وصف متاح.' : 'No description available.')}</p>
                   </div>
+
+                  {/* Add to order — shows qty controls if already in cart */}
+                  {!inCart ? (
+                    <button
+                      onClick={() => addToCart({ id: item.id, name: item.name, price: item.price })}
+                      className={`w-full flex items-center justify-center gap-2 transition-all py-2.5 rounded-xl font-bold text-xs shadow-xs ${currentPrimary.buttonBg}`}
+                    >
+                      <Plus className="w-4 h-4" />
+                      {language === 'ar' ? 'إضافة للطلب' : 'Add to order'}
+                    </button>
+                  ) : (
+                    <div className={`flex items-center justify-between rounded-xl overflow-hidden ${currentPrimary.bg} text-white`}>
+                      <button
+                        onClick={() => setQuantity(item.id, inCart.quantity - 1)}
+                        className="w-10 h-10 flex items-center justify-center hover:bg-black/10 transition-colors"
+                        title={language === 'ar' ? 'إنقاص' : 'Decrease'}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <span className="font-extrabold text-sm">
+                        {inCart.quantity} {language === 'ar' ? 'في الطلب' : 'in cart'}
+                      </span>
+                      <button
+                        onClick={() => setQuantity(item.id, inCart.quantity + 1)}
+                        className="w-10 h-10 flex items-center justify-center hover:bg-black/10 transition-colors"
+                        title={language === 'ar' ? 'زيادة' : 'Increase'}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+              );})}
             </div>
           </div>
         </div>
 
       </div>
-      
+
+      {/* ============ Social / contact footer (optional, only if any are set) ============ */}
+      {(storeSettings.instagram || storeSettings.facebook || storeSettings.whatsapp) && (
+        <div className={`max-w-6xl w-full mt-12 py-6 flex flex-wrap items-center justify-center gap-4 ${currentBgTheme.isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+          {storeSettings.instagram && (
+            <a href={storeSettings.instagram} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold hover:text-indigo-500 transition-colors`}>
+              <Instagram className="w-4 h-4" /> {language === 'ar' ? 'إنستجرام' : 'Instagram'}
+            </a>
+          )}
+          {storeSettings.facebook && (
+            <a href={storeSettings.facebook} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold hover:text-indigo-500 transition-colors`}>
+              <Facebook className="w-4 h-4" /> {language === 'ar' ? 'فيسبوك' : 'Facebook'}
+            </a>
+          )}
+          {storeSettings.whatsapp && (
+            <a href={`https://wa.me/${storeSettings.whatsapp.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className={`flex items-center gap-2 text-sm font-bold hover:text-emerald-500 transition-colors`} dir="ltr">
+              <MessageCircle className="w-4 h-4" /> {storeSettings.whatsapp}
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Working hours (optional, only if set) */}
+      {storeSettings.workingHours && (
+        <div className={`max-w-6xl w-full mt-2 mb-4 flex items-center justify-center gap-1.5 text-xs ${currentBgTheme.isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          <Timer className="w-3.5 h-3.5" />
+          {storeSettings.workingHours}
+        </div>
+      )}
+
+      {/* ============ Floating cart button ============ */}
+      {cartCount > 0 && (
+        <button
+          onClick={() => setCartOpen(true)}
+          className={`fixed bottom-24 ${language === 'ar' ? 'left-6' : 'right-6'} z-[15000] flex items-center gap-2 ${currentPrimary.bg} text-white px-5 py-3 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in`}
+        >
+          <ShoppingBag className="w-5 h-5" />
+          <span className="font-extrabold text-sm">{cartCount}</span>
+          <span className="text-xs opacity-90 font-bold" dir="ltr">{formatPrice(cartTotal, menuCurrency)}</span>
+        </button>
+      )}
+
+      {/* ============ Cart slide-over panel ============ */}
+      {cartOpen && (
+        <div className="fixed inset-0 z-[16000] flex justify-end">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
+          <div className={`relative w-full max-w-md h-full bg-white shadow-2xl flex flex-col animate-fade-in ${language === 'ar' ? '' : ''}`}>
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5 text-indigo-600" />
+                  {language === 'ar' ? 'طلب الطاولة' : 'Table order'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {language === 'ar' ? `طاولة ${effectiveTable}` : `Table ${effectiveTable}`}
+                </p>
+              </div>
+              <button onClick={() => setCartOpen(false)} className="text-slate-400 hover:text-slate-700 transition-colors p-1.5">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Items list */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {cartItems.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <ShoppingBag className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                  <p className="font-bold text-slate-500 text-sm">
+                    {language === 'ar' ? 'قائمتك فارغة' : 'Your order is empty'}
+                  </p>
+                  <p className="text-xs mt-1">
+                    {language === 'ar' ? 'اضغط "إضافة للطلب" على أي طبق.' : 'Press "Add to order" on any dish.'}
+                  </p>
+                </div>
+              ) : (
+                <ul className="space-y-3">
+                  {cartItems.map((ci) => (
+                    <li key={ci.id} className="flex items-center gap-3 p-3 rounded-2xl border border-slate-100">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-800 text-sm truncate">{ci.name}</p>
+                        <p className="text-xs text-slate-400" dir="ltr">{formatPrice(ci.price, menuCurrency)} each</p>
+                      </div>
+                      <div className="flex items-center gap-1 bg-slate-100 rounded-lg">
+                        <button
+                          onClick={() => setQuantity(ci.id, ci.quantity - 1)}
+                          className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-7 text-center font-bold text-xs text-slate-800">{ci.quantity}</span>
+                        <button
+                          onClick={() => setQuantity(ci.id, ci.quantity + 1)}
+                          className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="font-extrabold text-sm text-slate-800 w-16 text-end" dir="ltr">
+                        {formatPrice(ci.price * ci.quantity, menuCurrency)}
+                      </span>
+                      <button
+                        onClick={() => removeFromCart(ci.id)}
+                        className="text-slate-300 hover:text-rose-500 transition-colors"
+                        title={language === 'ar' ? 'حذف' : 'Remove'}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Footer: total + send order */}
+            {cartItems.length > 0 && (
+              <div className="p-5 border-t border-slate-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {language === 'ar' ? 'الإجمالي' : 'Total'}
+                  </span>
+                  <span className="text-2xl font-extrabold text-slate-900" dir="ltr">
+                    {formatPrice(cartTotal, menuCurrency)}
+                  </span>
+                </div>
+                <button
+                  onClick={handleSubmitOrder}
+                  disabled={checkoutStatus === 'sending'}
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-4 py-3.5 rounded-xl text-sm font-extrabold transition-colors cursor-pointer disabled:cursor-wait"
+                >
+                  {checkoutStatus === 'sending' ? (
+                    <>{language === 'ar' ? 'جاري الإرسال...' : 'Sending...'}</>
+                  ) : checkoutStatus === 'success' ? (
+                    <>{language === 'ar' ? '✓ تم إرسال الطلب للمطبخ' : '✓ Sent to kitchen'}</>
+                  ) : checkoutStatus === 'error' ? (
+                    <>{language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again'}</>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      {language === 'ar' ? 'إرسال الطلب للمطبخ' : 'Send to kitchen'}
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => { if (confirm(language === 'ar' ? 'تفريغ الطلب؟' : 'Clear order?')) clearCart(); }}
+                  className="w-full text-xs text-slate-400 hover:text-rose-500 font-bold transition-colors"
+                >
+                  {language === 'ar' ? 'تفريغ الطلب' : 'Clear order'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
       {storeSettings.showVoiceWidget && <VoiceWidget />}
     </div>

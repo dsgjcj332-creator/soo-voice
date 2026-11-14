@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useSettings, Dialect, VoiceTone, Currency } from '../contexts/SettingsContext';
+import { useSettings, Currency } from '../contexts/SettingsContext';
 import {
-  Globe, Settings2, Sparkles, Star, DollarSign,
-  Store, MapPin, Phone, Mic, MicOff, Timer, Navigation, ShieldCheck, CheckCircle2,
+  Globe, Settings2, DollarSign, ExternalLink,
+  Store, MapPin, Phone, Mic, MicOff, Timer, Navigation, ShieldCheck, CheckCircle2, Clock, Instagram, Facebook, MessageCircle,
 } from 'lucide-react';
-import { subscribeToGlobalVoices, GlobalVoice } from '../services/globalVoices';
 import { CURRENCY_LIST } from '../lib/currency';
 import { useStoreSettings, SESSION_MINUTES_OPTIONS, GEO_RADIUS_OPTIONS } from '../lib/storeSettings';
 
@@ -30,8 +30,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 export function Settings() {
   const { language } = useLanguage();
   const { user } = useAuth();
-  const { dialect, setDialect, voiceTone, setVoiceTone, currency, setCurrency } = useSettings();
-  const [globalVoices, setGlobalVoices] = useState<GlobalVoice[]>([]);
+  const { currency, setCurrency } = useSettings();
   const { settings: storeSettings, update: updateStoreSettings } = useStoreSettings(
     user?.uid,
     user?.provider !== 'local'
@@ -40,19 +39,7 @@ export function Settings() {
   // Geo capture status for the "use my location" flow
   const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'done' | 'error'>('idle');
 
-  useEffect(() => {
-    const unsubscribe = subscribeToGlobalVoices((voices) => setGlobalVoices(voices));
-    return () => unsubscribe();
-  }, []);
-
   const isAr = language === 'ar';
-
-  const standardVoices = [
-    { value: 'Zephyr', label: isAr ? 'زيفير (صوت أنثوي ناعم)' : 'Zephyr (Female, Soft)' },
-    { value: 'Charon', label: isAr ? 'كارون (صوت رجولي دافئ)' : 'Charon (Male, Warm)' },
-    { value: 'Fenrir', label: isAr ? 'فنرير (صوت رجولي قوي)' : 'Fenrir (Male, Deep)' },
-    { value: 'Kore', label: isAr ? 'كوري (صوت أنثوي حاد)' : 'Kore (Female, Clear)' },
-  ];
 
   const captureLocation = () => {
     if (!navigator.geolocation) {
@@ -164,6 +151,76 @@ export function Settings() {
               className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
             />
           </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-slate-400" />
+              {isAr ? 'مواعيد العمل' : 'Working hours'}
+            </label>
+            <input
+              type="text"
+              value={storeSettings.workingHours}
+              onChange={(e) => updateStoreSettings({ workingHours: e.target.value })}
+              placeholder={isAr
+                ? 'مثال: يوميًا 12 ظهرًا – 12 منتصف الليل، الجمعة 2 – 12'
+                : 'Daily 12pm–12am; Fridays 2pm–12am'}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              {isAr
+                ? 'تظهر هذه المواعيد للضيف في المنيو، ويلتزم بها المساعد الصوتي عند سؤاله عنها.'
+                : 'Shown to the guest on the menu; the voice assistant uses this when asked about hours.'}
+            </p>
+          </div>
+
+          {/* Social / contact links */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <Instagram className="w-4 h-4 text-slate-400" />
+              {isAr ? 'إنستجرام' : 'Instagram'}
+            </label>
+            <input
+              type="url"
+              dir="ltr"
+              value={storeSettings.instagram}
+              onChange={(e) => updateStoreSettings({ instagram: e.target.value })}
+              placeholder="https://instagram.com/your-restaurant"
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <Facebook className="w-4 h-4 text-slate-400" />
+              {isAr ? 'فيسبوك' : 'Facebook'}
+            </label>
+            <input
+              type="url"
+              dir="ltr"
+              value={storeSettings.facebook}
+              onChange={(e) => updateStoreSettings({ facebook: e.target.value })}
+              placeholder="https://facebook.com/your-restaurant"
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+              <MessageCircle className="w-4 h-4 text-slate-400" />
+              {isAr ? 'واتساب' : 'WhatsApp'}
+            </label>
+            <input
+              type="text"
+              dir="ltr"
+              value={storeSettings.whatsapp}
+              onChange={(e) => updateStoreSettings({ whatsapp: e.target.value })}
+              placeholder="+20 100 000 0000"
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              {isAr
+                ? 'تظهر هذه الروابط في أسفل المنيو أمام الضيف — اختياري تمامًا.'
+                : 'These links appear at the bottom of the guest menu — all optional.'}
+            </p>
+          </div>
+
           <p className="md:col-span-2 text-[11px] text-slate-400 flex items-center gap-1.5">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
             {isAr
@@ -172,6 +229,29 @@ export function Settings() {
           </p>
         </div>
       </div>
+
+      {/* ============ Voice studio shortcut ============ */}
+      <Link
+        to="/app/voice-studio"
+        className="mt-8 bg-indigo-50 border border-indigo-100 rounded-3xl p-6 flex items-center justify-between gap-3 hover:bg-indigo-100 transition-colors group"
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center">
+            <Mic className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-indigo-900">
+              {isAr ? 'استوديو الصوت — اللهجة والنبرة' : 'Voice studio — dialect & voice tone'}
+            </h2>
+            <p className="text-sm text-indigo-700/80">
+              {isAr
+                ? 'اختر لهجة المساعد ونبرة الصوت، واسمعها قبل النشر.'
+                : 'Choose the dialect and voice tone, and preview them before publishing.'}
+            </p>
+          </div>
+        </div>
+        <ExternalLink className="w-5 h-5 text-indigo-600 group-hover:translate-x-1 transition-transform" />
+      </Link>
 
       {/* ============ Table Experience & Access Control Card ============ */}
       <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
@@ -338,105 +418,6 @@ export function Settings() {
         </div>
       </div>
 
-      {/* ============ Language & Dialect Card ============ */}
-      <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-          <div className="h-10 w-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
-            <Globe className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">
-              {isAr ? 'اللغة واللهجة' : 'Language & Dialect'}
-            </h2>
-            <p className="text-sm text-slate-500">
-              {isAr ? 'بأي لغة ولهجة يتحدث المساعد مع ضيوفك؟' : 'How the assistant converses with your guests'}
-            </p>
-          </div>
-        </div>
-
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">
-              {isAr ? 'لهجة المساعد' : 'Agent Dialect'}
-            </label>
-            <div className="space-y-3">
-              {[
-                { value: 'standard', label: isAr ? 'العربية الفصحى' : 'Standard Arabic' },
-                { value: 'egyptian', label: isAr ? 'المصرية العامية' : 'Egyptian' },
-                { value: 'gulf', label: isAr ? 'الخليجية' : 'Gulf' },
-                { value: 'levantine', label: isAr ? 'الشامية' : 'Levantine' },
-              ].map((opt) => (
-                <label key={opt.value} className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${dialect === opt.value ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-indigo-300'}`}>
-                  <input
-                    type="radio"
-                    name="dialect"
-                    value={opt.value}
-                    checked={dialect === opt.value}
-                    onChange={(e) => setDialect(e.target.value as Dialect)}
-                    className="w-4 h-4 text-indigo-600 border-slate-300 focus:ring-indigo-600"
-                  />
-                  <span className="ms-3 font-semibold text-slate-800 text-sm">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2">
-              {isAr ? 'نبرة الصوت المتاحة (Voice Profiles)' : 'Voice Profiles'}
-              <Sparkles className="w-4 h-4 text-amber-500" />
-            </label>
-            <div className="space-y-3">
-              {standardVoices.map((opt) => (
-                <label key={opt.value} className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${voiceTone === opt.value ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-indigo-300'}`}>
-                  <input
-                    type="radio"
-                    name="voiceTone"
-                    value={opt.value}
-                    checked={voiceTone === opt.value}
-                    onChange={(e) => setVoiceTone(e.target.value as VoiceTone)}
-                    className="w-4 h-4 text-indigo-600 border-slate-300 focus:ring-indigo-600"
-                  />
-                  <span className="ms-3 font-semibold text-slate-800 text-sm">{opt.label}</span>
-                </label>
-              ))}
-
-              {globalVoices.length > 0 && <hr className="my-4 border-slate-100" />}
-
-              {globalVoices.map((voice) => (
-                <label key={voice.id} className={`flex items-center p-4 border rounded-xl cursor-pointer transition-all ${voiceTone === voice.name ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 hover:border-indigo-300'}`}>
-                  <input
-                    type="radio"
-                    name="voiceTone"
-                    value={voice.name}
-                    checked={voiceTone === voice.name}
-                    onChange={(e) => setVoiceTone(e.target.value as VoiceTone)}
-                    className="w-4 h-4 text-indigo-600 border-slate-300 focus:ring-indigo-600"
-                  />
-                  <span className="flex-1 ms-3 font-semibold text-slate-800 text-sm flex items-center justify-between">
-                     {voice.name}
-                     {voice.celebrity && (
-                        <div className="flex items-center gap-1 text-[10px] bg-amber-50 text-amber-600 px-2 py-0.5 rounded-full whitespace-nowrap">
-                           <Star className="w-3 h-3 fill-amber-500" />
-                           {isAr ? 'مشهور' : 'Celebrity'}
-                        </div>
-                     )}
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <div className="mt-6 bg-slate-50 p-4 rounded-xl border border-slate-100 flex gap-3 text-sm text-slate-600">
-              <Settings2 className="w-5 h-5 shrink-0 text-slate-400" />
-              <p>
-                {isAr
-                  ? 'يستخدم المساعد النبرة الصوتية المختارة ويلتزم باللهجة المحددة عند الحديث مع الضيف.'
-                  : 'The assistant uses the selected voice tone and follows the chosen dialect when speaking with guests.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* ============ Currency Card ============ */}
       <div className="mt-8 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">

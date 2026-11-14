@@ -19,6 +19,13 @@ export interface StoreSettings {
   restaurantNameEn: string;
   phone: string;
   address: string;
+  /** Working hours, free-text (Arabic-friendly). Shown on the customer menu
+   *  near the address, and read by the voice assistant when asked about hours. */
+  workingHours: string;
+  /** Optional social/contact links shown on the customer menu footer. */
+  instagram: string;
+  facebook: string;
+  whatsapp: string;
   /** Show the AI voice waiter widget on the customer menu */
   showVoiceWidget: boolean;
   /** Only allow opening the menu within geoRadiusKm of geoLat/geoLng */
@@ -36,6 +43,10 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   restaurantNameEn: '',
   phone: '',
   address: '',
+  workingHours: '',
+  instagram: '',
+  facebook: '',
+  whatsapp: '',
   showVoiceWidget: true,
   geoEnabled: false,
   geoRadiusKm: 0.5,
