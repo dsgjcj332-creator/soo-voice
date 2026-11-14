@@ -105,14 +105,26 @@ export function KitchenDisplay() {
   }, [user]);
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+    // Optimistic update — change the local state instantly so the
+    // kitchen sees the new status without waiting for the realtime
+    // round-trip. If the database write fails, we roll back.
+    const previous = orders.find((o) => o.id === orderId)?.status;
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+    );
     try {
       const supabase = getSupabase();
       const { isConfigured } = getSupabaseConfig();
       if (isConfigured && supabase) {
-        await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+        const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+        if (error) throw error;
       }
     } catch (err) {
       console.error('Error updating order status:', err);
+      // Roll back to the previous status
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: previous || o.status } : o))
+      );
     }
   };
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert, ShoppingBag, Plus, Minus, X, Send, Instagram, Facebook, MessageCircle } from 'lucide-react';
+import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert, ShoppingBag, Plus, Minus, X, Send, Instagram, Facebook, MessageCircle, Download, Clock, ChefHat, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
@@ -27,6 +27,9 @@ export function StoreDemo() {
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [lastOrder, setLastOrder] = React.useState<{ id: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
+  const [trackingOrder, setTrackingOrder] = React.useState<string | null>(null); // order id being tracked
+  const [trackingStatus, setTrackingStatus] = React.useState<string>('pending');
 
   // Search parameters for tableside QR code scanning
   const [searchParams] = useSearchParams();
@@ -326,13 +329,137 @@ export function StoreDemo() {
       }
 
       setCheckoutStatus('success');
+      setLastOrder({
+        id: orderId,
+        items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
+        total: cartTotal,
+        tableNumber: effectiveTable,
+        createdAt: Date.now(),
+      });
+      setCartOpen(false);
       clearCart();
-      setTimeout(() => setCheckoutStatus('idle'), 3000);
     } catch (err) {
       console.error('Order submit error:', err);
       setCheckoutStatus('error');
       setTimeout(() => setCheckoutStatus('idle'), 3000);
     }
+  };
+
+  // Live tracking — subscribe to the order's status changes via Supabase realtime
+  React.useEffect(() => {
+    if (!trackingOrder) {
+      setTrackingStatus('pending');
+      return;
+    }
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) return;
+
+    // Initial fetch
+    supabase.from('orders').select('status').eq('id', trackingOrder).single().then(({ data }: any) => {
+      if (data?.status) setTrackingStatus(data.status);
+    });
+
+    const channel = supabase
+      .channel(`track-${trackingOrder}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'orders',
+        filter: `id=eq.${trackingOrder}`,
+      }, (payload) => {
+        if (payload.new) setTrackingStatus((payload.new as any).status);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [trackingOrder]);
+
+  // Download invoice as an image (canvas) — works offline, no server needed
+  const handleDownloadInvoice = () => {
+    if (!lastOrder) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 500 + lastOrder.items.length * 30;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // White background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Header
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 18px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(storeSettings.restaurantName || storeSettings.restaurantNameEn || 'SooVoice', 200, 35);
+
+    ctx.font = '11px Inter, sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('soovoice', 200, 55);
+
+    // Order ID
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#475569';
+    ctx.fillText(`№ ${lastOrder.id.replace('order_', '')}`, 200, 85);
+
+    // Table
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = '#1e293b';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${language === 'ar' ? 'الطاولة' : 'Table'}: ${lastOrder.tableNumber}`, 30, 110);
+
+    // Date
+    const date = new Date(lastOrder.createdAt).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US');
+    ctx.fillText(date, 30, 130);
+
+    // Divider
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(30, 145, 340, 1);
+
+    // Items
+    let y = 170;
+    ctx.font = '11px Inter, sans-serif';
+    ctx.fillStyle = '#1e293b';
+    lastOrder.items.forEach((item) => {
+      const line = `${item.quantity}× ${item.name}`;
+      ctx.fillText(line, 30, y);
+      const price = formatPrice(item.price * item.quantity, menuCurrency);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(price, 370, y);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#1e293b';
+      y += 30;
+    });
+
+    // Divider
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillRect(30, y, 340, 1);
+    y += 25;
+
+    // Total
+    ctx.font = 'bold 14px Inter, sans-serif';
+    ctx.fillStyle = '#1e293b';
+    ctx.textAlign = 'left';
+    ctx.fillText(language === 'ar' ? 'الإجمالي' : 'Total', 30, y);
+    ctx.textAlign = 'right';
+    ctx.fillText(formatPrice(lastOrder.total, menuCurrency), 370, y);
+
+    // Download
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${lastOrder.id.replace('order_', '')}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
   };
 
   const primaryColorStyles = {
@@ -925,6 +1052,183 @@ export function StoreDemo() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ============ Invoice screen (after successful order) ============ */}
+      {checkoutStatus === 'success' && lastOrder && (
+        <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 text-center">
+              <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <Send className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900">
+                {language === 'ar' ? 'تم إرسال طلبك' : 'Order sent'}
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                {language === 'ar'
+                  ? 'وصل طلبك إلى المطبخ. يمكنك تتبع حالته.'
+                  : 'Your order has reached the kitchen. You can track its status.'}
+              </p>
+            </div>
+
+            {/* Receipt body */}
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4 text-sm">
+                <span className="text-slate-400 font-mono">№ {lastOrder.id.replace('order_', '')}</span>
+                <span className="font-bold text-slate-700">
+                  {language === 'ar' ? `طاولة ${lastOrder.tableNumber}` : `Table ${lastOrder.tableNumber}`}
+                </span>
+              </div>
+
+              <div className="space-y-2 mb-4 pb-4 border-b border-slate-100">
+                {lastOrder.items.map((item, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-700">
+                      <span className="font-bold text-slate-900">{item.quantity}×</span>
+                      <span className="ms-1.5">{item.name}</span>
+                    </span>
+                    <span className="font-mono text-slate-500" dir="ltr">
+                      {formatPrice(item.price * item.quantity, menuCurrency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mb-6">
+                <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">
+                  {language === 'ar' ? 'الإجمالي' : 'Total'}
+                </span>
+                <span className="text-2xl font-extrabold text-slate-900" dir="ltr">
+                  {formatPrice(lastOrder.total, menuCurrency)}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => { setTrackingOrder(lastOrder.id); }}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+                >
+                  <Clock className="w-4 h-4" />
+                  {language === 'ar' ? 'تتبع الطلب' : 'Track order'}
+                </button>
+                <button
+                  onClick={handleDownloadInvoice}
+                  className="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-3 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  {language === 'ar' ? 'تنزيل الفاتورة' : 'Download invoice'}
+                </button>
+                <button
+                  onClick={() => {
+                    setCheckoutStatus('idle');
+                    setLastOrder(null);
+                  }}
+                  className="w-full text-xs text-slate-400 hover:text-slate-600 font-bold transition-colors py-2"
+                >
+                  {language === 'ar' ? 'إغلاق ومتابعة التصفّح' : 'Close and continue browsing'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ Order tracking modal ============ */}
+      {trackingOrder && (
+        <div className="fixed inset-0 z-[18000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-6 text-center">
+              <button
+                onClick={() => setTrackingOrder(null)}
+                className="absolute top-4 end-4 text-slate-400 hover:text-slate-700 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <h2 className="text-lg font-bold text-slate-900 mb-1">
+                {language === 'ar' ? 'تتبع الطلب' : 'Order tracking'}
+              </h2>
+              <p className="text-xs text-slate-400 font-mono mb-6">
+                № {trackingOrder.replace('order_', '')}
+              </p>
+
+              {/* Status timeline */}
+              <div className="space-y-1">
+                {/* Step 1: pending */}
+                <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                  trackingStatus === 'pending' ? 'bg-amber-50 border border-amber-200' :
+                  ['preparing', 'completed'].includes(trackingStatus) ? 'bg-emerald-50' : 'opacity-40'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                    trackingStatus === 'pending' ? 'bg-amber-500 text-white' :
+                    ['preparing', 'completed'].includes(trackingStatus) ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'
+                  }`}>
+                    {['preparing', 'completed'].includes(trackingStatus) ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                  </div>
+                  <div className="text-start flex-1">
+                    <p className="font-bold text-sm text-slate-800">
+                      {language === 'ar' ? 'تم استلام الطلب' : 'Order received'}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {language === 'ar' ? 'الطلب بانتظار المطبخ' : 'Waiting for the kitchen'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2: preparing */}
+                <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                  trackingStatus === 'preparing' ? 'bg-indigo-50 border border-indigo-200' :
+                  trackingStatus === 'completed' ? 'bg-emerald-50' : 'opacity-40'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                    trackingStatus === 'preparing' ? 'bg-indigo-500 text-white animate-pulse' :
+                    trackingStatus === 'completed' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'
+                  }`}>
+                    {trackingStatus === 'completed' ? <CheckCircle2 className="w-4 h-4" /> : <ChefHat className="w-4 h-4" />}
+                  </div>
+                  <div className="text-start flex-1">
+                    <p className="font-bold text-sm text-slate-800">
+                      {language === 'ar' ? 'قيد التحضير' : 'In preparation'}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {trackingStatus === 'preparing'
+                        ? (language === 'ar' ? 'المطبخ يحضّر طلبك الآن' : 'The kitchen is preparing your order')
+                        : (language === 'ar' ? 'المطبخ بدأ التحضير' : 'Kitchen started preparation')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 3: served */}
+                <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                  trackingStatus === 'completed' ? 'bg-emerald-50 border border-emerald-200' : 'opacity-40'
+                }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                    trackingStatus === 'completed' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'
+                  }`}>
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div className="text-start flex-1">
+                    <p className="font-bold text-sm text-slate-800">
+                      {language === 'ar' ? 'تم التقديم' : 'Served'}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {trackingStatus === 'completed'
+                        ? (language === 'ar' ? 'طلبك جاهز! بالهنا والشفا' : 'Your order is ready!')
+                        : (language === 'ar' ? 'بانتظار تقديم الطلب' : 'Awaiting service')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400 mt-6 flex items-center justify-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse`} />
+                {language === 'ar' ? 'هذه الشاشة تتحدث تلقائيًا' : 'This screen updates automatically'}
+              </p>
+            </div>
           </div>
         </div>
       )}
