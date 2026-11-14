@@ -69,10 +69,31 @@ function loadLocal(ownerId?: string | null): FloorPlan {
   try {
     const raw = localStorage.getItem(STORAGE_KEY(ownerId));
     if (!raw) return { tables: [] };
-    return JSON.parse(raw) as FloorPlan;
+    const parsed = JSON.parse(raw) as FloorPlan;
+    // Normalize old tables that may have been saved before color/ctaText
+    // fields existed. Without this, clicking such a table crashes the
+    // side panel (QR_STAND_COLORS[undefined].border throws).
+    return { tables: (parsed.tables || []).map(normalizeTable) };
   } catch {
     return { tables: [] };
   }
+}
+
+/** Fill in defaults for any missing fields on a table. This is the
+ *  forward-compatible shape — old tables without `color` / `ctaTextAr` /
+ *  `ctaTextEn` / `language` get sensible defaults applied so the rest of
+ *  the UI never has to defend against undefined. */
+function normalizeTable(t: Partial<FloorTable>): FloorTable {
+  return {
+    id: t.id || 'tbl_' + Math.random().toString(36).substring(2, 9),
+    label: t.label || 'Table',
+    color: (t.color && QR_STAND_COLORS[t.color] ? t.color : 'indigo') as keyof typeof QR_STAND_COLORS,
+    ctaTextAr: t.ctaTextAr ?? 'امسح لمشاهدة المنيو وسؤال المساعد الصوتي',
+    ctaTextEn: t.ctaTextEn ?? 'Scan to view the menu and ask the voice assistant',
+    language: t.language ?? 'auto',
+    x: typeof t.x === 'number' ? t.x : Math.max(0, CANVAS_W / 2 - TABLE_W / 2),
+    y: typeof t.y === 'number' ? t.y : Math.max(0, CANVAS_H / 2 - TABLE_H / 2),
+  };
 }
 
 function saveLocal(ownerId: string, plan: FloorPlan) {
@@ -110,8 +131,9 @@ export function FloorPlan() {
       .maybeSingle()
       .then(({ data }: any) => {
         if (data && Array.isArray(data.tables)) {
-          setPlan({ tables: data.tables });
-          saveLocal(user.uid, { tables: data.tables });
+          const normalized = data.tables.map(normalizeTable);
+          setPlan({ tables: normalized });
+          saveLocal(user.uid, { tables: normalized });
         }
       });
   }, [user]);
@@ -202,6 +224,11 @@ export function FloorPlan() {
   const ownerId = user?.uid || 'demo_merchant';
 
   const selectedTable = plan.tables.find((t) => t.id === selectedTableId) || null;
+  // Resolve the stand scheme once — guards against any undefined color
+  // (older saved tables without a `color` field, or invalid values).
+  const standScheme = selectedTable
+    ? (QR_STAND_COLORS[selectedTable.color] || QR_STAND_COLORS.indigo)
+    : QR_STAND_COLORS.indigo;
   const tableQrUrl = useMemo(() => {
     if (!selectedTable) return '';
     const u = new URL(`${origin}/store`);
@@ -239,7 +266,7 @@ export function FloorPlan() {
     if (!selectedTable) return;
     const restaurantName =
       storeSettings.restaurantName || storeSettings.restaurantNameEn || 'SooVoice';
-    const scheme = QR_STAND_COLORS[selectedTable.color] || QR_STAND_COLORS.indigo;
+    const scheme = standScheme;
     const printable = window.open('', '_blank', 'width=400,height=600');
     if (!printable) return;
     printable.document.write(buildPrintableStandHtml({
@@ -436,15 +463,15 @@ export function FloorPlan() {
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
                   {isAr ? 'معاينة الستاند' : 'Stand preview'}
                 </p>
-                <div className={`bg-white rounded-2xl p-5 text-slate-800 shadow-md border-t-4 ${QR_STAND_COLORS[selectedTable.color].border} flex flex-col items-center`}>
+                <div className={`bg-white rounded-2xl p-5 text-slate-800 shadow-md border-t-4 ${standScheme.border} flex flex-col items-center`}>
                   <div className="text-center mb-3">
-                    <div className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${QR_STAND_COLORS[selectedTable.color].bg} text-white text-xs font-extrabold mb-1`}>
+                    <div className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${standScheme.bg} text-white text-xs font-extrabold mb-1`}>
                       🍽️
                     </div>
                     <h4 className="font-extrabold text-xs text-slate-800">
                       {storeSettings.restaurantName || storeSettings.restaurantNameEn || (isAr ? 'مطعم الأصالة' : 'Asala Restaurant')}
                     </h4>
-                    <div className={`text-[10px] font-extrabold ${QR_STAND_COLORS[selectedTable.color].text} uppercase tracking-wider mt-0.5`}>
+                    <div className={`text-[10px] font-extrabold ${standScheme.text} uppercase tracking-wider mt-0.5`}>
                       {isAr ? `طاولة ${selectedTable.label}` : `Table ${selectedTable.label}`}
                     </div>
                   </div>
@@ -531,6 +558,136 @@ export function FloorPlan() {
           )}
         </div>
       </div>
+
+      {/* ============ QR codes management grid ============ */}
+      {plan.tables.length > 0 && (
+        <div className="mt-12 pt-8 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <QrCode className="w-4 h-4 text-indigo-500" />
+                {isAr ? 'كل أكواد الـ QR' : 'All QR codes'}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isAr
+                  ? `${plan.tables.length} طاولة — اضغط أي طاولة لتحريرها، أو استخدم الأزرار مباشرة.`
+                  : `${plan.tables.length} tables — click to edit, or use the buttons directly.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {plan.tables.map((t) => {
+              const tUrl = (() => {
+                const u = new URL(`${origin}/store`);
+                u.searchParams.set('ownerId', ownerId);
+                u.searchParams.set('table', t.label);
+                if (t.language !== 'auto') u.searchParams.set('lang', t.language);
+                return u.toString();
+              })();
+              const tQr = generateQrDataUrl(tUrl, { scale: 6 });
+              const tScheme = QR_STAND_COLORS[t.color] || QR_STAND_COLORS.indigo;
+              return (
+                <div
+                  key={t.id}
+                  className={`bg-white border ${selectedTableId === t.id ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200'} rounded-2xl p-4 flex flex-col transition-all hover:shadow-md cursor-pointer`}
+                  onClick={() => setSelectedTableId(t.id)}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-sm">{t.label}</h3>
+                      {t.language !== 'auto' && (
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          {t.language === 'ar' ? (isAr ? 'عربي' : 'AR') :
+                           t.language === 'en' ? 'EN' :
+                           t.language === 'fr' ? 'FR' : 'IT'}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`w-5 h-5 rounded-full ${tScheme.bg}`} aria-label={t.color} />
+                  </div>
+
+                  {/* Mini QR */}
+                  <div className="flex justify-center py-3 bg-slate-50 rounded-xl mb-3">
+                    <img src={tQr} alt={`QR for ${t.label}`} className="w-24 h-24" />
+                  </div>
+
+                  {/* URL preview */}
+                  <p className="text-[10px] text-slate-400 font-mono truncate mb-3" dir="ltr">
+                    {tUrl.replace(origin, '')}
+                  </p>
+
+                  {/* Quick actions */}
+                  <div className="mt-auto grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); window.open(tUrl, '_blank', 'noopener,noreferrer'); }}
+                      className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      title={isAr ? 'فتح الرابط' : 'Open URL'}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {isAr ? 'فتح' : 'Open'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const a = document.createElement('a');
+                        a.href = tQr;
+                        a.download = `${t.label.replace(/\s+/g, '_')}_qr.svg`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }}
+                      className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      title={isAr ? 'تنزيل QR' : 'Download QR'}
+                    >
+                      <Download className="w-3 h-3" />
+                      {isAr ? 'تنزيل' : 'QR'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(tUrl);
+                      }}
+                      className="text-[10px] font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      title={isAr ? 'نسخ الرابط' : 'Copy URL'}
+                    >
+                      <Copy className="w-3 h-3" />
+                      {isAr ? 'نسخ' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTableId(t.id);
+                        // Scroll up to the side panel — gentle nudge.
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      title={isAr ? 'طباعة الستاند' : 'Print stand'}
+                    >
+                      <Download className="w-3 h-3" />
+                      {isAr ? 'ستاند' : 'Stand'}
+                    </button>
+                  </div>
+
+                  {/* Delete — subtle, at the bottom */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!confirm(isAr ? `حذف ${t.label}؟` : `Delete ${t.label}?`)) return;
+                      removeTable(t.id);
+                    }}
+                    className="mt-2 text-[10px] text-slate-400 hover:text-rose-600 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    {isAr ? 'حذف الطاولة' : 'Delete table'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

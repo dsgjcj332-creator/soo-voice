@@ -99,8 +99,16 @@ export async function fetchStoreSettings(ownerId: string): Promise<StoreSettings
       .eq('ownerId', ownerId)
       .maybeSingle();
     if (error) {
-      // 42P01 = table missing (migration not applied yet) — degrade silently
-      console.warn('store_settings fetch unavailable:', error.message);
+      // Supabase returns a 404 + 'Could not find the table' when the
+      // store_settings migration has not been applied yet. This is the
+      // expected path for new accounts and demo users — degrade silently
+      // rather than flooding the console. Other errors (RLS, network) do
+      // get logged at warn level.
+      const msg = String(error.message || '');
+      const isMissingTable = msg.includes('Could not find the table') || msg.includes('schema cache') || msg.includes('42P01');
+      if (!isMissingTable) {
+        console.warn('store_settings fetch error:', msg);
+      }
       return null;
     }
     return data ? mergeDefaults(data) : null;
@@ -122,7 +130,13 @@ export async function saveStoreSettingsRemote(
       .from('store_settings')
       .upsert([{ ownerId, ...settings }], { onConflict: 'ownerId' });
     if (error) {
-      console.warn('store_settings save unavailable (run sql/store_settings.sql):', error.message);
+      // Same missing-table path as fetch — degrade silently. Real errors
+      // (RLS, network) still get logged.
+      const msg = String(error.message || '');
+      const isMissingTable = msg.includes('Could not find the table') || msg.includes('schema cache') || msg.includes('42P01');
+      if (!isMissingTable) {
+        console.warn('store_settings save error:', msg);
+      }
       return false;
     }
     return true;
