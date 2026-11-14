@@ -359,10 +359,15 @@ export function StoreDemo() {
     const { isConfigured } = getSupabaseConfig();
     if (!isConfigured || !supabase) return;
 
-    // Initial fetch
-    supabase.from('orders').select('status').eq('id', orderId).single().then(({ data }: any) => {
+    // Initial fetch — use .maybeSingle() and Promise.resolve wrapping to
+    // avoid unhandled rejection when the order doesn't exist yet (race
+    // condition between insert and this fetch, or demo mode where no
+    // insert happened).
+    Promise.resolve(
+      supabase.from('orders').select('status').eq('id', orderId).maybeSingle()
+    ).then(({ data }: any) => {
       if (data?.status) setTrackingStatus(data.status);
-    });
+    }).catch(() => {});
 
     const channel = supabase
       .channel(`track-${orderId}`)

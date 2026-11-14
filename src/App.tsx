@@ -40,6 +40,7 @@ import { Blog } from "./pages/Blog";
 import { BlogArticle } from "./pages/BlogArticle";
 import { SuperAdminLayout } from "./components/layout/SuperAdminLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -99,16 +100,18 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <SettingsProvider>
-          <KnowledgeProvider>
-            <CartProvider>
-              <AppRoutes />
-            </CartProvider>
-          </KnowledgeProvider>
-        </SettingsProvider>
-      </AuthProvider>
-    </LanguageProvider>
+    <ErrorBoundary>
+      <LanguageProvider>
+        <AuthProvider>
+          <SettingsProvider>
+            <KnowledgeProvider>
+              <CartProvider>
+                <AppRoutes />
+              </CartProvider>
+            </KnowledgeProvider>
+          </SettingsProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </ErrorBoundary>
   );
 }
