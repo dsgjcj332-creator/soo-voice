@@ -594,7 +594,7 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
   const brand = brandColor(brandAccent);
 
   return (
-    <div className="fixed bottom-6 end-6 z-50 flex flex-col items-end">
+    <div className="fixed bottom-6 end-6 mb-safe z-50 flex flex-col items-end">
       <AnimatePresence>
         {isOpen && (
           <motion.div

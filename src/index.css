@@ -120,3 +120,62 @@ html[dir="rtl"] .ring-1 {
 .animate-fade-in {
   animation: fade-in 0.35s ease-out;
 }
+
+/* ------------------------------------------------------------------ */
+/* Mobile polish                                                       */
+/* ------------------------------------------------------------------ */
+
+/* Prevent horizontal page scroll — anything that triggers an overflow
+   on mobile (a long category pill row, a wide table, a code block)
+   scrolls inside its own container, not the whole page. */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Use 100dvh on supporting browsers so the page height matches the
+   visible viewport even when mobile Safari's toolbar slides in/out.
+   Falls back to 100vh on older browsers. */
+@supports (height: 100dvh) {
+  .min-h-screen { min-height: 100dvh; }
+  .h-screen { height: 100dvh; }
+}
+
+/* iOS safe-area insets — the floating cart button, language toggle, and
+   voice widget need to clear the home-indicator area at the bottom of
+   modern iPhones. Apply via `pb-safe`/`pt-safe`/`pe-safe`/`ps-safe`
+   utilities defined here, or via env() directly on elements. */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* Pull the bottom row up so it clears the home indicator on iPhone */
+.pb-safe { padding-bottom: var(--safe-bottom); }
+.pt-safe { padding-top: var(--safe-top); }
+
+/* Floating elements at the bottom of the screen should clear the home
+   indicator. Apply this class to the floating container. */
+.mb-safe { margin-bottom: var(--safe-bottom); }
+.mt-safe { margin-top: var(--safe-top); }
+
+/* Tappable controls: prevent the iOS double-tap-to-zoom delay on buttons
+   that are clearly interactive. */
+button, a, [role="button"], input[type="submit"], input[type="button"] {
+  touch-action: manipulation;
+}
+
+/* Prevent the iOS text-size adjustment that bumps text to 100%+ when the
+   device rotates — we already manage font sizes responsively. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Better long-press behaviour on mobile links: no callout, no link
+   highlight overlay. */
+a, button {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}

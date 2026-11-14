@@ -1431,7 +1431,7 @@ export function StoreDemo() {
         tabIndex={0}
         onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && lastOrder) setTrackingOrder(lastOrder.id); }}
         aria-label={language === 'ar' ? `تتبع الطلب رقم ${lastOrder?.id.replace('order_', '') || ''}` : `Track order ${lastOrder?.id.replace('order_', '') || ''}`}
-        className={`fixed bottom-28 ${language === 'ar' ? 'left-4' : 'right-4'} z-[14000] flex items-center gap-2 bg-slate-900 text-white ps-3 pe-4 py-2.5 rounded-2xl shadow-2xl transition-all duration-300 cursor-pointer min-h-[44px] ${
+        className={`fixed bottom-28 mb-safe ${language === 'ar' ? 'left-4' : 'right-4'} z-[14000] flex items-center gap-2 bg-slate-900 text-white ps-3 pe-4 py-2.5 rounded-2xl shadow-2xl transition-all duration-300 cursor-pointer min-h-[44px] ${
           lastOrder && checkoutStatus !== 'success' && trackingStatus !== 'completed'
             ? 'opacity-100 translate-y-0 pointer-events-auto'
             : 'opacity-0 translate-y-4 pointer-events-none'
