@@ -1,16 +1,122 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* Typography system — bilingual, measured, hospitality-appropriate.   */
+/* The English text uses Inter (geometric, contemporary). Arabic uses */
+/* Noto Naskh Arabic — a naskh style that reads as editorial / book    */
+/* Arabic rather than the more screen-oriented Cairo. Noto Naskh is   */
+/* the choice of publishing houses and serious newspapers; it reads   */
+/* at a slower, more deliberate pace, which is the tone we want.      */
+/* ------------------------------------------------------------------ */
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: "Noto Naskh Arabic", "Cairo", system-ui, sans-serif;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #f8fafc; /* changed to slate-50 */
+  background-color: #f8fafc;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* RTL Specific overrides */
+/* Arabic typography — when the document direction is RTL, switch the
+   body to Noto Naskh Arabic. We also increase letter-spacing slightly
+   to give the naskh glyphs more room to breathe at small UI sizes. */
 html[dir="rtl"] body {
-  font-family: "Cairo", system-ui, sans-serif;
+  font-family: var(--font-arabic);
+  letter-spacing: 0.005em;
+}
+
+/* Headings — slightly tighter tracking in English, default in Arabic */
+h1, h2, h3, h4 {
+  font-feature-settings: "ss01", "cv11";
+}
+html[dir="rtl"] h1,
+html[dir="rtl"] h2,
+html[dir="rtl"] h3,
+html[dir="rtl"] h4 {
+  font-feature-settings: normal;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}
+
+/* Numbers, prices, and Latin code blocks inside RTL should always be
+   LTR. The `dir="ltr"` attribute handles inline cases; here we set a
+   global default for code and pre blocks. */
+pre, code, kbd {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  direction: ltr;
+}
+
+/* Inputs that contain numbers or prices (dir="ltr" attribute on the
+   element is enough; this just polishes the look). */
+input[dir="ltr"], textarea[dir="ltr"] {
+  text-align: start;
+}
+
+/* ------------------------------------------------------------------ */
+/* RTL polish — logical properties are preferred throughout the code-  */
+/* base (ps-/pe-/ms-/me-). Below are a few visual details that benefit  */
+/* from explicit RTL handling.                                         */
+/* ------------------------------------------------------------------ */
+
+/* Scrolling: in RTL, horizontal scrollers (filter pills, code blocks)
+   should start from the right. The default works in modern browsers,
+   but we set it explicitly to avoid surprises. */
+html[dir="rtl"] .scrollbar-none::-webkit-scrollbar {
+  height: 4px;
+}
+html[dir="rtl"] .scrollbar-none::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.1);
+  border-radius: 2px;
+}
+
+/* Form controls inherit direction from the document, but some labels
+   in RTL with LTR content (phone numbers, prices) need a tighter look
+   to align nicely. */
+html[dir="rtl"] input[type="tel"],
+html[dir="rtl"] input[type="email"],
+html[dir="rtl"] input[type="url"] {
+  text-align: right;
+  direction: ltr;
+}
+
+/* Range inputs in RTL should keep the slider going right-to-left */
+html[dir="rtl"] input[type="range"] {
+  direction: rtl;
+}
+
+/* Avoid the "side-light" halo that sometimes appears around translucent
+   indigo backgrounds in RTL cards. */
+html[dir="rtl"] .ring-1 {
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.1);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tiny utilities used in the premium UI — fade-in for status badges,  */
+/* and a measured swing used in the kitchen pending bell.              */
+/* ------------------------------------------------------------------ */
+
+@keyframes swing {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(8deg); }
+  40% { transform: rotate(-6deg); }
+  60% { transform: rotate(4deg); }
+  80% { transform: rotate(-2deg); }
+}
+.animate-swing {
+  animation: swing 1.6s ease-in-out infinite;
+  transform-origin: 50% 10%;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.35s ease-out;
 }
