@@ -350,9 +350,10 @@ export function StoreDemo() {
   };
 
   // Live tracking — subscribe to the order's status changes via Supabase
-  // realtime. Stays active as long as lastOrder exists (not just when the
-  // tracking modal is open) so the floating button always shows the right
-  // status dot.
+  // realtime + poll every 3 seconds as a fallback. Realtime is faster but
+  // requires the orders table to have an anon-read RLS policy. Polling
+  // guarantees the status updates even if realtime silently fails (which
+  // is the most common issue when tracking "doesn't sync with kitchen").
   React.useEffect(() => {
     const orderId = lastOrder?.id || trackingOrder;
     if (!orderId) {
@@ -363,16 +364,23 @@ export function StoreDemo() {
     const { isConfigured } = getSupabaseConfig();
     if (!isConfigured || !supabase) return;
 
-    // Initial fetch — use .maybeSingle() and Promise.resolve wrapping to
-    // avoid unhandled rejection when the order doesn't exist yet (race
-    // condition between insert and this fetch, or demo mode where no
-    // insert happened).
-    Promise.resolve(
-      supabase.from('orders').select('status').eq('id', orderId).maybeSingle()
-    ).then(({ data }: any) => {
-      if (data?.status) setTrackingStatus(data.status);
-    }).catch(() => {});
+    // Polling fetch — runs every 3 seconds, updates status if changed.
+    // This is the safety net that works even without realtime/RLS.
+    const pollStatus = () => {
+      Promise.resolve(
+        supabase.from('orders').select('status').eq('id', orderId).maybeSingle()
+      ).then(({ data }: any) => {
+        if (data?.status) setTrackingStatus(data.status);
+      }).catch(() => {});
+    };
 
+    // Initial fetch immediately
+    pollStatus();
+
+    // Start polling every 3 seconds
+    const pollInterval = setInterval(pollStatus, 3000);
+
+    // Also try realtime (faster path if RLS allows it)
     const channel = supabase
       .channel(`track-${orderId}`)
       .on('postgres_changes', {
@@ -386,6 +394,7 @@ export function StoreDemo() {
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [lastOrder?.id, trackingOrder]);
