@@ -68,7 +68,7 @@ export function Settings() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto font-sans">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto font-sans">
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800">
           {isAr ? 'الإعدادات' : 'Settings'}

@@ -123,7 +123,7 @@ export function Billing() {
   ];
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto font-sans">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans">
       
       {/* Header */}
       <div className="mb-8">

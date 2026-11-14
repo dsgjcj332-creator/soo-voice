@@ -149,7 +149,7 @@ export function DashboardOverview() {
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto font-sans">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto font-sans">
       {/* Header — editorial, not dashboard-y */}
       <header className="mb-8">
         <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-slate-400 mb-2">

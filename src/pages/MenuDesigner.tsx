@@ -143,7 +143,7 @@ export function MenuDesigner() {
   const ownerId = user?.uid || "demo_user";
 
   return (
-    <div className="p-8 max-w-6xl mx-auto font-sans">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans">
       {/* Header */}
       <div className="mb-8 flex items-start justify-between flex-wrap gap-4">
         <div>

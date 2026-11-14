@@ -687,7 +687,7 @@ export function DigitalMenu() {
 
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto font-sans">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans">
       {/* Toast notification */}
       {notification && (
         <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 border border-slate-800 animate-bounce">

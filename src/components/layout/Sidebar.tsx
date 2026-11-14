@@ -14,7 +14,8 @@ import {
   ChefHat,
   Grid3x3,
   Mic,
-  Palette
+  Palette,
+  X,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -50,7 +51,7 @@ const getNavigationGroups = (t: (k: string) => string, language: string) => [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t, language } = useLanguage();
   const { user, logout } = useAuth();
   const groups = getNavigationGroups(t, language);
@@ -79,7 +80,35 @@ export function Sidebar() {
   };
 
   return (
-    <div className="flex h-full w-64 flex-col border-e border-slate-200 bg-white">
+    <>
+      {/* Mobile overlay — only renders when the drawer is open on small
+          screens. Tap anywhere outside the drawer to close it. */}
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-200 ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        aria-hidden={!open}
+      />
+      <aside
+        className={`
+          fixed lg:static inset-y-0 start-0 z-50
+          flex h-full w-72 max-w-[85vw] lg:w-64 flex-col border-e border-slate-200 bg-white
+          transition-transform duration-300 ease-out
+          ${open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full lg:translate-x-0"}
+          lg:translate-x-0 lg:!translate-x-0
+        `}
+        aria-label={language === 'ar' ? 'القائمة الجانبية' : 'Sidebar'}
+      >
+        {/* Mobile close button (visible only on small screens) */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={language === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
+          className="lg:hidden absolute top-3 end-3 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+        >
+          <X className="h-5 w-5" />
+        </button>
       <div className="flex h-16 shrink-0 items-center justify-between px-6">
         <div 
           className="flex items-center gap-2 cursor-pointer select-none" 
@@ -104,6 +133,7 @@ export function Sidebar() {
                   key={item.name}
                   to={item.href}
                   end={item.href === '/app'}
+                  onClick={onClose}
                   className={({ isActive }) =>
                     cn(
                       "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
@@ -138,6 +168,7 @@ export function Sidebar() {
           <NavLink
             to={user?.uid ? `/store?ownerId=${user.uid}&table=1&preview=1` : "/store"}
             target="_blank"
+            onClick={onClose}
             className="group flex items-center px-2 py-2 text-sm font-medium rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             <Utensils className="me-3 h-5 w-5 text-emerald-500" />
@@ -182,6 +213,7 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </div>
+      </aside>
+    </>
   );
 }

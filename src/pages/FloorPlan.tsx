@@ -284,7 +284,7 @@ export function FloorPlan() {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto font-sans">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">

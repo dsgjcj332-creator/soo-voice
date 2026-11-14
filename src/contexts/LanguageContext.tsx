@@ -122,7 +122,24 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem('appLang') as Language) || 'ar';
+    // 1. Honour an explicit URL ?lang= override first (the floor-plan
+    //    per-table language forces this).
+    const urlLang = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('lang')
+      : null;
+    if (urlLang === 'ar' || urlLang === 'en') return urlLang;
+    // 2. Then the saved preference.
+    const saved = localStorage.getItem('appLang') as Language | null;
+    if (saved === 'ar' || saved === 'en') return saved;
+    // 3. Then the browser language — Arabic browsers default to Arabic,
+    //    everything else defaults to English. This stops the menu from
+    //    forcing Arabic on a French/English-speaking guest who happened
+    //    to scan a QR code without a ?lang= param.
+    if (typeof navigator !== 'undefined') {
+      const nav = (navigator.language || 'en').toLowerCase();
+      if (nav.startsWith('ar')) return 'ar';
+    }
+    return 'en';
   });
   const dir = language === 'ar' ? 'rtl' : 'ltr';
 
@@ -131,6 +148,18 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = language;
     localStorage.setItem('appLang', language);
   }, [dir, language]);
+
+  // Keep the language in sync across tabs (e.g. merchant dashboard and
+  // guest menu open in different tabs — when one switches, both do).
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'appLang' && (e.newValue === 'ar' || e.newValue === 'en')) {
+        setLanguage(e.newValue);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const t = (key: string, fallback?: string) => {
     return translations[language]?.[key] || translations['en'][key] || fallback || key;

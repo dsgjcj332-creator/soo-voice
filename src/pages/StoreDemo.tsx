@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert, ShoppingBag, Plus, Minus, X, Send, Instagram, Facebook, MessageCircle, Download, Clock, ChefHat, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Key, Home, Car, MapPin, Navigation, Timer, MicOff, Phone, RefreshCcw, ShieldAlert, ShoppingBag, Plus, Minus, X, Send, Instagram, Facebook, MessageCircle, Download, Clock, ChefHat, CheckCircle2, Languages } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
@@ -295,9 +295,16 @@ export function StoreDemo() {
   };
 
   // Submit the table order to the kitchen (Supabase `orders` table + webhook).
+  //
+  // If the orders table does not have an anon INSERT RLS policy, the
+  // insert will be rejected and the guest sees an error. We detect that
+  // specific failure mode and show a clearer message in both languages
+  // so the merchant knows to apply sql/orders_anon_insert.sql.
+  const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'generic' | null>(null);
   const handleSubmitOrder = async () => {
     if (cartItems.length === 0) return;
     setCheckoutStatus('sending');
+    setSubmitErrorKind(null);
     try {
       const orderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
       const newOrder = {
@@ -314,7 +321,27 @@ export function StoreDemo() {
       const { isConfigured } = getSupabaseConfig();
       if (isConfigured && supabase) {
         const { error } = await supabase.from('orders').insert(newOrder);
-        if (error) throw error;
+        if (error) {
+          // Detect RLS rejection (anonymous guest cannot insert) — the most
+          // common cause of "order fails" after a successful cart build.
+          const msg = (error.message || '').toLowerCase();
+          if (
+            msg.includes('row-level security') ||
+            msg.includes('policy') ||
+            msg.includes('rls') ||
+            msg.includes('permission') ||
+            msg.includes('not authenticated')
+          ) {
+            setSubmitErrorKind('rls');
+            throw error;
+          }
+          if (msg.includes('fetch') || msg.includes('network') || msg.includes('timeout')) {
+            setSubmitErrorKind('network');
+            throw error;
+          }
+          setSubmitErrorKind('generic');
+          throw error;
+        }
         // Dispatch webhook if configured (non-blocking)
         try {
           const { data: wh } = await supabase.from('webhook_settings').select('*').eq('ownerId', resolvedOwnerId).single();
@@ -345,7 +372,7 @@ export function StoreDemo() {
     } catch (err) {
       console.error('Order submit error:', err);
       setCheckoutStatus('error');
-      setTimeout(() => setCheckoutStatus('idle'), 3000);
+      setTimeout(() => setCheckoutStatus('idle'), 4500);
     }
   };
 
@@ -847,31 +874,31 @@ export function StoreDemo() {
               </div>
             )}
 
-            <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
-              <div className="flex items-start gap-3">
+            <div className="flex justify-between items-start flex-wrap gap-3 md:gap-4 mb-4">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
                 {menuLogoEmoji && (
-                  <span className="text-4xl filter drop-shadow-md animate-bounce select-none">
+                  <span className="text-3xl md:text-4xl filter drop-shadow-md select-none shrink-0">
                     {menuLogoEmoji}
                   </span>
                 )}
-                <div>
-                  <h1 className={`text-3xl font-extrabold tracking-tight ${currentBgTheme.titleText}`}>
+                <div className="min-w-0 flex-1">
+                  <h1 className={`text-2xl md:text-3xl font-extrabold tracking-tight ${currentBgTheme.titleText} leading-tight`}>
                     {getRestaurantName()}
                   </h1>
-                  <p className={`mt-2 text-sm leading-relaxed ${currentBgTheme.descText}`}>
+                  <p className={`mt-1 md:mt-2 text-xs md:text-sm leading-relaxed ${currentBgTheme.descText}`}>
                     {getSectorDescription()}
                   </p>
                   {(storeSettings.address || storeSettings.phone) && (
                     <div className={`mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs ${currentBgTheme.descText}`}>
                       {storeSettings.address && (
                         <span className="inline-flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" />
-                          {storeSettings.address}
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{storeSettings.address}</span>
                         </span>
                       )}
                       {storeSettings.phone && (
                         <a href={`tel:${storeSettings.phone}`} className="inline-flex items-center gap-1 font-semibold hover:underline" dir="ltr">
-                          <Phone className="w-3.5 h-3.5" />
+                          <Phone className="w-3.5 h-3.5 shrink-0" />
                           {storeSettings.phone}
                         </a>
                       )}
@@ -879,14 +906,14 @@ export function StoreDemo() {
                   )}
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className={`font-extrabold text-xs px-3 py-1.5 rounded-full flex items-center gap-1 ${
                   currentBgTheme.isDark ? "bg-white/10 text-emerald-400" : "bg-emerald-50/80 text-emerald-600 border border-emerald-100"
                 }`}>
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
                   {storeSettings.showVoiceWidget
-                    ? (language === 'ar' ? 'مساعد ذكي نشط' : 'Live Connected Assistant')
-                    : (language === 'ar' ? 'منيو يدوي' : 'Manual menu')}
+                    ? (language === 'ar' ? 'مساعد نشط' : 'Live')
+                    : (language === 'ar' ? 'منيو يدوي' : 'Manual')}
                 </span>
                 {sessionRemaining !== null && (
                   <span className="font-extrabold text-xs px-3 py-1.5 rounded-full flex items-center gap-1 bg-amber-50/80 text-amber-600 border border-amber-100" dir="ltr">
@@ -1018,12 +1045,32 @@ export function StoreDemo() {
         </div>
       )}
 
+      {/* ============ Floating language toggle ============ */}
+      {/* Always visible top-corner so a guest can flip Arabic ↔ English even
+          if their browser auto-selected one or the QR code didn't carry a
+          ?lang= param. Uses logical positioning so it sits opposite the
+          cart button (cart on the trailing side, language on the leading
+          side, both 80px below the very top so they never cover the
+          restaurant name). */}
+      <button
+        type="button"
+        onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+        className={`fixed top-4 ${language === 'ar' ? 'right-4' : 'left-4'} z-[15000] flex items-center gap-1.5 bg-white/95 backdrop-blur-sm border border-slate-200 text-slate-700 px-3 py-2 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-all min-h-[40px]`}
+        title={language === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}
+        aria-label={language === 'ar' ? 'Switch to English' : 'Switch to Arabic'}
+      >
+        <Languages className="w-4 h-4" />
+        <span className="text-xs font-extrabold tracking-wide">
+          {language === 'ar' ? 'EN' : 'ع'}
+        </span>
+      </button>
+
       {/* ============ Floating cart button ============ */}
       {/* Top corner so it never overlaps with the VoiceWidget at bottom-end */}
       {cartCount > 0 && (
         <button
           onClick={() => setCartOpen(true)}
-          className={`fixed top-20 ${language === 'ar' ? 'left-4' : 'right-4'} z-[15000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in`}
+          className={`fixed top-16 ${language === 'ar' ? 'left-4' : 'right-4'} z-[15000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in min-h-[44px]`}
         >
           <ShoppingBag className="w-5 h-5" />
           <span className="font-extrabold text-sm">{cartCount}</span>
@@ -1033,27 +1080,31 @@ export function StoreDemo() {
 
       {/* ============ Cart slide-over panel ============ */}
       {cartOpen && (
-        <div className="fixed inset-0 z-[16000] flex justify-end">
+        <div className={`fixed inset-0 z-[16000] flex ${language === 'ar' ? 'justify-start' : 'justify-end'}`}>
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
-          <div className={`relative w-full max-w-md h-full bg-white shadow-2xl flex flex-col animate-fade-in ${language === 'ar' ? '' : ''}`}>
+          <div className="relative w-full max-w-md h-full bg-white shadow-2xl flex flex-col animate-fade-in">
             {/* Header */}
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-indigo-600" />
-                  {language === 'ar' ? 'طلب الطاولة' : 'Table order'}
+            <div className="p-4 md:p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base md:text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <ShoppingBag className="w-5 h-5 text-indigo-600 shrink-0" />
+                  <span className="truncate">{language === 'ar' ? 'طلب الطاولة' : 'Table order'}</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {language === 'ar' ? `طاولة ${effectiveTable}` : `Table ${effectiveTable}`}
                 </p>
               </div>
-              <button onClick={() => setCartOpen(false)} className="text-slate-400 hover:text-slate-700 transition-colors p-1.5">
+              <button
+                onClick={() => setCartOpen(false)}
+                className="text-slate-400 hover:text-slate-700 transition-colors p-2 -m-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-slate-100"
+                aria-label={language === 'ar' ? 'إغلاق' : 'Close'}
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Items list */}
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-4 md:p-5">
               {cartItems.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
                   <ShoppingBag className="w-10 h-10 mx-auto mb-3 text-slate-300" />
@@ -1067,35 +1118,38 @@ export function StoreDemo() {
               ) : (
                 <ul className="space-y-3">
                   {cartItems.map((ci) => (
-                    <li key={ci.id} className="flex items-center gap-3 p-3 rounded-2xl border border-slate-100">
+                    <li key={ci.id} className="flex items-center gap-2 p-3 rounded-2xl border border-slate-100">
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-slate-800 text-sm truncate">{ci.name}</p>
+                        <p className="font-bold text-slate-800 text-sm leading-snug truncate">{ci.name}</p>
                         <p className="text-xs text-slate-400" dir="ltr">{formatPrice(ci.price, menuCurrency)} each</p>
                       </div>
-                      <div className="flex items-center gap-1 bg-slate-100 rounded-lg">
+                      <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg shrink-0">
                         <button
                           onClick={() => setQuantity(ci.id, ci.quantity - 1)}
-                          className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                          aria-label={language === 'ar' ? 'إنقاص' : 'Decrease'}
                         >
-                          <Minus className="w-3 h-3" />
+                          <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <span className="w-7 text-center font-bold text-xs text-slate-800">{ci.quantity}</span>
+                        <span className="w-7 text-center font-bold text-sm text-slate-800">{ci.quantity}</span>
                         <button
                           onClick={() => setQuantity(ci.id, ci.quantity + 1)}
-                          className="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                          aria-label={language === 'ar' ? 'زيادة' : 'Increase'}
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <span className="font-extrabold text-sm text-slate-800 w-16 text-end" dir="ltr">
+                      <span className="font-extrabold text-sm text-slate-800 w-14 sm:w-16 text-end shrink-0" dir="ltr">
                         {formatPrice(ci.price * ci.quantity, menuCurrency)}
                       </span>
                       <button
                         onClick={() => removeFromCart(ci.id)}
-                        className="text-slate-300 hover:text-rose-500 transition-colors"
+                        className="text-slate-300 hover:text-rose-500 transition-colors p-1.5 -m-1.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-rose-50"
+                        aria-label={language === 'ar' ? 'حذف' : 'Remove'}
                         title={language === 'ar' ? 'حذف' : 'Remove'}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-4 h-4" />
                       </button>
                     </li>
                   ))}
@@ -1105,7 +1159,7 @@ export function StoreDemo() {
 
             {/* Footer: total + send order */}
             {cartItems.length > 0 && (
-              <div className="p-5 border-t border-slate-100 space-y-3">
+              <div className="p-4 md:p-5 border-t border-slate-100 space-y-3 sticky bottom-0 bg-white">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                     {language === 'ar' ? 'الإجمالي' : 'Total'}
@@ -1117,14 +1171,22 @@ export function StoreDemo() {
                 <button
                   onClick={handleSubmitOrder}
                   disabled={checkoutStatus === 'sending'}
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-4 py-3.5 rounded-xl text-sm font-extrabold transition-colors cursor-pointer disabled:cursor-wait"
+                  className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-4 py-3.5 rounded-xl text-sm font-extrabold transition-colors cursor-pointer disabled:cursor-wait min-h-[48px]"
                 >
                   {checkoutStatus === 'sending' ? (
                     <>{language === 'ar' ? 'جاري الإرسال...' : 'Sending...'}</>
                   ) : checkoutStatus === 'success' ? (
                     <>{language === 'ar' ? '✓ تم إرسال الطلب للمطبخ' : '✓ Sent to kitchen'}</>
                   ) : checkoutStatus === 'error' ? (
-                    <>{language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again'}</>
+                    <>
+                      {submitErrorKind === 'rls'
+                        ? (language === 'ar'
+                            ? 'الطلب مرفوض — يحتاج المطعم لتفعيل صلاحية الإدخال (orders_anon_insert.sql)'
+                            : 'Rejected — merchant must apply orders_anon_insert.sql')
+                        : submitErrorKind === 'network'
+                          ? (language === 'ar' ? 'تعذّر الاتصال — تحقق من الإنترنت' : 'Network issue — check your connection')
+                          : (language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again')}
+                    </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
@@ -1358,20 +1420,43 @@ export function StoreDemo() {
       {/* ============ Persistent tracking button — always rendered, just
            visually hidden when there's no active order. This avoids the
            Safari "removeChild on Node" error caused by conditional
-           mount/unmount of fixed-position elements. ============ */}
+           mount/unmount of fixed-position elements.
+
+           On mobile we lift it above the VoiceWidget (which sits at
+           bottom-6 end-6) by using bottom-28 — that gives the mic button
+           enough breathing room and the tracking button stays tappable. */}
       <div
         onClick={() => { if (lastOrder) setTrackingOrder(lastOrder.id); }}
-        className={`fixed bottom-24 ${language === 'ar' ? 'left-4' : 'right-4'} z-[14000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl transition-all duration-300 cursor-pointer ${
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && lastOrder) setTrackingOrder(lastOrder.id); }}
+        aria-label={language === 'ar' ? `تتبع الطلب رقم ${lastOrder?.id.replace('order_', '') || ''}` : `Track order ${lastOrder?.id.replace('order_', '') || ''}`}
+        className={`fixed bottom-28 ${language === 'ar' ? 'left-4' : 'right-4'} z-[14000] flex items-center gap-2 bg-slate-900 text-white ps-3 pe-4 py-2.5 rounded-2xl shadow-2xl transition-all duration-300 cursor-pointer min-h-[44px] ${
           lastOrder && checkoutStatus !== 'success' && trackingStatus !== 'completed'
             ? 'opacity-100 translate-y-0 pointer-events-auto'
             : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
-        <Clock className="w-4 h-4" />
+        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+          trackingStatus === 'pending' ? 'bg-amber-500/30' :
+          trackingStatus === 'preparing' ? 'bg-indigo-500/30' :
+          'bg-slate-700'
+        }`}>
+          <Clock className={`w-4 h-4 ${
+            trackingStatus === 'pending' ? 'text-amber-300' :
+            trackingStatus === 'preparing' ? 'text-indigo-300' :
+            'text-slate-300'
+          }`} />
+        </span>
         {lastOrder && (
           <>
-            <span className="font-bold text-xs">№ {lastOrder.id.replace('order_', '')}</span>
-            <span className={`w-2 h-2 rounded-full shrink-0 ${
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                {language === 'ar' ? 'تتبع' : 'Track'}
+              </span>
+              <span className="font-bold text-xs">№ {lastOrder.id.replace('order_', '')}</span>
+            </div>
+            <span className={`w-2 h-2 rounded-full shrink-0 ms-1 ${
               trackingStatus === 'pending' ? 'bg-amber-400 animate-pulse' :
               trackingStatus === 'preparing' ? 'bg-indigo-400 animate-pulse' :
               'bg-slate-500'

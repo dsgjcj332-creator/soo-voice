@@ -203,7 +203,7 @@ export function Integration() {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto font-sans" id="integrations-page-root">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans" id="integrations-page-root">
       {showSuccessToast && (
         <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl flex items-center gap-3 shadow-sm animate-fade-in">
           <CheckCircle2 className="w-5 h-5 text-green-600 animate-bounce" />
