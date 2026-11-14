@@ -793,7 +793,7 @@ export function StoreDemo() {
         
         {/* Menu Section */}
         <div>
-          <div className={`${currentBgTheme.cardBg} p-8 rounded-3xl transition-all duration-300`}>
+          <div className={`${currentBgTheme.cardBg} p-4 md:p-8 rounded-3xl transition-all duration-300`}>
             {tableParam ? (
               <div className="mb-6 bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-md animate-fade-in">
                 <div className="flex items-center gap-3">
@@ -897,13 +897,14 @@ export function StoreDemo() {
               </div>
             </div>
 
-            {/* Category Filter Pills — built from the merchant's own categories */}
-            <div className="flex gap-2 overflow-x-auto pb-2 mt-6 scrollbar-none">
+            {/* Category Filter Pills — built from the merchant's own categories.
+                Scrollable horizontally on mobile, with comfortable tap targets. */}
+            <div className="flex gap-2 overflow-x-auto pb-2 mt-4 md:mt-6 scrollbar-none" style={{ WebkitOverflowScrolling: 'touch' }}>
               <button
                 key="all"
                 type="button"
                 onClick={() => setActiveCategory('all')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap min-h-[44px] transition-all ${
                   activeCategory === 'all'
                     ? `${currentPrimary.bg} text-white shadow-xs`
                     : currentBgTheme.isDark
@@ -918,7 +919,7 @@ export function StoreDemo() {
                   key={cat.id}
                   type="button"
                   onClick={() => setActiveCategory(cat.id)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap min-h-[44px] transition-all ${
                     activeCategory === cat.id
                       ? `${currentPrimary.bg} text-white shadow-xs`
                       : currentBgTheme.isDark
@@ -932,27 +933,29 @@ export function StoreDemo() {
               ))}
             </div>
             
-            <div className={`grid gap-6 mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>
+            <div className={`grid gap-4 md:gap-6 mt-6 md:mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>
               {filteredMenuItems.map((item) => {
                 // Existing quantity in cart (for showing +1 / + buttons instead of just Add)
                 const inCart = cartItems.find((c) => c.id === item.id);
                 return (
-                <div key={item.id} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
+                <div key={item.id} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-4 md:p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
                     <div className="flex justify-between items-start mb-2 gap-2">
-                      <h3 className={`font-extrabold text-base line-clamp-2 ${currentBgTheme.titleText}`}>{item.name}</h3>
-                      <span className={`font-extrabold ${currentPrimary.text} text-lg whitespace-nowrap`} dir="ltr">
+                      <h3 className={`font-extrabold text-sm md:text-base line-clamp-2 ${currentBgTheme.titleText}`}>{item.name}</h3>
+                      <span className={`font-extrabold ${currentPrimary.text} text-base md:text-lg whitespace-nowrap`} dir="ltr">
                         {formatPrice(item.price, menuCurrency)}
                       </span>
                     </div>
-                    <p className={`text-xs mb-4 line-clamp-3 min-h-[48px] ${currentBgTheme.descText}`}>{item.description || (language === 'ar' ? 'لا يوجد وصف متاح.' : 'No description available.')}</p>
+                    <p className={`text-[11px] md:text-xs mb-3 md:mb-4 line-clamp-2 md:line-clamp-3 ${currentBgTheme.descText}`}>{item.description || (language === 'ar' ? 'لا يوجد وصف متاح.' : 'No description available.')}</p>
                   </div>
 
-                  {/* Add to order — shows qty controls if already in cart */}
+                  {/* Add to order — shows qty controls if already in cart.
+                      Tap targets are min 44px (Apple HIG) for comfortable
+                      mobile tapping. */}
                   {!inCart ? (
                     <button
                       onClick={() => addToCart({ id: item.id, name: item.name, price: item.price })}
-                      className={`w-full flex items-center justify-center gap-2 transition-all py-2.5 rounded-xl font-bold text-xs shadow-xs ${currentPrimary.buttonBg}`}
+                      className={`w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-sm shadow-xs min-h-[44px] ${currentPrimary.buttonBg}`}
                     >
                       <Plus className="w-4 h-4" />
                       {language === 'ar' ? 'إضافة للطلب' : 'Add to order'}
@@ -961,20 +964,20 @@ export function StoreDemo() {
                     <div className={`flex items-center justify-between rounded-xl overflow-hidden ${currentPrimary.bg} text-white`}>
                       <button
                         onClick={() => setQuantity(item.id, inCart.quantity - 1)}
-                        className="w-10 h-10 flex items-center justify-center hover:bg-black/10 transition-colors"
+                        className="w-12 h-12 flex items-center justify-center hover:bg-black/10 transition-colors"
                         title={language === 'ar' ? 'إنقاص' : 'Decrease'}
                       >
-                        <Minus className="w-4 h-4" />
+                        <Minus className="w-5 h-5" />
                       </button>
                       <span className="font-extrabold text-sm">
                         {inCart.quantity} {language === 'ar' ? 'في الطلب' : 'in cart'}
                       </span>
                       <button
                         onClick={() => setQuantity(item.id, inCart.quantity + 1)}
-                        className="w-10 h-10 flex items-center justify-center hover:bg-black/10 transition-colors"
+                        className="w-12 h-12 flex items-center justify-center hover:bg-black/10 transition-colors"
                         title={language === 'ar' ? 'زيادة' : 'Increase'}
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-5 h-5" />
                       </button>
                     </div>
                   )}
@@ -1016,10 +1019,11 @@ export function StoreDemo() {
       )}
 
       {/* ============ Floating cart button ============ */}
+      {/* Top corner so it never overlaps with the VoiceWidget at bottom-end */}
       {cartCount > 0 && (
         <button
           onClick={() => setCartOpen(true)}
-          className={`fixed bottom-24 ${language === 'ar' ? 'left-6' : 'right-6'} z-[15000] flex items-center gap-2 ${currentPrimary.bg} text-white px-5 py-3 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in`}
+          className={`fixed top-20 ${language === 'ar' ? 'left-4' : 'right-4'} z-[15000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in`}
         >
           <ShoppingBag className="w-5 h-5" />
           <span className="font-extrabold text-sm">{cartCount}</span>
@@ -1143,7 +1147,7 @@ export function StoreDemo() {
       {/* ============ Invoice screen (after successful order) ============ */}
       {checkoutStatus === 'success' && lastOrder && (
         <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto">
             {/* Accent bar + logo */}
             <div className="h-2 bg-indigo-600" />
             <div className="p-6 text-center">
