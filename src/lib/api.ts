@@ -18,7 +18,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Modality } from '@google/genai';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
@@ -174,6 +174,64 @@ export function createApiApp() {
         err instanceof Error ? err.message : err,
       );
       res.status(502).json({ error: 'Failed to create voice session token' });
+    }
+  });
+
+  // ============ VOICE PREVIEW (TTS) ============
+  /**
+   * Generates a short audio sample of a given text in a given prebuilt voice
+   * using Gemini's text-to-speech via generateContent with AUDIO modality.
+   * Used by the Voice Studio page for A/B voice comparison before the owner
+   * publishes a voice persona.
+   *
+   * Request:  POST /api/voice-preview
+   * Body:     { text: string (<=280 chars), voice: string }
+   * Response: { audio: string (base64 PCM, mime: 'audio/ogg; codecs=opus' or 'audio/L16') }
+   */
+  app.post('/api/voice-preview', rateLimit(60_000, 20), async (req, res) => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.status(503).json({ error: 'Voice service not configured: GEMINI_API_KEY is missing server-side' });
+      return;
+    }
+    const text = String((req.body as any)?.text || '').trim().slice(0, 280);
+    const voice = String((req.body as any)?.voice || '').trim();
+    if (!text || !voice) {
+      res.status(400).json({ error: 'Both `text` and `voice` are required' });
+      return;
+    }
+
+    try {
+      const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: 'v1alpha' } });
+      const response: any = await client.models.generateContent({
+        model: 'gemini-3.1-flash-live-preview',
+        contents: [{ role: 'user', parts: [{ text }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
+          },
+        },
+      });
+
+      const candidate = response?.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+      let inline: any = null;
+      for (const p of parts) {
+        if (p?.inlineData?.data) {
+          inline = p.inlineData;
+          break;
+        }
+      }
+      if (!inline?.data) {
+        res.status(502).json({ error: 'No audio data returned from Gemini' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({ audio: inline.data, mime: inline.mimeType || 'audio/L16' });
+    } catch (err) {
+      console.error('[API] voice-preview error:', err instanceof Error ? err.message : err);
+      res.status(502).json({ error: 'Failed to generate preview' });
     }
   });
 

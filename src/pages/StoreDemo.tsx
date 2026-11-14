@@ -14,7 +14,7 @@ import {
 
 
 export function StoreDemo() {
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const { businessType } = useSettings();
   const { user } = useAuth();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
@@ -24,6 +24,16 @@ export function StoreDemo() {
   const tableParam = searchParams.get('table') || searchParams.get('tableNumber') || '';
   const [selectedTable, setSelectedTable] = React.useState<string>(tableParam || '1');
   const [activeCategory, setActiveCategory] = React.useState<string>('all');
+
+  // Per-table language override — read once on mount, then follow URL changes
+  React.useEffect(() => {
+    const langParam = searchParams.get('lang');
+    if (langParam === 'ar' || langParam === 'en' || langParam === 'fr' || langParam === 'it') {
+      // We currently only support ar/en in the UI fully; fr/it fall back to en.
+      setLanguage(langParam === 'fr' || langParam === 'it' ? 'en' : langParam);
+    }
+  }, [searchParams, setLanguage]);
+
   const effectiveTable = tableParam || selectedTable || '1';
   const urlOwnerId = searchParams.get('ownerId') || searchParams.get('storeId') || '';
   const resolvedOwnerId = urlOwnerId || user?.uid || 'demo_merchant';

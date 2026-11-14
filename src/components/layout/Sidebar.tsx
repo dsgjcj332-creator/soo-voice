@@ -12,7 +12,8 @@ import {
   QrCode,
   Utensils,
   ChefHat,
-  Grid3x3
+  Grid3x3,
+  Mic
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -34,6 +35,7 @@ const getNavigationGroups = (t: (k: string) => string, language: string) => [
     label: t('nav.group.setup'),
     items: [
       { name: t("nav.kb"), href: "/app/knowledge-base", icon: Book },
+      { name: language === 'ar' ? 'استوديو الصوت' : 'Voice studio', href: "/app/voice-studio", icon: Mic },
       { name: t("nav.integration"), href: "/app/integration", icon: Code },
     ],
   },

@@ -29,6 +29,9 @@ import { useStoreSettings } from '../lib/storeSettings';
 interface FloorTable {
   id: string;
   label: string;
+  /** Default menu language for this table — opened as `?lang=` on scan.
+   *  'auto' (default) means follow the device/browser preference. */
+  language: 'auto' | 'ar' | 'en' | 'fr' | 'it';
   x: number; // px in canvas coords (0..600)
   y: number; // px in canvas coords (0..420)
 }
@@ -124,11 +127,15 @@ export function FloorPlan() {
     const label = `${isAr ? 'طاولة' : 'Table'} ${plan.tables.length + 1}`;
     const x = Math.max(0, CANVAS_W / 2 - TABLE_W / 2);
     const y = Math.max(0, CANVAS_H / 2 - TABLE_H / 2);
-    setPlan((p) => ({ tables: [...p.tables, { id, label, x, y }] }));
+    setPlan((p) => ({ tables: [...p.tables, { id, label, language: 'auto', x, y }] }));
   };
 
   const updateLabel = (id: string, label: string) => {
     setPlan((p) => ({ tables: p.tables.map((t) => (t.id === id ? { ...t, label } : t)) }));
+  };
+
+  const updateLanguage = (id: string, language: FloorTable['language']) => {
+    setPlan((p) => ({ tables: p.tables.map((t) => (t.id === id ? { ...t, language } : t)) }));
   };
 
   const removeTable = (id: string) => {
@@ -170,6 +177,9 @@ export function FloorPlan() {
     const u = new URL(`${origin}/store`);
     u.searchParams.set('ownerId', ownerId);
     u.searchParams.set('table', selectedTable.label);
+    if (selectedTable.language !== 'auto') {
+      u.searchParams.set('lang', selectedTable.language);
+    }
     return u.toString();
   }, [selectedTable, ownerId, origin]);
 
@@ -330,6 +340,26 @@ export function FloorPlan() {
                   onChange={(e) => updateLabel(selectedTable.id, e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2 text-sm text-slate-800 outline-none transition-all font-medium mb-4"
                 />
+
+                <label className="block text-xs font-bold text-slate-600 mb-2">
+                  {isAr ? 'لغة المنيو الافتتاحية' : 'Default menu language'}
+                </label>
+                <select
+                  value={selectedTable.language}
+                  onChange={(e) => updateLanguage(selectedTable.id, e.target.value as FloorTable['language'])}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl px-3 py-2 text-sm text-slate-800 outline-none transition-all font-medium mb-4 cursor-pointer"
+                >
+                  <option value="auto">{isAr ? 'تلقائي (حسب الجهاز)' : 'Auto (device default)'}</option>
+                  <option value="ar">{isAr ? 'العربية' : 'Arabic'}</option>
+                  <option value="en">{isAr ? 'الإنجليزية' : 'English'}</option>
+                  <option value="fr">{isAr ? 'الفرنسية' : 'French'}</option>
+                  <option value="it">{isAr ? 'الإيطالية' : 'Italian'}</option>
+                </select>
+                <p className="text-[11px] text-slate-400 -mt-2 mb-4 leading-relaxed">
+                  {isAr
+                    ? 'حين يفتح الضيف الكود، يبدأ المنيو بهذه اللغة. مفيد للطاولات المخصصة للضيوف الأجانب.'
+                    : 'When the guest scans, the menu opens in this language. Useful for tables reserved for international guests.'}
+                </p>
 
                 <div className="flex justify-center py-4 bg-slate-50 rounded-2xl mb-4">
                   {qrDataUrl && (

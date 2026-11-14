@@ -24,6 +24,7 @@ import { Integration } from "./pages/Integration";
 import { KitchenDisplay } from "./pages/KitchenDisplay";
 import { DigitalMenu } from "./pages/DigitalMenu";
 import { FloorPlan } from "./pages/FloorPlan";
+import { VoiceStudio } from "./pages/VoiceStudio";
 import { Billing } from "./pages/Billing";
 import { WidgetStandalone } from "./pages/WidgetStandalone";
 import { SettingsProvider } from "./contexts/SettingsContext";
@@ -83,6 +84,7 @@ function AppRoutes() {
           <Route path="integration" element={<Integration />} />
           <Route path="digital-menu" element={<DigitalMenu />} />
           <Route path="floor-plan" element={<FloorPlan />} />
+          <Route path="voice-studio" element={<VoiceStudio />} />
           <Route path="billing" element={<Billing />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
