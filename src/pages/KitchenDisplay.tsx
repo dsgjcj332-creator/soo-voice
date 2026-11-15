@@ -99,8 +99,28 @@ export function KitchenDisplay() {
         setLoadingOrders(false);
       });
 
+    // Polling safety net — realtime silently dies more often than people
+    // think (a freshly created table may not be in the supabase_realtime
+    // publication, the websocket drops when the tablet sleeps, etc.) and
+    // the only symptom is "the kitchen must refresh to see new orders".
+    // A 5-second refetch makes new tickets appear no matter what.
+    // Skipped when the tab is hidden so an idle dashboard tab doesn't
+    // hammer the database.
+    const poll = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      supabase
+        .from('orders')
+        .select('*')
+        .eq('ownerId', user.uid)
+        .order('createdAt', { ascending: false })
+        .then(({ data }) => {
+          if (data) setOrders(data);
+        });
+    }, 5000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(poll);
     };
   }, [user]);
 

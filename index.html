@@ -1,8 +1,18 @@
 <!doctype html>
-<html lang="en">
+<!-- translate="no" + notranslate + the google meta tag: Google
+     Translate's automatic page translation mutates the DOM (wraps text
+     nodes in <font> tags) behind React's back. When React later tries to
+     unmount a node it created, the node is no longer a child of its
+     parent → "Failed to execute 'removeChild' on 'Node'" → white screen
+     / error dialog right after confirming an order. This was the root
+     cause of "Arabic mode breaks, English works" on guest phones. The
+     app ships its own reliable AR/EN toggle, so machine translation is
+     blocked at the document level. -->
+<html lang="en" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google" content="notranslate" />
     <title>SooVoice — مساعد صوتي للمطاعم والفنادق الراقية</title>
     <meta name="description" content="SooVoice: مساعد صوتي للمطاعم والفنادق الراقية — يستقبل ضيوفك عند الطاولة، يجيب عن المنيو بدقة، ويرشّح الأطباق المناسبة." />
     <meta name="theme-color" content="#4F46E5" />
