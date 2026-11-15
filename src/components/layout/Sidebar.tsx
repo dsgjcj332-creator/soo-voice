@@ -121,7 +121,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </span>
         </div>
       </div>
-      <nav className="flex flex-1 flex-col px-4 py-4 space-y-5">
+      <nav className="flex flex-1 flex-col px-4 py-4 space-y-5 min-h-0 overflow-y-auto">
         {groups.map((group) => (
           <div key={group.label}>
             <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">

@@ -125,18 +125,44 @@ export function FloorPlan() {
     const { isConfigured } = getSupabaseConfig();
     if (!isConfigured || !supabase) return;
 
-    supabase
-      .from('restaurant_floor_plan')
-      .select('*')
-      .eq('ownerId', user.uid)
-      .maybeSingle()
-      .then(({ data }: any) => {
-        if (data && Array.isArray(data.tables)) {
-          const normalized = data.tables.map(normalizeTable);
-          setPlan({ tables: normalized });
-          saveLocal(user.uid, { tables: normalized });
-        }
-      });
+    // Initial load + polling safety net. The first load runs on mount;
+    // the poll runs every 8 seconds and only replaces the plan when the
+    // cloud copy actually differs from what's on screen. This mirrors
+    // the kitchen dashboard's silent-poll pattern and fixes the
+    // "tables I made on desktop don't show on mobile" symptom — which
+    // is almost always a realtime miss or a slow upsert, not a real
+    // data loss. Skipped when the tab is hidden so an idle phone
+    // doesn't drain battery.
+    const fetchRemote = () => {
+      if (document.visibilityState !== 'visible') return;
+      supabase
+        .from('restaurant_floor_plan')
+        .select('*')
+        .eq('ownerId', user.uid)
+        .maybeSingle()
+        .then(({ data, error }: any) => {
+          if (error) {
+            // The most common silent failure: the restaurant_floor_plan
+            // table doesn't exist in the project yet. Surface it so
+            // the merchant knows to run sql/floor_plan.sql.
+            console.warn('[FloorPlan] load error:', error.message);
+            return;
+          }
+          if (data && Array.isArray(data.tables)) {
+            const normalized = data.tables.map(normalizeTable);
+            setPlan((prev) =>
+              JSON.stringify(prev.tables) === JSON.stringify(normalized)
+                ? prev
+                : { tables: normalized }
+            );
+            saveLocal(user.uid, { tables: normalized });
+          }
+        });
+    };
+
+    fetchRemote();
+    const poll = setInterval(fetchRemote, 8000);
+    return () => clearInterval(poll);
   }, [user]);
 
   // Persist on plan change
