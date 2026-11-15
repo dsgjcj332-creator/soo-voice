@@ -454,7 +454,20 @@ ${standardDocsPromptAr}
 ${strictGuardrailsAr}
 أجب بوضوح وإيجاز ولباقة بناءً على المعلومات المتاحة لك فقط. وجّه العميل للأطباق المميزة واقترح ما يناسب ذوقه. ${dialectInstruction} يرجى الانتباه: قد تحتوي القائمة على أطباق سرية أو وجبات خاصة للشيف (isAiOnly = true)، فإذا سألك العميل عنها، أكد له توفرها وأخبره بسعرها ومكوناتها.
 
-عندما يطلب الضيف طبقاً بعينه أو يرغب في إضافته إلى طلب الطاولة، استدعِ الدالة add_to_cart مرسلاً id الطبق فقط (وليس اسمه) — استخرج الـ id من قائمة الأطعمة المعروضة بالأعلى. بعد نجاح الإضافة، أكد للضيف بلطف أن الطبق أُضيف لطلبه، واذكر اسم الطبق والكمية. إذا طلب أكثر من نوع، استدعِ الدالة لكل نوع على حدة. لا تخترع id غير موجود في القائمة — لو لم تجد ما يطلبه، أعتذر بلباقة وأخبره أن هذا الطبق غير متوفر حالياً.`;
+=== أداة الطلب (مهم جدًا) ===
+أنت تملك دالة تُدعى add_to_cart يمكنك من خلالها إضافة أي طبق من القائمة إلى طلب الطاولة مباشرة. كل طبق في القائمة بالأعلى له حقل "id" — استخدمه لتحديد الطبق بدقة.
+
+قواعد إلزامية لاستخدام الدالة:
+1. عندما يقول العميل: "أضف" أو "أريد" أو "عاوز" أو "ضيف" أو "اطلب" أو "اطبخ لي" أو أي عبارة تعني الرغبة في الطلب — استدعِ add_to_cart فورًا بالـ id الصحيح للطبق. لا تكتفي بالوصف أو الاقتراح فقط.
+2. لو قال أكثر من طبق في نفس الجملة (مثال: "أريد برجر ودانت")، استدعِ add_to_cart مرة لكل طبق على حدة.
+3. لو حدد كمية (مثال: "ضيف ٢ بيتزا")، مرّر quantity=2.
+4. لا تخترع id غير موجود في القائمة. لو لم تجد ما يطلبه، اعتذر بلباقة وأخبره أن هذا الطبق غير متوفر حاليًا.
+5. بعد كل استدعاء ناجح للدالة، أخبر العميل بصوت واضح: "أضفت [اسم الطبق] لطلبك" أو ما يشابه — حتى يطمئن أنه وصل.
+
+مثال للاستدعاء:
+العميل: "أريد برجر دبل تشيز"
+أنت: تستدعي add_to_cart({dish_id: "<id البرجر>"}), ثم تقول: "تمام! أضفت برجر دبل تشيز لطلبك. تحب حاجة معاه؟"
+`;
 
       const baseInstructionEn = `You are a host and hospitality assistant for our restaurant. Here is our menu including main courses, drinks, and desserts:
 ${JSON.stringify(allMenuItems)}
@@ -465,7 +478,20 @@ ${standardDocsPromptEn}
 ${strictGuardrailsEn}
 Answer briefly, courteously and clearly based ONLY on the provided information. Guide the guest to notable dishes and suggest what suits their taste. Note: Some dishes are marked 'isAiOnly = true' (secret chef menu items). If the guest asks about them, confirm we have them and state the price and ingredients.
 
-When the guest asks to order a specific dish or add it to their table order, call the add_to_cart function with the dish's id (not its name) — extract the id from the menu listed above. After a successful add, politely confirm to the guest that the dish has been added to their order, and mention the dish name and quantity. If they request multiple items, call the function once per item. Never invent an id that is not in the menu — if you cannot find what they asked for, politely apologize and tell them that dish is not available right now.`;
+=== ORDERING TOOL (VERY IMPORTANT) ===
+You have a function called add_to_cart that lets you add any dish from the menu directly to the table's order. Every dish in the menu above has an "id" field — use it to specify the dish precisely.
+
+Mandatory rules for using the function:
+1. When the guest says "add", "I want", "I'll have", "give me", "I'd like", "order", or any phrase expressing an intent to order — call add_to_cart immediately with the correct dish id. Do not stop at description or recommendation alone.
+2. If the guest mentions multiple dishes in one sentence (e.g. "I want a burger and a donut"), call add_to_cart once per dish.
+3. If they specify a quantity (e.g. "add 2 pizzas"), pass quantity=2.
+4. Never invent an id that is not in the menu. If you cannot find what they asked for, politely apologize and tell them the dish is not available right now.
+5. After every successful call, tell the guest out loud: "Added [dish name] to your order" or similar — so they are reassured it landed.
+
+Example:
+Guest: "I want a double cheese burger"
+You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double cheese burger to your order. Anything else with it?"
+`;
 
       const sessionPromise = ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
@@ -525,6 +551,15 @@ When the guest asks to order a specific dish or add it to their table order, cal
             }
           },
           onmessage: async (message: LiveServerMessage) => {
+            // Debug log for tool-call diagnostics. Without this we
+            // can't see whether the model is firing function calls and
+            // we're missing them, or never firing them at all. The
+            // browser console shows the full server message shape so
+            // any future Live API breaking change is visible at a
+            // glance instead of "the AI can't control the cart".
+            if ((message as any).toolCall) {
+              console.log('[VoiceWidget] toolCall received:', JSON.stringify((message as any).toolCall));
+            }
             const serverContent = message.serverContent as any;
             if (serverContent?.interrupted) {
               if (playbackContextRef.current) {
@@ -587,78 +622,75 @@ When the guest asks to order a specific dish or add it to their table order, cal
 
             // ---- Tool call: add_to_cart ----
             // The Live API sends toolCall as a top-level field on the
-            // server message (NOT inside serverContent). When the model
-            // decides to add a dish, we look up the dish by id in the
-            // current menu, call addToCart, send the tool response back
-            // so the model can confirm to the guest, and fire the cart
-            // chime + haptic so the guest hears/feels the add even while
-            // the assistant is still speaking.
-            const toolCalls = (message as any).toolCall;
-            if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-              for (const call of toolCalls) {
-                const fn = call?.functionCall;
-                if (!fn || fn.name !== 'add_to_cart') continue;
-                const args = fn.args || {};
-                const dishId = String(args.dish_id ?? '').trim();
-                const qty = Math.max(1, Math.round(Number(args.quantity ?? 1) || 1));
-                const cart = cartApiRef.current;
-                const menu = menuItemsRef.current;
-                if (!cart) {
-                  // No cart context — shouldn't happen since we
-                  // didn't declare the tool, but be safe.
-                  console.warn('[VoiceWidget] add_to_cart called but no cart context.');
-                  continue;
-                }
-                const dish = menu.find((m: any) => String(m.id) === dishId);
-                if (!dish) {
-                  // Dish not found — send a tool response so the model
-                  // knows to apologize to the guest instead of hanging.
-                  try {
-                    const s = await sessionPromise;
-                    s.sendToolResponse({
-                      functionResponses: [{
-                        id: call.id,
-                        response: {
-                          ok: false,
-                          error: 'dish_not_found',
-                          message: `No dish with id "${dishId}" was found in the menu. Apologize to the guest and tell them this dish is not available.`,
-                        },
-                      }],
-                    });
-                  } catch (e) {
-                    console.error('[VoiceWidget] sendToolResponse error (not found):', e);
-                  }
-                  continue;
-                }
-                // Add the dish. The cart dedupes by id and accumulates
-                // quantity, so repeated adds of the same dish merge.
-                cart.addToCart({
-                  id: String(dish.id),
-                  name: String(dish.name ?? ''),
-                  price: Number(dish.price) || 0,
-                }, qty);
-                // Audible + tactile confirmation that the add landed.
-                playChime('cart');
-                haptic(15);
-                // Acknowledge to the assistant so it confirms to the
-                // guest with the dish name and quantity.
+            // server message (NOT inside serverContent). The exact
+            // shape from the official Live API docs is:
+            //   message.toolCall = { functionCalls: [{ id, name, args }] }
+            // (NOT an array — the previous version treated it as an
+            // array and missed every call silently, which is why "the
+            // AI can't control the cart" even though the tool was
+            // declared). For each functionCall we look the dish up by
+            // id, call addToCart, send a functionResponse back, and
+            // fire the cart chime + haptic so the guest hears/feels
+            // the add even while the assistant is still speaking.
+            const tc = (message as any).toolCall;
+            const functionCalls: any[] = Array.isArray(tc?.functionCalls)
+              ? tc.functionCalls
+              : Array.isArray(tc) ? tc : [];
+            for (const fc of functionCalls) {
+              if (!fc || fc.name !== 'add_to_cart') continue;
+              const args = fc.args || {};
+              const dishId = String(args.dish_id ?? '').trim();
+              const qty = Math.max(1, Math.round(Number(args.quantity ?? 1) || 1));
+              const cart = cartApiRef.current;
+              const menu = menuItemsRef.current;
+              if (!cart) {
+                console.warn('[VoiceWidget] add_to_cart called but no cart context.');
+                continue;
+              }
+              const dish = menu.find((m: any) => String(m.id) === dishId);
+              if (!dish) {
                 try {
                   const s = await sessionPromise;
                   s.sendToolResponse({
                     functionResponses: [{
-                      id: call.id,
+                      id: fc.id,
+                      name: 'add_to_cart',
                       response: {
-                        ok: true,
-                        dish_name: String(dish.name ?? ''),
-                        quantity: qty,
-                        price: Number(dish.price) || 0,
-                        currency: activeCurrency,
+                        ok: false,
+                        error: 'dish_not_found',
+                        message: `No dish with id "${dishId}" was found in the menu. Apologize to the guest and tell them this dish is not available.`,
                       },
                     }],
                   });
                 } catch (e) {
-                  console.error('[VoiceWidget] sendToolResponse error (ok):', e);
+                  console.error('[VoiceWidget] sendToolResponse error (not found):', e);
                 }
+                continue;
+              }
+              cart.addToCart({
+                id: String(dish.id),
+                name: String(dish.name ?? ''),
+                price: Number(dish.price) || 0,
+              }, qty);
+              playChime('cart');
+              haptic(15);
+              try {
+                const s = await sessionPromise;
+                s.sendToolResponse({
+                  functionResponses: [{
+                    id: fc.id,
+                    name: 'add_to_cart',
+                    response: {
+                      ok: true,
+                      dish_name: String(dish.name ?? ''),
+                      quantity: qty,
+                      price: Number(dish.price) || 0,
+                      currency: activeCurrency,
+                    },
+                  }],
+                });
+              } catch (e) {
+                console.error('[VoiceWidget] sendToolResponse error (ok):', e);
               }
             }
           },
