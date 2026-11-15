@@ -323,20 +323,46 @@ export function StoreDemo() {
   // If the orders table does not have an anon INSERT RLS policy, the
   // insert will be rejected and the guest sees an error. We detect that
   // specific failure mode and show a clearer message in both languages
-  // so the merchant knows to apply sql/orders_anon_insert.sql.
-  const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'generic' | null>(null);
+  // so the merchant knows to apply sql/orders_setup.sql.
+  const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
   const handleSubmitOrder = async () => {
     if (cartItems.length === 0) return;
     setCheckoutStatus('sending');
     setSubmitErrorKind(null);
     try {
       const orderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
+
+      // ---- Payload sanitization (why this matters) ----
+      // The guest phone can feed us data Postgres rejects, and most of
+      // those failures LOOK language-dependent: a QR link typed with
+      // Arabic-Indic digits (table=٥), menu items whose price arrived as
+      // a localized string ("١٢٠" → NaN), or Arabic names carrying
+      // invisible bidi marks (U+200E/U+200F/U+202A-202E) that garble the
+      // kitchen ticket. English-mode carts never contain these, which is
+      // exactly why "English works, Arabic fails". We normalize all of
+      // it here so the INSERT payload is always clean ASCII digits +
+      // plain text, in either UI language.
+      const normalizeDigits = (s: string) =>
+        s
+          .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660)) // Arabic-Indic ٠-٩
+          .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0)); // Persian ۰-۹
+      const stripBidiMarks = (s: string) =>
+        s.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+
+      const safeItems = cartItems.map(i => ({
+        id: String(i.id ?? ''),
+        name: (stripBidiMarks(String(i.name ?? '')).trim() || 'عنصر').slice(0, 200),
+        price: Number(i.price) || 0,
+        quantity: Math.max(1, Math.round(Number(i.quantity) || 1)),
+      }));
+      const safeTotal = safeItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
+
       const newOrder = {
         id: orderId,
         ownerId: resolvedOwnerId,
-        tableNumber: effectiveTable,
-        items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
-        total: cartTotal,
+        tableNumber: normalizeDigits(String(effectiveTable || '1')) || '1',
+        items: safeItems,
+        total: safeTotal,
         status: 'pending',
         createdAt: Date.now(),
       };
@@ -346,9 +372,19 @@ export function StoreDemo() {
       if (isConfigured && supabase) {
         const { error } = await supabase.from('orders').insert(newOrder);
         if (error) {
+          // Log everything Supabase gives us — code/details/hint are what
+          // make a remote failure diagnosable from the phone's logcat or
+          // a copied console output, instead of a vague "it failed".
+          console.error('[Order submit] Supabase error:', {
+            code: (error as any).code,
+            message: error.message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            payload: newOrder,
+          });
+          const msg = (error.message || '').toLowerCase();
           // Detect RLS rejection (anonymous guest cannot insert) — the most
           // common cause of "order fails" after a successful cart build.
-          const msg = (error.message || '').toLowerCase();
           if (
             msg.includes('row-level security') ||
             msg.includes('policy') ||
@@ -357,6 +393,19 @@ export function StoreDemo() {
             msg.includes('not authenticated')
           ) {
             setSubmitErrorKind('rls');
+            throw error;
+          }
+          // Detect a missing orders table (fresh Supabase project where
+          // sql/orders_setup.sql was never run) — its PostgREST message
+          // mentions "Could not find the table" or a schema-cache miss.
+          if (
+            msg.includes('could not find the table') ||
+            msg.includes('does not exist') ||
+            msg.includes('schema cache') ||
+            (error as any).code === 'PGRST205' ||
+            (error as any).code === '42P01'
+          ) {
+            setSubmitErrorKind('schema');
             throw error;
           }
           if (msg.includes('fetch') || msg.includes('network') || msg.includes('timeout')) {
@@ -382,9 +431,9 @@ export function StoreDemo() {
       setCheckoutStatus('success');
       setLastOrder({
         id: orderId,
-        items: cartItems.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
-        total: cartTotal,
-        tableNumber: effectiveTable,
+        items: safeItems,
+        total: safeTotal,
+        tableNumber: newOrder.tableNumber,
         createdAt: Date.now(),
       });
       setCartOpen(false);
@@ -1288,11 +1337,15 @@ export function StoreDemo() {
                     <>
                       {submitErrorKind === 'rls'
                         ? (language === 'ar'
-                            ? 'الطلب مرفوض — يحتاج المطعم لتفعيل صلاحية الإدخال (orders_anon_insert.sql)'
-                            : 'Rejected — merchant must apply orders_anon_insert.sql')
-                        : submitErrorKind === 'network'
-                          ? (language === 'ar' ? 'تعذّر الاتصال — تحقق من الإنترنت' : 'Network issue — check your connection')
-                          : (language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again')}
+                            ? 'الطلب مرفوض — يحتاج المطعم لتفعيل صلاحية الإدخال (orders_setup.sql)'
+                            : 'Rejected — merchant must apply orders_setup.sql')
+                        : submitErrorKind === 'schema'
+                          ? (language === 'ar'
+                              ? 'جدول الطلبات غير موجود في قاعدة البيانات — شغّل sql/orders_setup.sql'
+                              : 'Orders table missing — run sql/orders_setup.sql in Supabase')
+                          : submitErrorKind === 'network'
+                            ? (language === 'ar' ? 'تعذّر الاتصال — تحقق من الإنترنت' : 'Network issue — check your connection')
+                            : (language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again')}
                     </>
                   ) : (
                     <>
