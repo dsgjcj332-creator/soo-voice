@@ -428,20 +428,29 @@ export function StoreDemo() {
         } catch {}
       }
 
-      setCheckoutStatus('success');
-      setLastOrder({
-        id: orderId,
-        items: safeItems,
-        total: safeTotal,
-        tableNumber: newOrder.tableNumber,
-        createdAt: Date.now(),
-      });
+      // Two-phase transition to avoid the removeChild crash:
+      //   Phase 1 (this commit): close the cart slide-over. React unmounts
+      //     the cart's DOM subtree cleanly while the invoice is NOT yet
+      //     on screen, so there is no mount/unmount overlap.
+      //   Phase 2 (next tick): mount the invoice modal + record lastOrder.
+      //     Two separate commits means React never simultaneously unmounts
+      //     one large overlay while mounting another — that overlap was
+      //     the second source of "removeChild: not a child" crashes
+      //     (the first being Google Translate; blocked at the html level).
       setCartOpen(false);
-      // Defer clearCart to avoid a Safari "removeChild on Node" error
-      // that fires when the cart slide-over unmounts while the invoice
-      // modal mounts in the same tick. Waiting one tick lets React
-      // process the unmount first, then the cart state change.
-      setTimeout(() => clearCart(), 100);
+      requestAnimationFrame(() => {
+        setLastOrder({
+          id: orderId,
+          items: safeItems,
+          total: safeTotal,
+          tableNumber: newOrder.tableNumber,
+          createdAt: Date.now(),
+        });
+        setCheckoutStatus('success');
+        // Defer clearCart one more tick so the invoice's first paint
+        // is not interrupted by the cart-state change.
+        setTimeout(() => clearCart(), 120);
+      });
     } catch (err) {
       console.error('Order submit error:', err);
       setCheckoutStatus('error');
