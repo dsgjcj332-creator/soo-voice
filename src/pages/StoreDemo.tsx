@@ -45,6 +45,16 @@ export function StoreDemo() {
   const prevTrackingStatusRef = React.useRef<string>('pending');
   const trackingInitializedRef = React.useRef<boolean>(false);
 
+  // Lock the page scroll while any full-screen overlay is open (cart
+  // slide-over, invoice screen, tracking modal). Without this, swiping
+  // inside the overlay scrolls the menu behind it on mobile — the
+  // guest loses their place in the menu after closing the cart.
+  React.useEffect(() => {
+    const overlayOpen = cartOpen || checkoutStatus === 'success' || !!trackingOrder;
+    document.body.style.overflow = overlayOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [cartOpen, checkoutStatus, trackingOrder]);
+
   // Search parameters for tableside QR code scanning
   const [searchParams] = useSearchParams();
   const tableParam = searchParams.get('table') || searchParams.get('tableNumber') || '';
@@ -623,13 +633,35 @@ export function StoreDemo() {
       W / 2, y + 10
     );
 
-    // Download
-    canvas.toBlob((blob) => {
+    // Share or download. On mobile (iOS Safari, Android Chrome) the Web
+    // Share API with files opens the native share sheet — the guest can
+    // save the invoice to Photos/Files or send it to the waiter. That is
+    // the mobile-native way to "download"; a plain a.click() download is
+    // the fallback for desktop browsers.
+    canvas.toBlob(async (blob) => {
       if (!blob) return;
+      const fileName = `invoice-${lastOrder.id.replace('order_', '')}.png`;
+      try {
+        const file = new File([blob], fileName, { type: 'image/png' });
+        // navigator.canShare with files is supported on iOS Safari 15+
+        // and Android Chrome — check before using, fall back silently.
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: language === 'ar' ? `فاتورة الطلب ${lastOrder.id.replace('order_', '')}` : `Invoice ${lastOrder.id.replace('order_', '')}`,
+          });
+          return;
+        }
+      } catch (shareErr: any) {
+        // User cancelled the share sheet — not an error, just stop here.
+        if (shareErr?.name === 'AbortError') return;
+        // Any other share failure falls through to the download path.
+      }
+      // Fallback: classic download (desktop, older mobile browsers)
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `invoice-${lastOrder.id.replace('order_', '')}.png`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -837,7 +869,7 @@ export function StoreDemo() {
   }
 
   return (
-    <div className={`min-h-screen transition-all duration-500 p-6 md:p-12 font-sans flex justify-center ${currentBgTheme.mainBg} relative overflow-hidden`}>
+    <div className={`min-h-screen transition-all duration-500 p-4 pt-24 pb-28 md:p-12 font-sans flex justify-center ${currentBgTheme.mainBg} relative overflow-hidden`}>
       {/* CSS Keyframes for magical elements */}
       <style>{`
         @keyframes storeFloatUp {
@@ -946,10 +978,10 @@ export function StoreDemo() {
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <h1 className={`text-2xl md:text-3xl font-extrabold tracking-tight ${currentBgTheme.titleText} leading-tight`}>
+                  <h1 className={`text-xl md:text-3xl font-extrabold tracking-tight ${currentBgTheme.titleText} leading-tight`}>
                     {getRestaurantName()}
                   </h1>
-                  <p className={`mt-1 md:mt-2 text-xs md:text-sm leading-relaxed ${currentBgTheme.descText}`}>
+                  <p className={`mt-1 md:mt-2 text-xs md:text-sm leading-relaxed ${currentBgTheme.descText} line-clamp-2 md:line-clamp-none`}>
                     {getSectorDescription()}
                   </p>
                   {(storeSettings.address || storeSettings.phone) && (
@@ -1130,11 +1162,13 @@ export function StoreDemo() {
       </button>
 
       {/* ============ Floating cart button ============ */}
-      {/* Top corner so it never overlaps with the VoiceWidget at bottom-end */}
+      {/* Same top row as the language toggle but on the OPPOSITE side, so
+          both buttons sit in one clean row above the page content (the
+          content container reserves pt-24 for them on mobile). */}
       {cartCount > 0 && (
         <button
           onClick={() => setCartOpen(true)}
-          className={`fixed top-16 ${language === 'ar' ? 'left-4' : 'right-4'} z-[15000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 transition-transform animate-fade-in min-h-[44px]`}
+          className={`fixed top-4 ${language === 'ar' ? 'left-4' : 'right-4'} z-[15000] flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl hover:scale-105 active:scale-95 transition-transform animate-fade-in min-h-[44px]`}
         >
           <ShoppingBag className="w-5 h-5" />
           <span className="font-extrabold text-sm">{cartCount}</span>
@@ -1143,8 +1177,11 @@ export function StoreDemo() {
       )}
 
       {/* ============ Cart slide-over panel ============ */}
+      {/* justify-end gives the mirrored behaviour for free: the panel
+          slides from the trailing side — right in English (LTR), left in
+          Arabic (RTL) — matching where the cart button sits. */}
       {cartOpen && (
-        <div className={`fixed inset-0 z-[16000] flex ${language === 'ar' ? 'justify-start' : 'justify-end'}`}>
+        <div className="fixed inset-0 z-[16000] flex justify-end">
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
           <div className="relative w-full max-w-md h-full bg-white shadow-2xl flex flex-col animate-fade-in">
             {/* Header */}
@@ -1185,7 +1222,10 @@ export function StoreDemo() {
                     <li key={ci.id} className="flex items-center gap-2 p-3 rounded-2xl border border-slate-100">
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-800 text-sm leading-snug truncate">{ci.name}</p>
-                        <p className="text-xs text-slate-400" dir="ltr">{formatPrice(ci.price, menuCurrency)} each</p>
+                        <p className="text-xs text-slate-400" dir="ltr">
+                          {formatPrice(ci.price, menuCurrency)}
+                          {' '}{language === 'ar' ? 'للقطعة' : 'each'}
+                        </p>
                       </div>
                       <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg shrink-0">
                         <button
@@ -1221,17 +1261,20 @@ export function StoreDemo() {
               )}
             </div>
 
-            {/* Footer: total + send order */}
+            {/* Footer: total + send order — pb clears the iPhone home
+                indicator so the small "clear order" action below the send
+                button is never half-hidden behind it. */}
             {cartItems.length > 0 && (
-              <div className="p-4 md:p-5 border-t border-slate-100 space-y-3 sticky bottom-0 bg-white">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    {language === 'ar' ? 'الإجمالي' : 'Total'}
-                  </span>
-                  <span className="text-2xl font-extrabold text-slate-900" dir="ltr">
-                    {formatPrice(cartTotal, menuCurrency)}
-                  </span>
-                </div>
+              <div className="border-t border-slate-100 sticky bottom-0 bg-white">
+                <div className="p-4 md:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      {language === 'ar' ? 'الإجمالي' : 'Total'}
+                    </span>
+                    <span className="text-2xl font-extrabold text-slate-900" dir="ltr">
+                      {formatPrice(cartTotal, menuCurrency)}
+                    </span>
+                  </div>
                 <button
                   onClick={handleSubmitOrder}
                   disabled={checkoutStatus === 'sending'}
@@ -1260,10 +1303,11 @@ export function StoreDemo() {
                 </button>
                 <button
                   onClick={() => { if (confirm(language === 'ar' ? 'تفريغ الطلب؟' : 'Clear order?')) clearCart(); }}
-                  className="w-full text-xs text-slate-400 hover:text-rose-500 font-bold transition-colors"
+                  className="w-full text-xs text-slate-400 hover:text-rose-500 font-bold transition-colors min-h-[44px]"
                 >
                   {language === 'ar' ? 'تفريغ الطلب' : 'Clear order'}
                 </button>
+                </div>
               </div>
             )}
           </div>
@@ -1273,7 +1317,7 @@ export function StoreDemo() {
       {/* ============ Invoice screen (after successful order) ============ */}
       {checkoutStatus === 'success' && lastOrder && (
         <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92dvh] overflow-y-auto">
             {/* Accent bar + logo */}
             <div className="h-2 bg-indigo-600" />
             <div className="p-6 text-center">
@@ -1389,14 +1433,18 @@ export function StoreDemo() {
       {/* ============ Order tracking modal ============ */}
       {trackingOrder && (
         <div className="fixed inset-0 z-[18000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden">
+          {/* relative anchors the X close button to THIS card, not the
+              full-screen overlay (the old absolute positioning let the X
+              float at the screen corner, far from the modal). */}
+          <div className="relative bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden max-h-[92dvh] overflow-y-auto">
+            <button
+              onClick={() => setTrackingOrder(null)}
+              aria-label={language === 'ar' ? 'إغلاق' : 'Close'}
+              className="absolute top-3 end-3 z-10 flex h-11 w-11 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
             <div className="p-6 text-center">
-              <button
-                onClick={() => setTrackingOrder(null)}
-                className="absolute top-4 end-4 text-slate-400 hover:text-slate-700 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
               <h2 className="text-lg font-bold text-slate-900 mb-1">
                 {language === 'ar' ? 'تتبع الطلب' : 'Order tracking'}
               </h2>
