@@ -311,18 +311,18 @@ export function KitchenDisplay() {
                       {order.status === 'pending' && (
                         <button
                           onClick={() => handleUpdateOrderStatus(order.id, 'preparing')}
-                          className="text-xs font-bold text-slate-900 bg-stone-100 hover:bg-stone-200 px-3 py-1.5 rounded-md transition-colors cursor-pointer flex items-center gap-1.5"
+                          className="text-xs font-bold text-slate-900 bg-stone-100 hover:bg-stone-200 px-4 min-h-[44px] rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                         >
-                          <Clock className="w-3 h-3" />
+                          <Clock className="w-3.5 h-3.5" />
                           {isAr ? 'ابدأ' : 'Begin'}
                         </button>
                       )}
                       {order.status === 'preparing' && (
                         <button
                           onClick={() => handleUpdateOrderStatus(order.id, 'completed')}
-                          className="text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 px-3 py-1.5 rounded-md transition-colors cursor-pointer flex items-center gap-1.5"
+                          className="text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 px-4 min-h-[44px] rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                         >
-                          <Check className="w-3 h-3" />
+                          <Check className="w-3.5 h-3.5" />
                           {isAr ? 'قُدّم' : 'Served'}
                         </button>
                       )}
@@ -330,17 +330,17 @@ export function KitchenDisplay() {
                         <button
                           onClick={() => handleUpdateOrderStatus(order.id, 'cancelled')}
                           title={isAr ? 'إلغاء' : 'Cancel'}
-                          className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-1"
+                          className="text-slate-400 hover:text-rose-600 transition-colors cursor-pointer p-2 -m-1 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-rose-50"
                         >
-                          <XIcon className="w-3.5 h-3.5" />
+                          <XIcon className="w-4 h-4" />
                         </button>
                       )}
                       <button
                         onClick={() => handleArchiveOrder(order.id)}
                         title={isAr ? 'أرشفة' : 'Archive'}
-                        className="text-slate-300 hover:text-slate-500 transition-colors cursor-pointer p-1"
+                        className="text-slate-300 hover:text-slate-500 transition-colors cursor-pointer p-2 -m-1 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-stone-100"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </footer>

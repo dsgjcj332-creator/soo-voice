@@ -66,3 +66,11 @@ create policy "orders_public_update_status"
   to anon, authenticated
   using (true)
   with check (true);
+
+-- Kitchen dashboard archives (deletes) served tickets.
+-- authenticated only — anonymous visitors must never be able to delete.
+drop policy if exists "orders_authenticated_delete" on orders;
+create policy "orders_authenticated_delete"
+  on orders for delete
+  to authenticated
+  using (true);
