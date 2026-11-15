@@ -103,7 +103,13 @@ export function KitchenDisplay() {
     // think (a freshly created table may not be in the supabase_realtime
     // publication, the websocket drops when the tablet sleeps, etc.) and
     // the only symptom is "the kitchen must refresh to see new orders".
-    // A 5-second refetch makes new tickets appear no matter what.
+    //
+    // The poll is SILENT: we compare the fetched board with what is
+    // already on screen and only setOrders when something actually
+    // changed. Returning the previous array makes React bail out of the
+    // re-render entirely, so idle polls paint NOTHING — no flicker, no
+    // "it refreshed itself" moment. Only a real new ticket or a status
+    // move appears, exactly like realtime does.
     // Skipped when the tab is hidden so an idle dashboard tab doesn't
     // hammer the database.
     const poll = setInterval(() => {
@@ -114,7 +120,10 @@ export function KitchenDisplay() {
         .eq('ownerId', user.uid)
         .order('createdAt', { ascending: false })
         .then(({ data }) => {
-          if (data) setOrders(data);
+          if (!data) return;
+          setOrders((prev) =>
+            JSON.stringify(prev) === JSON.stringify(data) ? prev : data
+          );
         });
     }, 5000);
 
