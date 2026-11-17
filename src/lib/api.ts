@@ -324,12 +324,6 @@ export function createApiApp() {
       return;
     }
     const { connectionId, providerLocationId, name, timezone, currency } = parsedLocation.value;
-    try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); }
-      catch {
-        res.status(400).json({ error: 'Invalid IANA timezone' });
-        return;
-      }
-    }
     try {
       const ownerQuery = new URLSearchParams({
         select: 'id',
