@@ -92,11 +92,13 @@ export function loadLocalStoreSettings(ownerId?: string | null): StoreSettings {
   }
 }
 
-export function saveLocalStoreSettings(ownerId: string, settings: StoreSettings) {
+export function saveLocalStoreSettings(ownerId: string, settings: StoreSettings): boolean {
   try {
     localStorage.setItem(localKey(ownerId), JSON.stringify(settings));
+    return true;
   } catch (e) {
     console.warn('Could not persist store settings locally:', e);
+    return false;
   }
 }
 
@@ -218,6 +220,18 @@ export function useStoreSettings(ownerId?: string | null, remote = false) {
     };
   }, [ownerId, isConfigured]);
 
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!ownerId) return false;
+    const snapshot = settingsRef.current;
+    if (!saveLocalStoreSettings(ownerId, snapshot)) return false;
+    if (!remote) return true;
+    if (!isConfigured) return false;
+    const persisted = await saveStoreSettingsRemote(ownerId, snapshot);
+    // If the user edited settings while the request was in flight, do not
+    // report the older snapshot as the final saved state.
+    return persisted && settingsRef.current.updatedAt === snapshot.updatedAt;
+  }, [ownerId, remote, isConfigured]);
+
   const update = useCallback(
     (patch: Partial<StoreSettings>) => {
       if (!ownerId) return;
@@ -236,7 +250,7 @@ export function useStoreSettings(ownerId?: string | null, remote = false) {
     [ownerId, remote, isConfigured]
   );
 
-  return { settings, update, loading };
+  return { settings, update, save, loading };
 }
 
 /* ---------------------------------- Session --------------------------------- */
