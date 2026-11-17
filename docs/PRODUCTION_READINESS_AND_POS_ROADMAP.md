@@ -93,7 +93,7 @@ Implemented on `feat/secure-guest-checkout`:
 
 - Guest browser sends only merchant ID, item IDs, quantities, table number and an idempotency key. It does not submit item names or prices.
 - A server-only API uses the Supabase service role and a database RPC to re-read merchant-owned, non-AI-only menu item names/prices and atomically create the order plus an `order.created` outbox event.
-- The API derives a per-order capability token with a server-side HMAC key; only its SHA-256 hash is stored. Guest tracking reads only the matching order after presenting the token in a request header.
+- The API derives a per-order capability token with a server-side HMAC key; only its SHA-256 hash is stored. Guest tracking reads only the matching order after presenting the token in a request header; tokens expire after seven days.
 - Repeated requests with the same idempotency key and same cart return the existing order; reusing that key with a different cart is rejected.
 - StoreDemo checkout and status polling now use the trusted endpoints instead of direct browser inserts or anonymous orders-table reads.
 
