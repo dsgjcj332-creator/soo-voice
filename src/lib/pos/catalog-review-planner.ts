@@ -104,6 +104,7 @@ export function buildPosCatalogReview(
       continue;
     }
 
+    if (operation.type !== 'update') continue;
     const item = operation.item;
     if (!current) throw new Error('POS_REVIEW_ITEM_SCOPE_MISMATCH');
     const proposed: Record<MerchantMenuField, string | number | boolean | null> = {
