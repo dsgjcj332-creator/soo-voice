@@ -103,7 +103,7 @@ npm run clean   # remove dist/
 | `APP_URL` | server | Public deployment URL (OAuth callbacks, self-referential links). |
 | `ALLOWED_ORIGINS` | server | Optional comma-separated CORS allowlist. Empty = allow all (needed while the widget is embedded on arbitrary storefronts). |
 | `VITE_SUPABASE_URL` | client (public) | Supabase project URL. |
-| `VITE_SUPABASE_ANON_KEY` | client (public) | Supabase anon key — safe to expose, protected by RLS. |
+| `VITE_SUPABASE_ANON_KEY` | client (public) | Supabase anon key — safe to expose, protected by RLS. |\n| `SUPABASE_URL` | **server-only** | Supabase project URL used by trusted guest-order APIs. |\n| `SUPABASE_SERVICE_ROLE_KEY` | **server-only** | Service-role key used only by trusted order creation/tracking endpoints. Never expose it to Vite/browser code. |\n| `ORDER_TOKEN_SECRET` | **server-only** | At least 32 random characters; HMAC key for per-order guest capability tokens. |
 
 ## Security Model
 
@@ -118,7 +118,7 @@ npm run clean   # remove dist/
 1. Push to GitHub and import the repo in Vercel.
 2. Set the server-side env vars from the table above in Project Settings.
 3. Build command: `npm run build` — API routes are picked up automatically from `api/`.
-4. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
+4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, and `sql/2026_11_19_secure_guest_checkout.sql`. Verify them in staging before production.\n5. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
    `store_settings` table that powers the merchant store profile, voice-widget
    visibility toggle, geo-fence and menu session duration. Until it is applied the
    app degrades gracefully to localStorage-only persistence.
