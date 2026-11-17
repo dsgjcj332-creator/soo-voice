@@ -85,3 +85,27 @@ If the POS is unavailable, do not silently claim the order reached the cashier. 
 ## Known unknowns / external dependencies
 
 Native POS integrations cannot be completed by code alone. Each provider may require a partner agreement, merchant authorization, approved scopes, sandbox credentials, certification and country-specific access. Do not store production credentials in GitHub or expose them to the browser. Configure secrets only in the deployment secret manager.
+
+
+## Secure guest checkout implementation checkpoint (2026-11-17)
+
+Implemented on `feat/secure-guest-checkout`:
+
+- Guest browser sends only merchant ID, item IDs, quantities, table number and an idempotency key. It does not submit item names or prices.
+- A server-only API uses the Supabase service role and a database RPC to re-read merchant-owned, non-AI-only menu item names/prices and atomically create the order plus an `order.created` outbox event.
+- The API derives a per-order capability token with a server-side HMAC key; only its SHA-256 hash is stored. Guest tracking reads only the matching order after presenting the token in a request header.
+- Repeated requests with the same idempotency key and same cart return the existing order; reusing that key with a different cart is rejected.
+- StoreDemo checkout and status polling now use the trusted endpoints instead of direct browser inserts or anonymous orders-table reads.
+
+Required deployment work before enabling this flow:
+1. Apply `orders_setup.sql` if needed, then the order RLS hardening, POS registry, and secure guest checkout migrations in a staging Supabase project.
+2. Configure server-only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and a random `ORDER_TOKEN_SECRET` (32+ characters). Never add the service role key to a `VITE_*` variable.
+3. Verify the deployed `menu_items` schema uses the expected `id`, `ownerId`, `name`, `price`, and `isAiOnly` columns and that price values are numeric.
+4. Add distributed abuse/rate limiting before public launch; current IP limits are per serverless instance.
+5. Implement and operate an outbox worker, delivery retries/dead-letter handling, POS adapter execution, and order status reconciliation. An outbox row is not proof that a POS accepted an order.
+
+Current limits:
+- Catalog availability, modifiers, discounts, tax, service charges, branch selection and currency are not yet modeled in the existing `menu_items` schema and are not guessed by this endpoint.
+- Orders are durably recorded locally but are not yet dispatched to a real POS. No vendor adapter is connected.
+- Guest capability tokens are held in page memory for the current checkout/tracking session; refreshing the page loses the guest's tracking capability.
+- The migration and endpoint still require staging database execution, security tests, and successful CI/deployment checks before production use.
