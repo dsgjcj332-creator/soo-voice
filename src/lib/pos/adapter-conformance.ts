@@ -99,7 +99,7 @@ export async function runPosAdapterConformance(
     if (!location || !location.active) throw new Error('POS_ADAPTER_LOCATION_NOT_AVAILABLE');
     checks.push({ name: 'location_scope', passed: true });
     if (capabilities.menuRead) {
-      const rawCatalog = await adapter.fetchCatalog({ ...context, locationId: providerLocationId }, providerLocationId);
+      const rawCatalog = await adapter.fetchCatalog(context, providerLocationId);
       const catalog = normalizePosCatalog(rawCatalog);
       if (catalog.some(item => !item.locationIds.includes(providerLocationId))) {
         throw new Error('POS_ADAPTER_CATALOG_LOCATION_SCOPE_MISMATCH');
