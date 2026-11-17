@@ -19,6 +19,7 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { encryptPosCredentials } from './pos/credentials';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
@@ -135,6 +136,148 @@ export function createApiApp() {
     }
     next();
   };
+
+  // ============ AUTHENTICATED POS CONNECTION MANAGEMENT ============
+  // The merchant identity is derived exclusively from a verified Supabase
+  // access token. Never accept owner_id from the request body or x-api-key.
+  const posConnectionRateLimit = rateLimit(60_000, 20);
+  const posProviders = new Set([
+    'foodics', 'toast', 'square', 'clover', 'lightspeed',
+    'oracle_simphony', 'odoo', 'shopify_pos', 'salla', 'custom',
+  ]);
+  const getPosBackend = () => {
+    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\\/$/, '');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+    if (!supabaseUrl || !serviceKey || !anonKey || !process.env.POS_CREDENTIALS_ENCRYPTION_KEY) return null;
+    try {
+      const parsed = new URL(supabaseUrl);
+      if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+    } catch {
+      return null;
+    }
+    return { supabaseUrl, serviceKey, anonKey };
+  };
+
+  const authenticatePosMerchant = async (req: express.Request) => {
+    const backend = getPosBackend();
+    const authorization = firstHeader(req.headers.authorization) || '';
+    const match = /^Bearer\\s+([A-Za-z0-9._~-]{30,4096})$/i.exec(authorization);
+    if (!backend || !match) return null;
+    try {
+      const response = await fetch(`${backend.supabaseUrl}/auth/v1/user`, {
+        headers: { apikey: backend.anonKey, Authorization: `Bearer ${match[1]}` },
+      });
+      if (!response.ok) return null;
+      const user = await response.json() as { id?: unknown };
+      if (typeof user?.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(user.id)) return null;
+      return { backend, ownerId: user.id };
+    } catch {
+      return null;
+    }
+  };
+
+  const posServiceHeaders = (serviceKey: string) => ({
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    'Content-Type': 'application/json',
+  });
+
+  app.get('/api/pos/connections', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,created_at,updated_at',
+        owner_id: `eq.${auth.ownerId}`,
+        order: 'created_at.desc',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) {
+        console.error('[API] POS connection list failed:', response.status);
+        res.status(503).json({ error: 'POS connections are temporarily unavailable' });
+        return;
+      }
+      const rows = await response.json();
+      // Explicit allowlist: credential ciphertext is never returned to clients.
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS connection list error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS connections are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/connections', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const body = req.body || {};
+    const provider = typeof body.provider === 'string' ? body.provider : '';
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim().slice(0, 100) : null;
+    const credentials = body.credentials;
+    if (!posProviders.has(provider) || !credentials || typeof credentials !== 'object' ||
+        Array.isArray(credentials) || Object.keys(credentials).length === 0) {
+      res.status(400).json({ error: 'Provider and non-empty credentials object are required' });
+      return;
+    }
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(credentials);
+      if (!serialized || Buffer.byteLength(serialized, 'utf8') > 16_384) {
+        res.status(400).json({ error: 'Credentials payload is invalid or too large' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'Credentials payload is invalid' });
+      return;
+    }
+
+    try {
+      const encrypted = encryptPosCredentials(credentials as Record<string, unknown>);
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections`, {
+        method: 'POST',
+        headers: {
+          ...posServiceHeaders(auth.backend.serviceKey),
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          owner_id: auth.ownerId,
+          provider,
+          display_name: displayName || provider,
+          status: 'pending',
+          credentials_ciphertext: encrypted.ciphertext,
+          credentials_key_version: encrypted.keyVersion,
+        }),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows) || rows.length !== 1) {
+        console.error('[API] POS connection create failed:', response.status);
+        res.status(503).json({ error: 'Could not save POS connection' });
+        return;
+      }
+      const row = rows[0];
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        id: row.id,
+        provider: row.provider,
+        display_name: row.display_name,
+        status: row.status,
+        created_at: row.created_at,
+      });
+    } catch (err) {
+      // Never log request bodies, provider credentials, or encryption output.
+      console.error('[API] POS connection create error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS connection' });
+    }
+  });
 
   // ============ TRUSTED GUEST ORDER FLOW ============
   // Browser clients submit catalog IDs and quantities only. The database
