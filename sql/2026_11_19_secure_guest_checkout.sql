@@ -228,8 +228,8 @@ begin
      )
        and attempts < max_attempts
      order by created_at asc
-     for update skip locked
      limit p_limit
+     for update skip locked
   )
   update public.order_outbox o
      set status = 'processing',
