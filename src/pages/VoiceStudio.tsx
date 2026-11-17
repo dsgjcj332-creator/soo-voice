@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings, VoiceTone } from '../contexts/SettingsContext';
+import { useAuth } from '../contexts/AuthContext';
+import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 
 /**
  * Voice Studio — preview the assistant's voice before publishing.
@@ -60,7 +62,8 @@ interface Sample {
 
 export function VoiceStudio() {
   const { language } = useLanguage();
-  const { voiceTone, setVoiceTone } = useSettings();
+  const { user } = useAuth();
+  const { voiceTone, setVoiceTone, dialect, businessType, currency } = useSettings();
   const isAr = language === 'ar';
 
   const [text, setText] = useState(() =>
@@ -79,7 +82,8 @@ export function VoiceStudio() {
   const [samples, setSamples] = useState<Record<VoiceTone, Sample>>(
     () => ({}) as Record<VoiceTone, Sample>
   );
-  const [publishStatus, setPublishStatus] = useState<'idle' | 'saved'>('idle');
+  const [publishStatus, setPublishStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [publishError, setPublishError] = useState('');
 
   // Reset samples when text or voices change
   useEffect(() => {
@@ -126,10 +130,36 @@ export function VoiceStudio() {
     }
   };
 
-  const publishVoice = (voice: VoiceTone) => {
-    setVoiceTone(voice);
-    setPublishStatus('saved');
-    setTimeout(() => setPublishStatus('idle'), 2500);
+  const publishVoice = async (voice: VoiceTone) => {
+    if (!user) {
+      setPublishStatus('error');
+      setPublishError(isAr ? 'سجّل الدخول أولًا لاعتماد الصوت.' : 'Sign in before publishing a voice.');
+      return;
+    }
+    setPublishStatus('saving');
+    setPublishError('');
+    try {
+      if (user.provider !== 'local') {
+        const { isConfigured } = getSupabaseConfig();
+        const supabase = getSupabase();
+        if (!isConfigured || !supabase) throw new Error(isAr ? 'قاعدة البيانات غير متاحة.' : 'Database is not configured.');
+        const { error } = await supabase.from('merchant_settings').upsert([{
+          ownerId: user.uid,
+          dialect,
+          voiceTone: voice,
+          businessType,
+          currency,
+          updatedAt: Date.now(),
+        }], { onConflict: 'ownerId' });
+        if (error) throw error;
+      }
+      setVoiceTone(voice);
+      setPublishStatus('saved');
+      window.setTimeout(() => setPublishStatus('idle'), 2500);
+    } catch (error) {
+      setPublishStatus('error');
+      setPublishError(error instanceof Error ? error.message : (isAr ? 'تعذر حفظ الصوت.' : 'Could not save the voice.'));
+    }
   };
 
   return (
@@ -275,8 +305,8 @@ export function VoiceStudio() {
                   </span>
                 ) : (
                   <button
-                    onClick={() => publishVoice(v)}
-                    disabled={!sample || sample.state !== 'ready'}
+                    onClick={() => void publishVoice(v)}
+                    disabled={!sample || sample.state !== 'ready' || publishStatus === 'saving'}
                     className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
@@ -288,6 +318,9 @@ export function VoiceStudio() {
           );
         })}
       </div>
+
+      {publishStatus === 'saving' && <div role="status" className="mt-6 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm text-indigo-700">{isAr ? 'جاري حفظ الصوت...' : 'Saving voice...'}</div>}
+      {publishStatus === 'error' && <div role="alert" className="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{publishError}</div>}
 
       {/* Publish toast */}
       {publishStatus === 'saved' && (
