@@ -30,7 +30,21 @@ alter table store_settings enable row level security;
 drop policy if exists "store_settings_public_read" on store_settings;
 create policy "store_settings_public_read"
   on store_settings for select
+  to anon
   using (true);
+
+drop policy if exists "store_settings_owner_read" on store_settings;
+create policy "store_settings_owner_read"
+  on store_settings for select
+  to authenticated
+  using ("ownerId" = auth.uid());
+
+revoke all on store_settings from public;
+revoke all on store_settings from anon;
+revoke all on store_settings from authenticated;
+grant select on store_settings to anon, authenticated;
+grant insert, update on store_settings to authenticated;
+grant all on store_settings to service_role;
 
 -- Merchants can insert/update only their own row.
 drop policy if exists "store_settings_owner_insert" on store_settings;
