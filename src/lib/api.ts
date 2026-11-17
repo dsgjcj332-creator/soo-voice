@@ -20,6 +20,7 @@ import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { encryptPosCredentials } from './pos/credentials';
+import { isUuid, parsePosLocationInput } from './pos/location-validation';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
@@ -317,21 +318,13 @@ export function createApiApp() {
       res.status(401).json({ error: 'A valid merchant session is required' });
       return;
     }
-    const body = req.body || {};
-    const connectionId = typeof body.connectionId === 'string' ? body.connectionId : '';
-    const providerLocationId = typeof body.providerLocationId === 'string' ? body.providerLocationId.trim() : '';
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : '';
-    const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : '';
-    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(connectionId) ||
-        !providerLocationId || providerLocationId.length > 160 ||
-        !name || name.length > 120 ||
-        (currency && !/^[A-Z]{3}$/.test(currency))) {
-      res.status(400).json({ error: 'Invalid POS location details' });
+    const parsedLocation = parsePosLocationInput(req.body);
+    if (!parsedLocation.ok) {
+      res.status(400).json({ error: parsedLocation.error });
       return;
     }
-    if (timezone) {
-      try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); }
+    const { connectionId, providerLocationId, name, timezone, currency } = parsedLocation.value;
+    try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); }
       catch {
         res.status(400).json({ error: 'Invalid IANA timezone' });
         return;
@@ -401,7 +394,7 @@ export function createApiApp() {
       return;
     }
     const locationId = typeof req.params.locationId === 'string' ? req.params.locationId : '';
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(locationId)) {
+    if (!isUuid(locationId)) {
       res.status(400).json({ error: 'Invalid POS location ID' });
       return;
     }
