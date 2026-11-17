@@ -1092,6 +1092,43 @@ export function createApiApp() {
     }
     items.sort((a, b) => a.id.localeCompare(b.id));
 
+    // Durable owner + per-client limits are shared across serverless instances.
+    // The client bucket is an HMAC; raw IP addresses never enter the database.
+    const forwardedFor = firstHeader(req.headers['x-forwarded-for']);
+    const clientIp = forwardedFor?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+    const ownerBucket = 'owner:' + crypto.createHmac('sha256', backend.tokenSecret)
+      .update('guest-order-owner:v1:' + ownerId).digest('hex');
+    const clientBucket = 'client:' + crypto.createHmac('sha256', backend.tokenSecret)
+      .update('guest-order-client:v1:' + ownerId + ':' + clientIp).digest('hex');
+    try {
+      const limitResponse = await fetch(`${backend.supabaseUrl}/rest/v1/rpc/consume_guest_order_rate_limit`, {
+        method: 'POST',
+        headers: orderHeaders(backend.serviceKey),
+        body: JSON.stringify({
+          p_owner_bucket: ownerBucket,
+          p_client_bucket: clientBucket,
+          p_window_seconds: 60,
+          p_owner_limit: 120,
+          p_client_limit: 20,
+        }),
+      });
+      const allowed = limitResponse.ok ? await limitResponse.json().catch(() => null) : null;
+      if (!limitResponse.ok || typeof allowed !== 'boolean') {
+        console.error('[API] Guest order rate-limit RPC unavailable:', limitResponse.status);
+        res.status(503).json({ error: 'Order protection is temporarily unavailable' });
+        return;
+      }
+      if (!allowed) {
+        res.set('Retry-After', '60');
+        res.status(429).json({ error: 'Too many orders. Please wait before trying again.' });
+        return;
+      }
+    } catch (error) {
+      console.error('[API] Guest order rate-limit error:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'Order protection is temporarily unavailable' });
+      return;
+    }
+
     // Deterministic per-order capability lets a safe retry reuse the same
     // guest token without storing or returning a plaintext token from SQL.
     const guestToken = crypto.createHmac('sha256', backend.tokenSecret)
