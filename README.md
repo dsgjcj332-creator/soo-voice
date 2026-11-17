@@ -127,7 +127,7 @@ The Integrations page includes a bilingual POS management panel. A merchant must
 
 - `GET/POST /api/pos/connections` lists a merchant's connections and stores new credential objects encrypted server-side. Secret fields are never returned to the browser.
 - `GET/POST/PATCH /api/pos/locations` lists, manually maps, and deactivates branch mappings. Deactivation preserves historical order references. Every operation derives the merchant from the verified Supabase session; location creation also verifies that the selected connection belongs to that merchant.
-- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, menu/catalog sync, order delivery, and a deployed worker are not implemented.
+- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, menu/catalog sync, order delivery, and a deployed worker are not implemented.\n- Outbox leases now have an explicit expiry timestamp. Expired workers cannot complete or retry an event; another worker may reclaim it after expiry.
 - New connections remain `pending`; adding credentials or a branch mapping does not mean the external POS is connected or synchronized.
 
 Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Configure the server-only Supabase URL, anon key, service-role key, and `POS_CREDENTIALS_ENCRYPTION_KEY` / version as documented in `.env.example`. Never expose server secrets through `VITE_*` variables.
@@ -137,7 +137,7 @@ Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Conf
 1. Push to GitHub and import the repo in Vercel.
 2. Set the server-side env vars from the table above in Project Settings.
 3. Build command: `npm run build` — API routes are picked up automatically from `api/`.
-4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, and `sql/2026_11_19_secure_guest_checkout.sql`. Verify them in staging before production.
+4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, and `sql/2026_11_20_enforce_outbox_lease_expiry.sql`. Verify them in staging before production.
 5. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
    `store_settings` table that powers the merchant store profile, voice-widget
    visibility toggle, geo-fence and menu session duration. Until it is applied the
