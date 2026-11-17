@@ -11,7 +11,8 @@ SooVoice is a multi-tenant voice-ordering and restaurant integration platform. P
 - Product/order/uninstall webhook handlers only log messages and acknowledge; they do not enqueue durable sync work.
 - `src/pages/OAuthInstall.tsx` creates a random merchant id and inserts a merchant record without validating a provider-issued OAuth grant; it can show success even when the insert returns an error because the Supabase error is not checked.
 - `src/pages/Integration.tsx` is currently a generic outbound webhook + widget embed screen, not a POS connector marketplace. Its test request is not signed with the configured HMAC protocol.
-- `src/components/widget/VoiceWidget.tsx` reads the merchant identifier from query parameters and loads menu rows directly from Supabase. When the identifier is absent, its menu query is not tenant-filtered. A URL parameter is not proof of tenant authorization.
+- Guest checkout previously read merchant webhook settings in the browser and sent the webhook secret in the outgoing JSON body. The development branch removes this client-side secret exposure; outbound webhooks must be delivered by a trusted server-side outbox.
+- `src/components/widget/VoiceWidget.tsx` reads the merchant identifier from query parameters and loads menu rows directly from Supabase. A URL parameter is not proof of tenant authorization. The development branch now fails closed and does not issue a menu query when the merchant identifier is absent; public menu visibility still depends on correctly configured Supabase RLS.
 - `sql/orders_setup.sql` grants broad anonymous SELECT and UPDATE policies on all orders. This exposes cross-merchant order data and permits guests to change order status. These policies are not suitable for a commercial multi-tenant product.
 - `api/gemini-session.ts` and `api/voice-preview.ts` are public serverless endpoints with no merchant authentication, tenant-level quotas, or durable usage accounting.
 - `src/lib/api.ts` uses a single static API_KEY for data routes and an in-memory per-instance rate limiter. This is not a tenant-authentication or serverless-wide quota system.
@@ -51,11 +52,12 @@ SooVoice is a multi-tenant voice-ordering and restaurant integration platform. P
 
 ### P2 — POS platform foundation
 - Add the canonical adapter interfaces and capability model.
+- Add a tenant-scoped POS connection/location registry, encrypted-credential storage contract, webhook event inbox, and POS order-link/idempotency tables. Writes are reserved for trusted server-side code; authenticated merchants have read-only access to their own records.
 - Add connection lifecycle, encrypted secrets, token refresh/revocation, per-location connections and sync state.
 - Add durable event inbox/outbox and webhook delivery verification.
 - Publish versioned generic REST API and webhook contracts.
 
-**Gate:** a fake/sandbox adapter can sync a menu and accept an order end-to-end with retries and idempotency.
+**Gate:** a fake/sandbox adapter can sync a menu and accept an order end-to-end with retries and idempotency. The new registry migration must first pass Supabase migration and cross-tenant foreign-key/RLS tests.
 
 ### P3 — Native POS integrations
 Prioritize based on restaurant customer demand and actual partner/API access. Candidate adapters to evaluate include Foodics, Odoo POS, Oracle Simphony, Toast, Square, Clover, Lightspeed, Revel, Shopify POS, Salla and custom POS vendors. This is a candidate list, not a claim that all provide open APIs or approve access.
