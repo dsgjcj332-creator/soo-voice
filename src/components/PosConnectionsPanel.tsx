@@ -5,8 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
-type PosMenuItem = { id: string; name: string; price: number };
+type PosMenuItem = { id: string; name: string; description: string | null; price: number };
 type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
+type PosApplyField = 'name' | 'description' | 'price';
+type PosApplyEvent = { id: string; provider_item_id: string; selected_fields: PosApplyField[]; before_state: Record<string, unknown>; after_state: Record<string, unknown>; created_at: string };
 type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string; field_overrides: Partial<Record<PosCatalogField, boolean>> };
 type PosCatalogMappingEvent = { id: string; provider_item_id: string; event_type: 'created' | 'relinked' | 'protection_updated' | 'reapproved'; actor_id: string; created_at: string };
 
@@ -37,6 +39,9 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [menuItems, setMenuItems] = useState<PosMenuItem[]>([]);
   const [catalogMappings, setCatalogMappings] = useState<PosCatalogMapping[]>([]);
   const [mappingEvents, setMappingEvents] = useState<PosCatalogMappingEvent[]>([]);
+  const [applyEvents, setApplyEvents] = useState<PosApplyEvent[]>([]);
+  const [selectedApplyFields, setSelectedApplyFields] = useState<Record<string, PosApplyField[]>>({});
+  const [applyingProviderId, setApplyingProviderId] = useState('');
   const [mappingSelections, setMappingSelections] = useState<Record<string, string>>({});
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, Partial<Record<PosCatalogField, boolean>>>>({});
   const [savingMappingId, setSavingMappingId] = useState('');
@@ -55,7 +60,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
 
-  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'menu-items', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
+  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'catalog/apply' | 'catalog/apply-events' | 'menu-items', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
     const supabase = getSupabase();
     if (!supabase || !user || user.provider !== 'supabase') {
       throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified Supabase session is required.');
@@ -126,13 +131,22 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   }, [reviewLocationId, user, isArabic]);
 
   useEffect(() => {
-    setMenuItems([]); setCatalogMappings([]); setMappingEvents([]); setMappingSelections({}); setMappingOverrides({});
+    setMenuItems([]); setCatalogMappings([]); setMappingEvents([]); setApplyEvents([]); setMappingSelections({}); setMappingOverrides({}); setSelectedApplyFields({});
     if (!reviewLocationId) return;
     let cancelled = false;
     const loadMappingOptions = async () => {
       try {
-        const [items, mappings] = await Promise.all([request('menu-items', 'GET'), request('catalog/mappings', 'GET')]);
-        if (!cancelled) { setMenuItems(Array.isArray(items) ? items : []); setCatalogMappings(Array.isArray(mappings) ? mappings : []); }
+        const [items, mappings, mappingHistory, applyHistory] = await Promise.all([
+          request('menu-items', 'GET'), request('catalog/mappings', 'GET'),
+          request('catalog/mapping-events', 'GET', undefined, reviewLocationId),
+          request('catalog/apply-events', 'GET', undefined, reviewLocationId),
+        ]);
+        if (!cancelled) {
+          setMenuItems(Array.isArray(items) ? items : []);
+          setCatalogMappings(Array.isArray(mappings) ? mappings : []);
+          setMappingEvents(Array.isArray(mappingHistory) ? mappingHistory : []);
+          setApplyEvents(Array.isArray(applyHistory) ? applyHistory : []);
+        }
       } catch (err) { if (!cancelled) setCatalogError(err instanceof Error ? err.message : (isArabic ? 'تعذر تحميل عناصر المنيو والربط.' : 'Could not load menu items and mappings.')); }
     };
     void loadMappingOptions();
@@ -151,6 +165,27 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     } catch (err) { setCatalogError(err instanceof Error ? err.message : (isArabic ? 'تعذر حفظ ربط المنتج.' : 'Could not save product mapping.')); }
     finally { setSavingMappingId(''); }
   };
+
+  const applyCatalogChanges = async (item: PosCatalogRow) => {
+    const mapping = catalogMappings.find(row => row.provider_item_id === item.provider_item_id);
+    const selectedFields = selectedApplyFields[item.provider_item_id] || [];
+    if (!mapping || !reviewLocationId || selectedFields.length === 0) return;
+    setApplyingProviderId(item.provider_item_id); setCatalogError('');
+    try {
+      await request('catalog/apply', 'POST', {
+        locationId: reviewLocationId, providerItemId: item.provider_item_id,
+        menuItemId: mapping.menu_item_id, requestId: crypto.randomUUID(), selectedFields,
+      });
+      setSelectedApplyFields(current => ({ ...current, [item.provider_item_id]: [] }));
+      setMessage(isArabic ? 'تم تطبيق الحقول التي اخترتها وتسجيل القيم قبل وبعد التحديث.' : 'Selected fields applied and before/after values recorded.');
+      setError(false);
+      const history = await request('catalog/apply-events', 'GET', undefined, reviewLocationId);
+      setApplyEvents(Array.isArray(history) ? history : []);
+    } catch (err) {
+      setCatalogError(err instanceof Error ? err.message : (isArabic ? 'تعذر تطبيق تحديثات المنيو.' : 'Could not apply menu changes.'));
+    } finally { setApplyingProviderId(''); }
+  };
+
   const saveConnection = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage('');
@@ -312,7 +347,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
         {!catalogLoading && !catalogError && catalogRows.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">{isArabic ? 'لا توجد لقطة منيو محفوظة. يلزم موصل كاشير فعلي لجلب المنتجات.' : 'No catalog snapshot exists. A real POS adapter is required to fetch products.'}</div>}
         {!catalogLoading && !catalogError && catalogRows.length > 0 && <div className="space-y-2">
           <p className="text-xs text-slate-500">{isArabic ? `عدد المنتجات: ${catalogRows.length} — معاينة فقط، دون تعديل تلقائي` : `Products: ${catalogRows.length} — preview only, no automatic changes`}</p>
-          {catalogRows.map(item => <article key={item.id} className="rounded-xl border border-slate-200 p-3">
+          {catalogRows.map(item => { const existingMapping = catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id); const mappedMenuItem = menuItems.find(menuItem => menuItem.id === existingMapping?.menu_item_id); const protectedFields = existingMapping?.field_overrides || {}; const locationCurrency = locations.find(location => location.id === reviewLocationId)?.currency?.toUpperCase(); const applyEligible: PosApplyField[] = []; if (mappedMenuItem && !protectedFields.name && item.name !== mappedMenuItem.name) applyEligible.push('name'); if (mappedMenuItem && !protectedFields.description && (item.description ?? '') !== (mappedMenuItem.description ?? '')) applyEligible.push('description'); if (mappedMenuItem && !protectedFields.price && locationCurrency && locationCurrency === item.currency.toUpperCase() && Number(item.unit_price) !== Number(mappedMenuItem.price)) applyEligible.push('price'); const selected = selectedApplyFields[item.provider_item_id] || []; return <article key={item.id} className="rounded-xl border border-slate-200 p-3">
             <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="font-bold text-slate-800">{item.name}</p><p className="mt-1 text-xs text-slate-500">{item.provider_item_id}{item.category_id ? ` · ${item.category_id}` : ''}</p>{item.description && <p className="mt-2 text-xs text-slate-600">{item.description}</p>}</div>
             <div className="text-end"><p className="font-extrabold text-slate-900">{Number(item.unit_price).toFixed(2)} {item.currency}</p><span className={`mt-1 inline-block rounded-full px-2 py-1 text-[11px] font-bold ${item.active && item.available ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item.active && item.available ? (isArabic ? 'متاح بالكاشير' : 'Available in POS') : (isArabic ? 'غير متاح / متوقف' : 'Unavailable / inactive')}</span></div></div>
             <p className="mt-2 text-[11px] text-slate-400">{isArabic ? 'آخر تحديث: ' : 'Source updated: '}{new Date(item.source_updated_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</p>
@@ -345,6 +380,33 @@ export function PosConnectionsPanel({ language }: { language: string }) {
               </button>
               {catalogMappings.some(mapping => mapping.provider_item_id === item.provider_item_id) && <span className="text-[11px] font-semibold text-emerald-700">{isArabic ? 'تم الربط بموافقتك' : 'Merchant approved'}</span>}
             </div>
+            
+             {existingMapping && mappedMenuItem && <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+               <p className="text-xs font-bold text-slate-700">{isArabic ? 'معاينة التحديث قبل التطبيق' : 'Preview changes before applying'}</p>
+               {applyEligible.length === 0 && <p className="mt-2 text-[11px] text-slate-500">{isArabic ? 'لا توجد حقول مؤهلة للتحديث، أو أن الحقول محمية، أو أن عملة الفرع لا تطابق عملة المنتج.' : 'No eligible changes: fields may be protected, unchanged, or the branch currency does not match the POS item.'}</p>}
+               {applyEligible.map(field => {
+                 const before = field === 'name' ? mappedMenuItem.name : field === 'description' ? (mappedMenuItem.description ?? '') : Number(mappedMenuItem.price).toFixed(2);
+                 const after = field === 'name' ? item.name : field === 'description' ? (item.description ?? '') : Number(item.unit_price).toFixed(2);
+                 const labels: Record<PosApplyField, [string, string]> = { name: ['الاسم', 'Name'], description: ['الوصف', 'Description'], price: ['السعر', 'Price'] };
+                 return <label key={field} className="mt-2 flex items-start gap-2 text-[11px] text-slate-600">
+                   <input type="checkbox" checked={selected.includes(field)} onChange={e => setSelectedApplyFields(current => ({ ...current, [item.provider_item_id]: e.target.checked ? [...(current[item.provider_item_id] || []), field] : (current[item.provider_item_id] || []).filter(value => value !== field) }))} />
+                   <span><strong>{isArabic ? labels[field][0] : labels[field][1]}:</strong> {isArabic ? 'من' : 'From'} {before} {isArabic ? 'إلى' : 'to'} {after}{field === 'price' ? ` ${item.currency}` : ''}</span>
+                 </label>;
+               })}
+               {mappedMenuItem && !protectedFields.price && locationCurrency && locationCurrency !== item.currency.toUpperCase() && <p className="mt-2 text-[11px] text-amber-700">{isArabic ? 'لن يتم تحديث السعر لاختلاف عملة الفرع عن عملة الكاشير.' : 'Price apply is disabled because the branch and POS currencies differ.'}</p>}
+               <button type="button" onClick={() => void applyCatalogChanges(item)} disabled={!item.active || !selected.length || applyingProviderId === item.provider_item_id} className="mt-3 rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                 {applyingProviderId === item.provider_item_id ? (isArabic ? 'جارٍ تطبيق التحديث...' : 'Applying...') : (isArabic ? 'تطبيق الحقول المحددة' : 'Apply selected fields')}
+               </button>
+             </div>}
+             {applyEvents.some(event => event.provider_item_id === item.provider_item_id) && <div className="mt-3 border-t border-slate-100 pt-2">
+               <p className="mb-1 text-[11px] font-bold text-slate-500">{isArabic ? 'سجل تحديثات المنيو' : 'Menu apply history'}</p>
+               <ul className="space-y-1">
+                 {applyEvents.filter(event => event.provider_item_id === item.provider_item_id).slice(0, 3).map(event => <li key={event.id} className="text-[11px] text-slate-500">
+                   <span>{event.selected_fields.join(', ')} · </span><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</time>
+                 </li>)}
+               </ul>
+             </div>}
+
             {mappingEvents.some(event => event.provider_item_id === item.provider_item_id) && <div className="mt-3 border-t border-slate-100 pt-2">
               <p className="mb-1 text-[11px] font-bold text-slate-500">{isArabic ? 'سجل موافقات الربط' : 'Mapping approval history'}</p>
               <ul className="space-y-1">
@@ -362,7 +424,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
                 })}
               </ul>
             </div>}
-          </article>)}
+          </article>; })}
         </div>}
       </div>}
     </div>
