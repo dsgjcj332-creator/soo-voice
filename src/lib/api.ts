@@ -146,7 +146,8 @@ export function createApiApp() {
     'oracle_simphony', 'odoo', 'shopify_pos', 'salla', 'custom',
   ]);
   const getPosBackend = () => {
-    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\\/$/, '');
+    let supabaseUrl = process.env.SUPABASE_URL || '';
+    while (supabaseUrl.endsWith('/')) supabaseUrl = supabaseUrl.slice(0, -1);
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
     if (!supabaseUrl || !serviceKey || !anonKey || !process.env.POS_CREDENTIALS_ENCRYPTION_KEY) return null;
@@ -162,7 +163,7 @@ export function createApiApp() {
   const authenticatePosMerchant = async (req: express.Request) => {
     const backend = getPosBackend();
     const authorization = firstHeader(req.headers.authorization) || '';
-    const match = /^Bearer\\s+([A-Za-z0-9._~-]{30,4096})$/i.exec(authorization);
+    const match = /^Bearer\s+([A-Za-z0-9._~-]{30,4096})$/i.exec(authorization);
     if (!backend || !match) return null;
     try {
       const response = await fetch(`${backend.supabaseUrl}/auth/v1/user`, {
