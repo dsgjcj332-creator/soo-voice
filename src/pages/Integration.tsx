@@ -28,14 +28,11 @@ export function Integration() {
 
   // Webhook settings states
   const [webhookUrl, setWebhookUrl] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('');
   const [isSavingWebhook, setIsSavingWebhook] = useState(false);
   const [webhookStatusMessage, setWebhookStatusMessage] = useState('');
 
   // Webhook debugger states
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
-  const [testStatusCode, setTestStatusCode] = useState<number | null>(null);
-  const [testResponseBody, setTestResponseBody] = useState<string>('');
   const [showTerminal, setShowTerminal] = useState(false);
 
   // Connection status
@@ -64,10 +61,6 @@ export function Integration() {
             .single();
           if (!error && data) {
             if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
-            if (data.webhookSecret) setWebhookSecret(data.webhookSecret);
-          } else {
-            const randSecret = 'whsec_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            setWebhookSecret(randSecret);
           }
         }
       } catch (err) {
@@ -138,7 +131,7 @@ export function Integration() {
       if (isConfigured && supabase) {
         await supabase
           .from('webhook_settings')
-          .upsert({ ownerId: user.uid, webhookUrl, webhookSecret, updatedAt: Date.now() });
+          .upsert({ ownerId: user.uid, webhookUrl, updatedAt: Date.now() });
       }
       setWebhookStatusMessage(language === 'ar' ? 'تم حفظ إعدادات الويب هوك' : 'Webhook settings saved');
     } catch (err) {
@@ -150,56 +143,11 @@ export function Integration() {
   };
 
   const handleTestWebhook = async () => {
-    if (!webhookUrl) {
-      alert(language === 'ar' ? 'أدخل رابط الويب هوك أولاً' : 'Please enter a webhook URL first');
-      return;
-    }
-    setIsTestingWebhook(true);
     setShowTerminal(true);
-    setTestStatusCode(null);
-    setTestResponseBody('');
-
-    const testPayload = {
-      event: 'order.created',
-      timestamp: Date.now(),
-      webhook_secret: webhookSecret,
-      data: {
-        id: 'order_test_9999',
-        ownerId: user?.uid || 'test_owner',
-        tableNumber: '3',
-        items: [
-          { id: '1', name: 'Test Dish', price: 12.99, quantity: 2 },
-          { id: '3', name: 'Test Side', price: 4.99, quantity: 1 },
-        ],
-        total: 30.97,
-        status: 'pending',
-        createdAt: Date.now(),
-      },
-    };
-
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 8000);
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'SooVoice-Webhook-Bot/1.0',
-        },
-        body: JSON.stringify(testPayload),
-        signal: controller.signal,
-      });
-      clearTimeout(id);
-      setTestStatusCode(response.status);
-      const text = await response.text();
-      setTestResponseBody(text || 'Empty response body.');
-    } catch (error: any) {
-      console.error(error);
-      setTestStatusCode(500);
-      setTestResponseBody(`Failed to dispatch webhook. Error: ${error?.message || 'Connection failed.'}`);
-    } finally {
-      setIsTestingWebhook(false);
-    }
+    setTestStatusCode(501);
+    setTestResponseBody(language === 'ar'
+      ? 'اختبار الويب هوك من المتصفح متوقف لأسباب أمنية. يلزم تنفيذ التسليم والتوقيع من السيرفر.'
+      : 'Browser-side webhook testing is disabled for security. A signed server-side outbox endpoint is required.');
   };
 
   return (
@@ -290,11 +238,11 @@ export function Integration() {
                   <input
                     type="text"
                     readOnly
-                    value={webhookSecret}
+                    value={'Managed securely on server'}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-sm font-mono text-slate-600"
                   />
                   <button
-                    onClick={() => handleCopy(webhookSecret)}
+                    onClick={() => handleCopy('Webhook signing key is server-managed')}
                     className="absolute right-2 top-2 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 flex items-center gap-1 cursor-pointer"
                   >
                     <Copy className="w-3.5 h-3.5" />
@@ -343,8 +291,7 @@ export function Integration() {
               <code>{`{
   "event": "order.created",
   "timestamp": 1718919020101,
-  "webhook_secret": "${webhookSecret || 'your_secret_here'}",
-  "data": {
+    "data": {
     "id": "order_734291",
     "ownerId": "${user?.uid || 'merchant_uid'}",
     "tableNumber": "5",
