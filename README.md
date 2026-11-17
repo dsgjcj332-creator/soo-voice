@@ -113,7 +113,7 @@ npm run clean   # remove dist/
 
 ## Security Model
 
-- **Trusted guest checkout.** `/api/store/orders` accepts product IDs and quantities only; the database reloads each merchant-owned, non-AI-only catalog price and atomically writes the order plus an outbox event. Guest tracking requires a per-order capability token; only its SHA-256 hash is stored and it expires after seven days. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ORDER_TOKEN_SECRET` server-side.
+- **Trusted guest checkout.** `/api/store/orders` accepts product IDs and quantities only; the database reloads each merchant-owned, non-AI-only catalog price and atomically writes the order plus an outbox event. Guest tracking requires a per-order capability token; only its SHA-256 hash is stored and it expires after seven days. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ORDER_TOKEN_SECRET` server-side. Durable rate limiting is shared across serverless instances (120 requests per merchant and 20 per client per minute by default); HMAC bucket keys avoid storing raw IP addresses.
 - **POS connection secrets.** `GET /api/pos/connections` and `POST /api/pos/connections` require a Supabase Bearer access token. The server resolves the merchant ID from Supabase Auth (never from request input), encrypts credentials with AES-256-GCM before persistence, and returns metadata only. Connections remain `pending` until a real provider adapter and connection validation flow are implemented.
 - **Outbox is not POS delivery.** The transaction creates a durable `order.created` event, but a worker and provider adapter are still required before an order can be claimed as accepted by a cashier/POS.
 
