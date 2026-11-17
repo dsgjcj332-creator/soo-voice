@@ -44,6 +44,16 @@ end;
 $$;
 reset role;
 
+set role anon;
+do $$
+declare v_count integer;
+begin
+  select count(*) into v_count from public.store_settings;
+  if v_count <> 1 then raise exception 'STORE_SETTINGS_PUBLIC_MENU_READ_FAILED'; end if;
+end;
+$$;
+reset role;
+
 do $$
 begin
   if not has_table_privilege('anon', 'public.store_settings', 'SELECT')
