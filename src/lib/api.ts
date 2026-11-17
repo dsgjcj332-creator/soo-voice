@@ -319,7 +319,7 @@ export function createApiApp() {
       return;
     }
     const parsedLocation = parsePosLocationInput(req.body);
-    if (!parsedLocation.ok) {
+    if (parsedLocation.ok === false) {
       res.status(400).json({ error: parsedLocation.error });
       return;
     }
