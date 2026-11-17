@@ -394,6 +394,43 @@ export function createApiApp() {
     }
   });
 
+  app.delete('/api/pos/locations/:locationId', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const locationId = typeof req.params.locationId === 'string' ? req.params.locationId : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(locationId)) {
+      res.status(400).json({ error: 'Invalid POS location ID' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        id: `eq.${locationId}`,
+        owner_id: `eq.${auth.ownerId}`,
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${query}`, {
+        method: 'DELETE',
+        headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
+      });
+      if (!response.ok) {
+        console.error('[API] POS location delete failed:', response.status);
+        res.status(503).json({ error: 'Could not remove POS location' });
+        return;
+      }
+      const rows = await response.json().catch(() => []);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        res.status(404).json({ error: 'POS location not found' });
+        return;
+      }
+      res.status(204).end();
+    } catch (err) {
+      console.error('[API] POS location delete error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not remove POS location' });
+    }
+  });
+
   // ============ TRUSTED GUEST ORDER FLOW ============
   // Browser clients submit catalog IDs and quantities only. The database
   // function reloads prices and atomically writes the order + outbox event.
