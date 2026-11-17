@@ -484,13 +484,7 @@ begin
     raise exception 'RATE_LIMIT_EXPOSED_TO_CLIENT_ROLE';
   end if;
 
-  perform set_config('request.jwt.claim.role', 'authenticated', true);
-  begin
-    perform public.consume_guest_order_rate_limit(v_owner_bucket, v_client_two, 60, 3, 2);
-    raise exception 'RATE_LIMIT_RPC_ALLOWED_AUTHENTICATED_CALL';
-  exception when insufficient_privilege then
-    null;
-  end;
-  perform set_config('request.jwt.claim.role', 'service_role', true);
+  -- ACL checks above exercise the actual role grants; changing a JWT claim
+  -- inside a superuser DO block does not switch PostgreSQL's current_user.
 end;
 $rate_limit$;
