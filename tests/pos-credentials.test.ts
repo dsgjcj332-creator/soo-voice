@@ -52,7 +52,7 @@ test('POS credential encryption fails closed when key is malformed', () => {
   } finally {
     if (previous !== undefined) process.env.POS_CREDENTIALS_ENCRYPTION_KEY = previous;
   }
-}));
+});
 
 test('POS credential encryption rejects empty and non-object payloads', () => withKey(() => {
   assert.throws(() => encryptPosCredentials({}), /must not be empty/);
