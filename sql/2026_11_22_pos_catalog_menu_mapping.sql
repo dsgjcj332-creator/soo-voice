@@ -103,7 +103,7 @@ begin
   );
   return new;
 end;
-$;
+$$;
 
 revoke all on function public.log_pos_catalog_menu_link_change() from public, anon, authenticated;
 drop trigger if exists pos_catalog_menu_link_audit on public.pos_catalog_menu_links;
