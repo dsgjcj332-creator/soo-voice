@@ -72,9 +72,10 @@ export async function updateSettings(updates: Partial<SystemSettings>) {
   }
 
   try {
-    await supabase
+    const { error } = await supabase
       .from('system_settings')
       .upsert({ id: 'global', ...updates });
+    if (error) throw error;
   } catch (error) {
     console.error("Error updating settings:", error);
     throw error;
