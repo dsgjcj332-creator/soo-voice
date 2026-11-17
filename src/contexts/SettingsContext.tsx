@@ -18,6 +18,7 @@ interface SettingsContextType {
   setBusinessType: (b: BusinessType) => void;
   currency: Currency;
   setCurrency: (c: Currency) => void;
+  saveSettings: () => Promise<boolean>;
   hasCompletedOnboarding: boolean;
   setHasCompletedOnboarding: (h: boolean) => void;
   loadingSettings: boolean;
@@ -70,6 +71,35 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setHasCompletedOnboarding = (h: boolean) => {
     setHasCompletedOnboardingState(h);
     localStorage.setItem('hasCompletedOnboarding', h ? 'true' : 'false');
+  };
+
+  // Explicit save used by the Settings page. Local/demo preferences are
+  // already persisted immediately; authenticated merchants also get a
+  // confirmed database write instead of relying only on the background debounce.
+  const saveSettings = async (): Promise<boolean> => {
+    if (!user || user.provider === 'local') return true;
+    const supabase = getSupabase();
+    if (!isConfigured || !supabase) return false;
+    try {
+      const { error } = await supabase
+        .from('merchant_settings')
+        .upsert([{
+          ownerId: user.uid,
+          dialect,
+          voiceTone,
+          businessType,
+          currency,
+          updatedAt: Date.now(),
+        }], { onConflict: 'ownerId' });
+      if (error) {
+        console.error('Explicit merchant settings save failed:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Explicit merchant settings save failed:', err);
+      return false;
+    }
   };
 
   // Load live configurations from database
@@ -159,6 +189,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setHasCompletedOnboarding,
       currency,
       setCurrency,
+      saveSettings,
       loadingSettings
     }}>
       {children}
