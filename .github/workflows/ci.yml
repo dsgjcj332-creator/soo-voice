@@ -75,9 +75,12 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_24_pos_webhook_ingress.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_25_guest_order_rate_limits.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_26_billing_foundation.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_28_billing_admin_catalog.sql
       - name: Verify schema, RLS and grants
         run: psql -X -v ON_ERROR_STOP=1 -f sql/verify_pos_catalog_staging.sql
       - name: Test catalog sync, audit trigger and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/pos-migrations-integration.sql
       - name: Test billing foundation RLS and invariants
         run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-migrations-integration.sql
+      - name: Test platform billing admin access and audit
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-admin-migrations-integration.sql
