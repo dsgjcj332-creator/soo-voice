@@ -40,14 +40,14 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
 
-  const request = useCallback(async (path: 'connections' | 'locations', method: 'GET' | 'POST', body?: unknown) => {
+  const request = useCallback(async (path: 'connections' | 'locations', method: 'GET' | 'POST' | 'DELETE', body?: unknown, resourceId?: string) => {
     const supabase = getSupabase();
     if (!supabase || !user || user.provider !== 'supabase') {
       throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified Supabase session is required.');
     }
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session?.access_token) throw new Error(isArabic ? 'انتهت جلسة الدخول. سجّل الدخول مجددًا.' : 'Your session expired. Please sign in again.');
-    const response = await fetch(`/api/pos/${path}`, {
+    const response = await fetch(`/api/pos/${path}${resourceId ? `/${encodeURIComponent(resourceId)}` : ''}`, {
       method,
       headers: {
         Authorization: `Bearer ${session.access_token}`,
@@ -141,6 +141,23 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر حفظ الفرع.' : 'Could not save branch.'));
     } finally {
       setSavingBranch(false);
+    }
+  };
+
+  const removeBranch = async (location: PosLocation) => {
+    const confirmed = window.confirm(isArabic
+      ? `هل تريد إزالة ربط الفرع «${location.name}»؟ لن يتم حذف الفرع من نظام الكاشير.`
+      : `Remove the mapping for "${location.name}"? This will not delete the branch in your POS system.`);
+    if (!confirmed) return;
+    setError(false);
+    setMessage('');
+    try {
+      await request('locations', 'DELETE', undefined, location.id);
+      setLocations(current => current.filter(item => item.id !== location.id));
+      setMessage(isArabic ? 'تمت إزالة ربط الفرع.' : 'Branch mapping removed.');
+    } catch (err) {
+      setError(true);
+      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر إزالة ربط الفرع.' : 'Could not remove branch mapping.'));
     }
   };
 
@@ -243,7 +260,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
         <button type="submit" disabled={savingBranch || !branchConnectionId || !branchName.trim() || !branchProviderId.trim()} className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-50 md:col-span-2">{savingBranch ? (isArabic ? 'جارٍ الحفظ...' : 'Saving...') : (isArabic ? 'حفظ ربط الفرع' : 'Save branch mapping')}</button>
       </form>}
       <div className="mt-3 space-y-2">
-        {locations.map(location => <div key={location.id} className="flex flex-wrap justify-between gap-2 rounded-xl border border-slate-200 p-3 text-sm"><div><p className="font-bold text-slate-800">{location.name}</p><p className="text-xs text-slate-500">{location.provider_location_id} · {location.timezone || '—'} · {location.currency || '—'}</p></div><span className="text-xs font-bold text-emerald-700">{isArabic ? 'مضاف' : 'Mapped'}</span></div>)}
+        {locations.map(location => <div key={location.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm"><div><p className="font-bold text-slate-800">{location.name}</p><p className="text-xs text-slate-500">{location.provider_location_id} · {location.timezone || '—'} · {location.currency || '—'}</p></div><div className="flex items-center gap-3"><span className={`text-xs font-bold ${location.active ? 'text-emerald-700' : 'text-slate-500'}`}>{location.active ? (isArabic ? 'مضاف' : 'Mapped') : (isArabic ? 'متوقف' : 'Inactive')}</span><button type="button" onClick={() => void removeBranch(location)} className="rounded-lg px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50">{isArabic ? 'إزالة الربط' : 'Remove mapping'}</button></div></div>)}
         {locations.length === 0 && <p className="py-3 text-xs text-slate-500">{isArabic ? 'لم تتم إضافة فروع بعد.' : 'No branches mapped yet.'}</p>}
       </div>
     </div>
