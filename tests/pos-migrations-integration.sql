@@ -199,55 +199,6 @@ begin
 end;
 $$;
 
--- Authenticated merchant can read only their own catalog and mapping history.
-select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
-select set_config('request.jwt.claim.role', 'authenticated', false);
-set role authenticated;
-do $$
-begin
-  if (select count(*) from public.pos_catalog_items) <> 1 then
-    raise exception 'POS_TEST_CATALOG_RLS_TENANT_ISOLATION_FAILED';
-  end if;
-  if (select count(*) from public.pos_catalog_menu_link_events) < 4 then
-    raise exception 'POS_TEST_AUDIT_RLS_TENANT_ISOLATION_FAILED';
-  end if;
-  raise notice 'POS_APPLY_RLS_DEBUG uid=%, visible=%', auth.uid(), (select count(*) from public.pos_catalog_menu_apply_events);
-  if (select count(*) from public.pos_catalog_menu_apply_events) <> 1 then
-    raise exception 'POS_TEST_MENU_APPLY_AUDIT_RLS_TENANT_ISOLATION_FAILED';
-  end if;
-end;
-$$;
-reset role;
-
--- A different authenticated tenant cannot read the first tenant's apply history.
-select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
-set role authenticated;
-do $
-begin
-  if (select count(*) from public.pos_catalog_menu_apply_events) <> 0 then
-    raise exception 'POS_TEST_MENU_APPLY_AUDIT_CROSSTENANT_READ';
-  end if;
-end;
-$;
-reset role;
-
--- Anonymous sessions must not be able to read catalog snapshots.
-set role anon;
-do $$
-begin
-  begin
-    perform count(*) from public.pos_catalog_items;
-    raise exception 'POS_TEST_ANON_CATALOG_READ_WAS_NOT_REJECTED';
-  exception when insufficient_privilege then
-    null;
-  end;
-end;
-$$;
-reset role;
-
-select 'POS_POSTGRES_INTEGRATION_TESTS_PASSED' as result;
-
-
 -- Exercise the transactional merchant-approved menu apply RPC, not only its DDL.
 insert into public.menu_items(id, "ownerId", name, description, price, "isAiOnly")
 values ('menu-burger-relinked', '11111111-1111-4111-8111-111111111111',
@@ -397,3 +348,51 @@ begin
   end if;
 end;
 $$;
+
+-- Authenticated merchant can read only their own catalog and mapping history.
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
+select set_config('request.jwt.claim.role', 'authenticated', false);
+set role authenticated;
+do $$
+begin
+  if (select count(*) from public.pos_catalog_items) <> 1 then
+    raise exception 'POS_TEST_CATALOG_RLS_TENANT_ISOLATION_FAILED';
+  end if;
+  if (select count(*) from public.pos_catalog_menu_link_events) < 4 then
+    raise exception 'POS_TEST_AUDIT_RLS_TENANT_ISOLATION_FAILED';
+  end if;
+  raise notice 'POS_APPLY_RLS_DEBUG uid=%, visible=%', auth.uid(), (select count(*) from public.pos_catalog_menu_apply_events);
+  if (select count(*) from public.pos_catalog_menu_apply_events) <> 1 then
+    raise exception 'POS_TEST_MENU_APPLY_AUDIT_RLS_TENANT_ISOLATION_FAILED';
+  end if;
+end;
+$$;
+reset role;
+
+-- A different authenticated tenant cannot read the first tenant's apply history.
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
+set role authenticated;
+do $
+begin
+  if (select count(*) from public.pos_catalog_menu_apply_events) <> 0 then
+    raise exception 'POS_TEST_MENU_APPLY_AUDIT_CROSSTENANT_READ';
+  end if;
+end;
+$;
+reset role;
+
+-- Anonymous sessions must not be able to read catalog snapshots.
+set role anon;
+do $$
+begin
+  begin
+    perform count(*) from public.pos_catalog_items;
+    raise exception 'POS_TEST_ANON_CATALOG_READ_WAS_NOT_REJECTED';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+
+select 'POS_POSTGRES_INTEGRATION_TESTS_PASSED' as result;
