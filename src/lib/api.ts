@@ -494,6 +494,202 @@ export function createApiApp() {
     }
   });
 
+
+  // Apply only merchant-selected fields from the persisted POS snapshot.
+  // The browser supplies IDs and a stable request ID, never proposed values.
+  app.post('/api/pos/catalog/apply', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+
+    const body = req.body || {};
+    const locationId = typeof body.locationId === 'string' ? body.locationId : '';
+    const providerItemId = typeof body.providerItemId === 'string' ? body.providerItemId.trim() : '';
+    const menuItemId = typeof body.menuItemId === 'string' ? body.menuItemId.trim() : '';
+    const requestId = typeof body.requestId === 'string' ? body.requestId : '';
+    const selectedFields = body.selectedFields;
+    const allowedFields = ['name', 'description', 'price'] as const;
+
+    if (!isUuid(locationId) || !providerItemId || providerItemId.length > 160 ||
+        !menuItemId || menuItemId.length > 128 || !isUuid(requestId) ||
+        !Array.isArray(selectedFields) || selectedFields.length === 0 ||
+        selectedFields.length > allowedFields.length ||
+        selectedFields.some((field: unknown) => typeof field !== 'string' || !allowedFields.includes(field as typeof allowedFields[number])) ||
+        new Set(selectedFields).size !== selectedFields.length) {
+      res.status(400).json({ error: 'A valid location, POS product, menu item, request ID and explicit field selection are required' });
+      return;
+    }
+
+    try {
+      const locationQuery = new URLSearchParams({
+        select: 'id,connection_id,currency', id: `eq.${locationId}`,
+        owner_id: `eq.${auth.ownerId}`, active: 'eq.true', limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string; connection_id: string; currency: string | null }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      if (!Array.isArray(locations) || locations.length !== 1) { res.status(404).json({ error: 'Active POS location not found' }); return; }
+
+      const catalogQuery = new URLSearchParams({
+        select: 'provider_item_id,name,description,currency,unit_price,active',
+        owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`,
+        provider_item_id: `eq.${providerItemId}`, active: 'eq.true', limit: '1',
+      });
+      const catalogResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_items?${catalogQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const catalogRows = await catalogResponse.json().catch(() => null) as Array<{
+        provider_item_id: string; name: string; description: string | null;
+        currency: string; unit_price: string | number; active: boolean;
+      }> | null;
+      if (!catalogResponse.ok) { res.status(503).json({ error: 'Could not verify stored POS product' }); return; }
+      if (!Array.isArray(catalogRows) || catalogRows.length !== 1 || catalogRows[0].active !== true) {
+        res.status(404).json({ error: 'Active POS product not found in this branch' }); return;
+      }
+      const catalog = catalogRows[0];
+
+      const mappingQuery = new URLSearchParams({
+        select: 'id,connection_id,provider_item_id,menu_item_id,field_overrides,approved_by,approved_at',
+        owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`,
+        provider_item_id: `eq.${providerItemId}`, menu_item_id: `eq.${menuItemId}`, limit: '1',
+      });
+      const mappingResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_menu_links?${mappingQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const mappings = await mappingResponse.json().catch(() => null) as Array<{
+        id: string; connection_id: string; provider_item_id: string; menu_item_id: string;
+        field_overrides: Record<string, boolean>; approved_by: string; approved_at: string;
+      }> | null;
+      if (!mappingResponse.ok) { res.status(503).json({ error: 'Could not verify merchant-approved mapping' }); return; }
+      if (!Array.isArray(mappings) || mappings.length !== 1 ||
+          mappings[0].connection_id !== locations[0].connection_id ||
+          mappings[0].approved_by !== auth.ownerId || !mappings[0].approved_at) {
+        res.status(409).json({ error: 'An active merchant-approved POS mapping is required' }); return;
+      }
+      const mapping = mappings[0];
+      const overrides = mapping.field_overrides || {};
+      if (selectedFields.some((field: string) => overrides[field] === true)) {
+        res.status(409).json({ error: 'One or more selected fields are protected by the merchant' }); return;
+      }
+
+      const menuQuery = new URLSearchParams({
+        select: 'id,name,description,price,ownerId,isAiOnly',
+        id: `eq.${menuItemId}`, ownerId: `eq.${auth.ownerId}`,
+        or: '(isAiOnly.is.null,isAiOnly.eq.false)', limit: '1',
+      });
+      const menuResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/menu_items?${menuQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const menuRows = await menuResponse.json().catch(() => null) as Array<{
+        id: string; name: string; description: string | null; price: string | number;
+      }> | null;
+      if (!menuResponse.ok) { res.status(503).json({ error: 'Could not verify SooVoice menu item' }); return; }
+      if (!Array.isArray(menuRows) || menuRows.length !== 1) {
+        res.status(404).json({ error: 'SooVoice menu item not found for this merchant' }); return;
+      }
+      const menu = menuRows[0];
+      const expected: Record<string, string | number | null> = {};
+      const patch: Record<string, string | number> = {};
+
+      for (const field of selectedFields as Array<typeof allowedFields[number]>) {
+        if (field === 'name') {
+          if (typeof catalog.name !== 'string' || !catalog.name.trim() || catalog.name.length > 200) {
+            res.status(409).json({ error: 'Stored POS product name is not eligible for menu apply' }); return;
+          }
+          expected.name = menu.name;
+          patch.name = catalog.name.trim();
+        } else if (field === 'description') {
+          const proposed = catalog.description ?? '';
+          if (typeof proposed !== 'string' || proposed.length > 4000) {
+            res.status(409).json({ error: 'Stored POS product description is not eligible for menu apply' }); return;
+          }
+          expected.description = menu.description;
+          patch.description = proposed;
+        } else if (field === 'price') {
+          const locationCurrency = typeof locations[0].currency === 'string' ? locations[0].currency.toUpperCase() : '';
+          const catalogCurrency = typeof catalog.currency === 'string' ? catalog.currency.toUpperCase() : '';
+          const proposedPrice = Number(catalog.unit_price);
+          const currentPrice = Number(menu.price);
+          if (!locationCurrency || !catalogCurrency || locationCurrency !== catalogCurrency ||
+              !Number.isFinite(proposedPrice) || proposedPrice < 0 || proposedPrice > 1_000_000 ||
+              !Number.isFinite(currentPrice)) {
+            res.status(409).json({ error: 'POS and SooVoice branch currencies must match before applying price' }); return;
+          }
+          expected.price = currentPrice;
+          patch.price = proposedPrice;
+        }
+      }
+
+      if (Object.keys(patch).some(field => patch[field] === expected[field])) {
+        res.status(409).json({ error: 'Selected fields contain no changes; refresh the catalog review' }); return;
+      }
+
+      const rpcResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/apply_pos_catalog_menu_fields`, {
+        method: 'POST',
+        headers: { ...posServiceHeaders(auth.backend.serviceKey), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          p_owner_id: auth.ownerId,
+          p_actor_id: auth.ownerId,
+          p_location_id: locationId,
+          p_provider_item_id: providerItemId,
+          p_menu_item_id: menuItemId,
+          p_request_id: requestId,
+          p_selected_fields: selectedFields,
+          p_expected: expected,
+          p_patch: patch,
+        }),
+      });
+      const result = await rpcResponse.json().catch(() => null);
+      if (!rpcResponse.ok) {
+        if (rpcResponse.status === 400) { res.status(400).json({ error: 'Invalid POS menu apply request' }); return; }
+        if (rpcResponse.status === 409 || rpcResponse.status === 412) {
+          res.status(409).json({ error: 'The menu or mapping changed; refresh the review before applying again' }); return;
+        }
+        console.error('[API] POS menu apply RPC failed:', rpcResponse.status);
+        res.status(503).json({ error: 'Could not apply POS menu changes' }); return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json(result);
+    } catch (err) {
+      console.error('[API] POS menu apply error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not apply POS menu changes' });
+    }
+  });
+
+  app.get('/api/pos/catalog/apply-events/:locationId?', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const locationId = typeof req.params.locationId === 'string' ? req.params.locationId : typeof req.query.locationId === 'string' ? req.query.locationId : '';
+    if (!isUuid(locationId)) { res.status(400).json({ error: 'A valid POS location ID is required' }); return; }
+    try {
+      const locationQuery = new URLSearchParams({
+        select: 'id', id: `eq.${locationId}`, owner_id: `eq.${auth.ownerId}`, limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      if (!Array.isArray(locations) || locations.length !== 1) { res.status(404).json({ error: 'POS location not found' }); return; }
+      const query = new URLSearchParams({
+        select: 'id,mapping_id,provider_item_id,menu_item_id,actor_id,selected_fields,before_state,after_state,request_id,created_at',
+        owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`,
+        order: 'created_at.desc', limit: '200',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_menu_apply_events?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) { res.status(503).json({ error: 'POS menu apply history is temporarily unavailable' }); return; }
+      const rows = await response.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS menu apply history error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS menu apply history is temporarily unavailable' });
+    }
+  });
+
   // ============ POS LOCATION / BRANCH MANAGEMENT ============
   // Branch records are manually mapped until provider discovery adapters exist.
   app.get('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
