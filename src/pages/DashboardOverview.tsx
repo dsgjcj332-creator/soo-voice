@@ -178,7 +178,7 @@ export function DashboardOverview() {
     {
       id: "conversations",
       title: isAr ? "راجع محادثات العملاء" : "Review guest conversations",
-      description: isAr ? "تابع الاستفسارات والتحويلات للم 직원" : "Follow up on questions and staff handoffs",
+      description: isAr ? "تابع الاستفسارات والطلبات التي تحتاج تدخل الموظفين" : "Follow up on questions and staff handoffs",
       href: "/app/conversations",
       Icon: MessageSquare,
     },
@@ -227,9 +227,15 @@ export function DashboardOverview() {
         <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-slate-400 mb-2">
           {isAr ? "نظرة عامة" : "Overview"}
         </p>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
-          {isAr ? "ما يحدث الآن" : "What's happening now"}
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
+            {isAr ? "ما يحدث الآن" : "What's happening now"}
+          </h1>
+          <a href="#daily-execution" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700">
+            <ClipboardCheck className="h-4 w-4" />
+            {isAr ? "التنفيذ اليومي" : "Daily execution"}
+          </a>
+        </div>
       </header>
 
       {/* Daily execution center — checklist is stored per merchant and day in this browser. */}
