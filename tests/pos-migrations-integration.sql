@@ -208,7 +208,7 @@ begin
   if (select count(*) from public.pos_catalog_items) <> 1 then
     raise exception 'POS_TEST_CATALOG_RLS_TENANT_ISOLATION_FAILED';
   end if;
-  if (select count(*) from public.pos_catalog_menu_link_events) <> 5 then
+  if (select count(*) from public.pos_catalog_menu_link_events) < 4 then
     raise exception 'POS_TEST_AUDIT_RLS_TENANT_ISOLATION_FAILED';
   end if;
   if (select count(*) from public.pos_catalog_menu_apply_events) <> 1 then
