@@ -208,11 +208,26 @@ begin
   if (select count(*) from public.pos_catalog_items) <> 1 then
     raise exception 'POS_TEST_CATALOG_RLS_TENANT_ISOLATION_FAILED';
   end if;
-  if (select count(*) from public.pos_catalog_menu_link_events) <> 4 then
+  if (select count(*) from public.pos_catalog_menu_link_events) <> 5 then
     raise exception 'POS_TEST_AUDIT_RLS_TENANT_ISOLATION_FAILED';
+  end if;
+  if (select count(*) from public.pos_catalog_menu_apply_events) <> 1 then
+    raise exception 'POS_TEST_MENU_APPLY_AUDIT_RLS_TENANT_ISOLATION_FAILED';
   end if;
 end;
 $$;
+reset role;
+
+-- A different authenticated tenant cannot read the first tenant's apply history.
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
+set role authenticated;
+do $
+begin
+  if (select count(*) from public.pos_catalog_menu_apply_events) <> 0 then
+    raise exception 'POS_TEST_MENU_APPLY_AUDIT_CROSSTENANT_READ';
+  end if;
+end;
+$;
 reset role;
 
 -- Anonymous sessions must not be able to read catalog snapshots.
