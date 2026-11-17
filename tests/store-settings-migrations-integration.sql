@@ -8,11 +8,11 @@ on conflict do nothing;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
 insert into public.store_settings(
-  "ownerId", "restaurantName", "logoUrl", "workingHours",
+  "ownerId", "restaurantName", "restaurantNameEn", "logoUrl", "workingHours",
   instagram, facebook, whatsapp, "showVoiceWidget"
 ) values (
   '11111111-1111-4111-8111-111111111111',
-  'SooVoice Test Restaurant', 'https://example.test/logo.png',
+  'SooVoice Test Restaurant', 'SooVoice Test EN', 'https://example.test/logo.png',
   'Daily 10:00-22:00', 'https://instagram.com/test',
   'https://facebook.com/test', '+201000000000', true
 );
@@ -63,6 +63,14 @@ begin
     raise exception 'STORE_SETTINGS_CLIENT_GRANTS_INVALID';
   end if;
   if not exists (
+    select 1 from information_schema.columns
+     where table_schema='public' and table_name='store_settings'
+       and column_name='ownerId'
+  ) or not exists (
+    select 1 from information_schema.columns
+     where table_schema='public' and table_name='store_settings'
+       and column_name='restaurantName'
+  ) or not exists (
     select 1 from information_schema.columns
      where table_schema='public' and table_name='store_settings'
        and column_name='logoUrl'
