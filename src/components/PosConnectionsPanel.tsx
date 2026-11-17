@@ -160,6 +160,9 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     try {
       const saved = await request('catalog/mappings', 'POST', { locationId: reviewLocationId, providerItemId: item.provider_item_id, menuItemId, fieldOverrides: mappingOverrides[item.provider_item_id] || catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.field_overrides || {} });
       setCatalogMappings(current => [...current.filter(mapping => mapping.provider_item_id !== item.provider_item_id), saved as PosCatalogMapping]);
+      setSelectedApplyFields(current => ({ ...current, [item.provider_item_id]: [] }));
+      const history = await request('catalog/mapping-events', 'GET', undefined, reviewLocationId);
+      setMappingEvents(Array.isArray(history) ? history : []);
       setMessage(isArabic ? 'تم حفظ ربط المنتج بموافقتك. لم يتم تغيير المنيو أو السعر.' : 'Product mapping approved and saved. The menu and price were not changed.');
       setError(false);
     } catch (err) { setCatalogError(err instanceof Error ? err.message : (isArabic ? 'تعذر حفظ ربط المنتج.' : 'Could not save product mapping.')); }
@@ -179,7 +182,11 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       setSelectedApplyFields(current => ({ ...current, [item.provider_item_id]: [] }));
       setMessage(isArabic ? 'تم تطبيق الحقول التي اخترتها وتسجيل القيم قبل وبعد التحديث.' : 'Selected fields applied and before/after values recorded.');
       setError(false);
-      const history = await request('catalog/apply-events', 'GET', undefined, reviewLocationId);
+      const [menuRows, history] = await Promise.all([
+        request('menu-items', 'GET'),
+        request('catalog/apply-events', 'GET', undefined, reviewLocationId),
+      ]);
+      setMenuItems(Array.isArray(menuRows) ? menuRows : []);
       setApplyEvents(Array.isArray(history) ? history : []);
     } catch (err) {
       setCatalogError(err instanceof Error ? err.message : (isArabic ? 'تعذر تطبيق تحديثات المنيو.' : 'Could not apply menu changes.'));
@@ -393,7 +400,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
                    <span><strong>{isArabic ? labels[field][0] : labels[field][1]}:</strong> {isArabic ? 'من' : 'From'} {before} {isArabic ? 'إلى' : 'to'} {after}{field === 'price' ? ` ${item.currency}` : ''}</span>
                  </label>;
                })}
-               {mappedMenuItem && !protectedFields.price && locationCurrency && locationCurrency !== item.currency.toUpperCase() && <p className="mt-2 text-[11px] text-amber-700">{isArabic ? 'لن يتم تحديث السعر لاختلاف عملة الفرع عن عملة الكاشير.' : 'Price apply is disabled because the branch and POS currencies differ.'}</p>}
+               {mappedMenuItem && !protectedFields.price && (!locationCurrency || locationCurrency !== item.currency.toUpperCase()) && <p className="mt-2 text-[11px] text-amber-700">{isArabic ? 'لن يتم تحديث السعر لاختلاف عملة الفرع عن عملة الكاشير.' : 'Price apply is disabled because the branch and POS currencies differ.'}</p>}
                <button type="button" onClick={() => void applyCatalogChanges(item)} disabled={!item.active || !selected.length || applyingProviderId === item.provider_item_id} className="mt-3 rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                  {applyingProviderId === item.provider_item_id ? (isArabic ? 'جارٍ تطبيق التحديث...' : 'Applying...') : (isArabic ? 'تطبيق الحقول المحددة' : 'Apply selected fields')}
                </button>
