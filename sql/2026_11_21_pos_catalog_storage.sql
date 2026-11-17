@@ -107,6 +107,10 @@ begin
     raise exception 'DUPLICATE_POS_CATALOG_PROVIDER_ITEM' using errcode = '22023';
   end if;
 
+  if p_complete_snapshot is null then
+    raise exception 'INVALID_POS_CATALOG_SNAPSHOT_MODE' using errcode = '22023';
+  end if;
+
   if not exists (
     select 1 from public.pos_connections c
     where c.id = p_connection_id and c.owner_id = p_owner_id and c.status = 'connected'
@@ -120,6 +124,10 @@ begin
   ) then
     raise exception 'POS_LOCATION_NOT_ACTIVE_OR_NOT_OWNED' using errcode = '42501';
   end if;
+
+  -- Serialize snapshots for this connection/location so concurrent complete
+  -- imports cannot deactivate products seen by another in-flight import.
+  perform pg_advisory_xact_lock(hashtextextended(p_connection_id::text || ':' || p_location_id::text, 0));
 
   insert into public.pos_catalog_items (
     owner_id, connection_id, location_id, provider_item_id,
