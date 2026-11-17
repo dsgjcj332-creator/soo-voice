@@ -109,7 +109,7 @@ begin
   );
   select name, active into v_name, v_active
     from public.pos_catalog_items where provider_item_id = 'burger-1';
-  if v_name <> 'Burger Deluxe' or v_active is distinct from true then
+  if v_name <> 'Burger Fresh' or v_active is distinct from true then
     raise exception 'POS_TEST_NEWER_SNAPSHOT_FAILED_TO_REACTIVATE_PRODUCT';
   end if;
 
