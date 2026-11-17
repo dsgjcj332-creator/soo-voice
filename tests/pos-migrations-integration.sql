@@ -349,6 +349,69 @@ begin
 end;
 $$;
 
+
+-- Webhook event receipt and catalog sync are atomic and idempotent.
+do $
+declare
+  v_first jsonb;
+  v_replay jsonb;
+  v_name text;
+  v_status text;
+begin
+  v_first := public.ingest_pos_catalog_webhook(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'vendor-event-catalog-001',
+    'catalog.snapshot',
+    '{"provider":"foodics","providerLocationId":"branch-1"}'::jsonb,
+    '[{"providerId":"burger-1","name":"Webhook Burger","currency":"EGP","unitPrice":"75.00","available":true,"modifierGroups":[],"updatedAt":"2026-11-20T10:00:00Z"}]'::jsonb,
+    false
+  );
+  if v_first->>'accepted' <> 'true' or v_first->>'duplicate' <> 'false' then
+    raise exception 'POS_TEST_WEBHOOK_FIRST_DELIVERY_NOT_ACCEPTED';
+  end if;
+
+  v_replay := public.ingest_pos_catalog_webhook(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'vendor-event-catalog-001',
+    'catalog.snapshot',
+    '{"provider":"foodics","providerLocationId":"branch-1"}'::jsonb,
+    '[{"providerId":"burger-1","name":"Tampered Replay","currency":"EGP","unitPrice":"1.00","available":true,"modifierGroups":[],"updatedAt":"2026-11-21T10:00:00Z"}]'::jsonb,
+    false
+  );
+  if v_replay->>'accepted' <> 'true' or v_replay->>'duplicate' <> 'true' then
+    raise exception 'POS_TEST_WEBHOOK_DUPLICATE_NOT_ACKNOWLEDGED';
+  end if;
+  select name into v_name from public.pos_catalog_items
+   where owner_id = '11111111-1111-4111-8111-111111111111'
+     and provider_item_id = 'burger-1';
+  select status into v_status from public.pos_sync_events
+   where connection_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+     and provider_event_id = 'vendor-event-catalog-001';
+  if v_name <> 'Webhook Burger' or v_status <> 'processed' then
+    raise exception 'POS_TEST_WEBHOOK_ATOMIC_SYNC_OR_REPLAY_FAILED';
+  end if;
+
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  begin
+    perform public.ingest_pos_catalog_webhook(
+      '11111111-1111-4111-8111-111111111111',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'vendor-event-auth-denied',
+      'catalog.snapshot', '{}'::jsonb, '[]'::jsonb, false
+    );
+    raise exception 'POS_TEST_AUTHENTICATED_WEBHOOK_RPC_WAS_NOT_REJECTED';
+  exception when insufficient_privilege then
+    null;
+  end;
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+end;
+$;
+
 -- Authenticated merchant can read only their own catalog and mapping history.
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
 select set_config('request.jwt.claim.role', 'authenticated', false);
