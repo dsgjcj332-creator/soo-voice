@@ -175,3 +175,12 @@ Added `sql/2026_11_21_pos_catalog_storage.sql` with a tenant-scoped `pos_catalog
 Added `src/lib/pos/catalog-persistence.ts` as a narrow persistence boundary: it validates tenant/connection/location UUIDs, runs the canonical catalog normalizer, filters to the selected provider location, and calls only the privileged RPC. Unit tests cover scope validation, filtering, malformed payload rejection, safe RPC error handling and explicit empty complete snapshots.
 
 This is storage and a server-side persistence primitive, not a live sync feature. No API route currently invokes it, no provider adapter fetches menus, and no scheduled synchronization is running. Apply the migration in staging and test RLS, service-role authorization, timestamp conflicts, tenant/location isolation and complete-versus-partial snapshot behavior before wiring a provider.
+
+
+## Merchant-reviewed POS menu import checkpoint (2026-11-17)
+
+Added `src/lib/pos/catalog-review-planner.ts` as a read-only proposal layer between a future provider snapshot and the merchant's menu. It classifies proposed additions, ordinary field updates, merchant-edit conflicts, unchanged/stale provider rows, and products missing from an explicitly complete snapshot. Per-field merchant override flags protect locally curated names, descriptions, prices, availability and categories; conflicting provider values are shown as proposals rather than silently applied. The planner always marks the result as requiring merchant approval and performs no database writes.
+
+Added `tests/pos-catalog-review-planner.test.ts` for new products, protected fields, ordinary updates, partial/complete snapshot removal behavior, stale snapshots and duplicate links.
+
+This is not yet a connected review screen or import action. There is no API route fetching a real provider snapshot, no persisted merchant override schema, and no UI to approve/reject proposals. Until those pieces exist, the review planner is a tested pure foundation only; it must not be represented as live POS menu synchronization.
