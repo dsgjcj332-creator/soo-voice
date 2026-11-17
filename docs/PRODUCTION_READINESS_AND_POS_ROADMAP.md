@@ -109,3 +109,16 @@ Current limits:
 - Orders are durably recorded locally but are not yet dispatched to a real POS. No vendor adapter is connected.
 - Guest capability tokens are held in page memory for the current checkout/tracking session; refreshing the page loses the guest's tracking capability.
 - The migration and endpoint still require staging database execution, security tests, and successful CI/deployment checks before production use.
+
+
+## Outbox worker foundation checkpoint (2026-11-17)
+
+Added the leased outbox lifecycle to the secure checkout migration:
+- `claim_order_outbox` atomically claims due rows using `FOR UPDATE SKIP LOCKED`, with bounded batch size and lease duration.
+- Expired processing leases can be reclaimed by another worker.
+- `complete_order_outbox` requires the active lease, verifies that the POS connection belongs to the event's merchant and is connected, verifies the optional active location, and persists the provider order ID in `pos_order_links` before marking the event delivered.
+- `retry_order_outbox` requires the active lease, increments attempts, applies exponential backoff (capped at one hour), and moves exhausted events to `dead_letter`.
+- Added an injectable server-side batch processor. It marks an event delivered only after the provider explicitly returns `accepted` with a provider order ID. Pending/rejected/error responses are retried.
+- Added tests for accepted, pending, missing-connection and invalid-batch cases.
+
+**Not yet an operating worker:** no provider adapter is registered, no connection credential encryption/decryption or connection-to-order routing policy exists, and no scheduled worker is deployed. The batch processor is an execution core, not proof that orders are currently delivered. Do not manually mark outbox rows delivered. Before enabling a worker, implement authenticated merchant location/connection selection, server-side secret decryption, adapter registration, a scheduled runner protected by a dedicated worker secret, and end-to-end sandbox tests.
