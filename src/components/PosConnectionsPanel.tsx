@@ -102,7 +102,8 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   }, [user?.provider, user?.uid, loadConnections, loadLocations]);
 
   useEffect(() => {
-    if (!reviewLocationId) { setCatalogRows([]); setCatalogError(''); return; }
+    setCatalogRows([]);
+    if (!reviewLocationId) { setCatalogError(''); return; }
     let cancelled = false;
     const loadCatalog = async () => {
       setCatalogLoading(true); setCatalogError('');
@@ -123,7 +124,8 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   }, [reviewLocationId, user, isArabic]);
 
   useEffect(() => {
-    if (!reviewLocationId) { setMenuItems([]); setCatalogMappings([]); setMappingSelections({}); setMappingOverrides({}); return; }
+    setMenuItems([]); setCatalogMappings([]); setMappingSelections({}); setMappingOverrides({});
+    if (!reviewLocationId) return;
     let cancelled = false;
     const loadMappingOptions = async () => {
       try {
@@ -314,7 +316,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
             <p className="mt-2 text-[11px] text-slate-400">{isArabic ? 'آخر تحديث: ' : 'Source updated: '}{new Date(item.source_updated_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</p>
             <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
               <label className="min-w-0 flex-1 text-xs font-semibold text-slate-600">{isArabic ? 'اربطه بمنتج من منيو SooVoice' : 'Link to a SooVoice menu item'}
-                <select value={mappingSelections[item.provider_item_id] ?? catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id ?? ''} onChange={e => setMappingSelections(current => ({ ...current, [item.provider_item_id]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm">
+                <select disabled={!item.active} value={mappingSelections[item.provider_item_id] ?? catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id ?? ''} onChange={e => setMappingSelections(current => ({ ...current, [item.provider_item_id]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm">
                   <option value="">{isArabic ? 'اختر منتج المنيو' : 'Select menu item'}</option>
                   {menuItems.map(menuItem => <option key={menuItem.id} value={menuItem.id}>{menuItem.name} · {Number(menuItem.price).toFixed(2)}</option>)}
                 </select>
@@ -336,7 +338,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
                   ))}
                 </div>
               </div>
-              <button type="button" onClick={() => void saveCatalogMapping(item)} disabled={savingMappingId === item.provider_item_id || !(mappingSelections[item.provider_item_id] || catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id) || !menuItems.length} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+              <button type="button" onClick={() => void saveCatalogMapping(item)} disabled={!item.active || savingMappingId === item.provider_item_id || !(mappingSelections[item.provider_item_id] || catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id) || !menuItems.length} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                 {savingMappingId === item.provider_item_id ? (isArabic ? 'جارٍ الحفظ...' : 'Saving...') : (catalogMappings.some(mapping => mapping.provider_item_id === item.provider_item_id) ? (isArabic ? 'تحديث الربط' : 'Update mapping') : (isArabic ? 'اعتماد الربط' : 'Approve mapping'))}
               </button>
               {catalogMappings.some(mapping => mapping.provider_item_id === item.provider_item_id) && <span className="text-[11px] font-semibold text-emerald-700">{isArabic ? 'تم الربط بموافقتك' : 'Merchant approved'}</span>}
