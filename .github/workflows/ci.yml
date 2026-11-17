@@ -33,3 +33,45 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+
+  pos-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: soo_voice_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d soo_voice_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: soo_voice_test
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Bootstrap isolated Supabase auth roles
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/fixtures/pos-migrations-bootstrap.sql
+      - name: Apply POS migrations in dependency order
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_21_pos_catalog_storage.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_22_pos_catalog_menu_mapping.sql
+      - name: Verify schema, RLS and grants
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/verify_pos_catalog_staging.sql
+      - name: Test catalog sync, audit trigger and tenant isolation
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/pos-migrations-integration.sql
