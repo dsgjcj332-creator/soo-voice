@@ -308,6 +308,31 @@ export function createApiApp() {
       res.status(503).json({ error: 'POS catalog review is temporarily unavailable' });
     }
   });
+  // Returns only merchant-owned public menu rows eligible for an explicit POS mapping.
+  app.get('/api/pos/menu-items', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,name,price',
+        ownerId: `eq.${auth.ownerId}`,
+        or: '(isAiOnly.is.null,isAiOnly.eq.false)',
+        order: 'name.asc',
+        limit: '1000',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/menu_items?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) { res.status(503).json({ error: 'SooVoice menu items are temporarily unavailable' }); return; }
+      const rows = await response.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS mapping menu list error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'SooVoice menu items are temporarily unavailable' });
+    }
+  });
+
   // ============ POS CATALOG MENU MAPPINGS ============
   // A mapping is an explicit merchant approval record; this route never edits menu_items.
   app.get('/api/pos/catalog/mappings', posConnectionRateLimit, async (req, res) => {
