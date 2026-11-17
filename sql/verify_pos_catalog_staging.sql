@@ -3,6 +3,7 @@
 --   2026_11_18_multi_pos_registry.sql
 --   2026_11_21_pos_catalog_storage.sql
 --   2026_11_22_pos_catalog_menu_mapping.sql
+--   2026_11_23_pos_catalog_menu_apply.sql
 -- This script creates/updates no objects and writes no rows.
 
 do $$
@@ -109,6 +110,45 @@ begin
        and contype = 'f'
   ) then
     raise exception 'POS_STAGING_TENANT_FOREIGN_KEYS_MISSING';
+  end if;
+
+
+  if to_regclass('public.pos_catalog_menu_apply_events') is null
+     or to_regprocedure('public.apply_pos_catalog_menu_fields(uuid,uuid,uuid,text,text,uuid,text[],jsonb,jsonb)') is null then
+    raise exception 'POS_STAGING_MISSING_MENU_APPLY_OBJECTS';
+  end if;
+
+  if not (select relrowsecurity from pg_class where oid = 'public.pos_catalog_menu_apply_events'::regclass)
+     or not exists (
+       select 1 from pg_policies
+        where schemaname = 'public' and tablename = 'pos_catalog_menu_apply_events'
+          and policyname = 'pos_catalog_menu_apply_events_owner_read'
+          and cmd = 'SELECT' and roles @> array['authenticated']::name[]
+     ) then
+    raise exception 'POS_STAGING_MENU_APPLY_AUDIT_RLS_INVALID';
+  end if;
+
+  if not has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'SELECT')
+     or not has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'SELECT')
+     or has_table_privilege('anon', 'public.pos_catalog_menu_apply_events', 'SELECT')
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'INSERT')
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'DELETE')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'INSERT')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'UPDATE')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'DELETE') then
+    raise exception 'POS_STAGING_MENU_APPLY_AUDIT_GRANTS_INVALID';
+  end if;
+
+  if has_function_privilege('anon', 'public.apply_pos_catalog_menu_fields(uuid,uuid,uuid,text,text,uuid,text[],jsonb,jsonb)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.apply_pos_catalog_menu_fields(uuid,uuid,uuid,text,text,uuid,text[],jsonb,jsonb)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.apply_pos_catalog_menu_fields(uuid,uuid,uuid,text,text,uuid,text[],jsonb,jsonb)', 'EXECUTE')
+     or not exists (
+       select 1 from pg_proc
+        where oid = 'public.apply_pos_catalog_menu_fields(uuid,uuid,uuid,text,text,uuid,text[],jsonb,jsonb)'::regprocedure
+          and prosecdef and proconfig @> array['search_path=public']::text[]
+     ) then
+    raise exception 'POS_STAGING_MENU_APPLY_RPC_SECURITY_INVALID';
   end if;
 
   raise notice 'POS_STAGING_VERIFICATION_PASSED: RLS, grants, RPC privileges, tenant foreign keys and mapping audit trigger are present.';
