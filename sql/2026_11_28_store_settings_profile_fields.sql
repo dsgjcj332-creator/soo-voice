@@ -3,6 +3,40 @@
 
 begin;
 
+-- The original hand-written SQL declared camelCase identifiers without
+-- quotes, which PostgreSQL silently folded to lowercase. Rename those legacy
+-- columns to the exact names used by the Supabase client before adding fields.
+do $
+declare
+  v_pair text[];
+begin
+  foreach v_pair slice 1 in array array[
+    array['ownerid','ownerId'],
+    array['restaurantname','restaurantName'],
+    array['restaurantnameen','restaurantNameEn'],
+    array['showvoicewidget','showVoiceWidget'],
+    array['geoenabled','geoEnabled'],
+    array['georadiuskm','geoRadiusKm'],
+    array['geolat','geoLat'],
+    array['geolng','geoLng'],
+    array['sessionminutes','sessionMinutes'],
+    array['updatedat','updatedAt']
+  ] loop
+    if exists (
+      select 1 from information_schema.columns
+       where table_schema='public' and table_name='store_settings'
+         and column_name=v_pair[1]
+    ) and not exists (
+      select 1 from information_schema.columns
+       where table_schema='public' and table_name='store_settings'
+         and column_name=v_pair[2]
+    ) then
+      execute format('alter table public.store_settings rename column %I to %I', v_pair[1], v_pair[2]);
+    end if;
+  end loop;
+end;
+$;
+
 alter table public.store_settings
   add column if not exists "logoUrl" text not null default '',
   add column if not exists "workingHours" text not null default '',
