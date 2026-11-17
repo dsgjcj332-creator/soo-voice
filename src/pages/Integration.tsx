@@ -124,21 +124,54 @@ export function Integration() {
   };
 
   const handleSaveWebhook = async () => {
-    if (!user) return;
+    if (!user || user.provider === 'local') {
+      setWebhookStatusMessage(language === 'ar'
+        ? 'سجّل الدخول بحساب موثّق لحفظ إعدادات الربط.'
+        : 'Sign in with a verified account to save integration settings.');
+      return;
+    }
+
+    const normalizedUrl = webhookUrl.trim();
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(normalizedUrl);
+    } catch {
+      setWebhookStatusMessage(language === 'ar'
+        ? 'أدخل رابط ويب هوك صحيحًا يبدأ بـ https://'
+        : 'Enter a valid webhook URL beginning with https://');
+      return;
+    }
+    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) {
+      setWebhookStatusMessage(language === 'ar'
+        ? 'يجب أن يستخدم الرابط HTTPS ولا يحتوي على بيانات دخول داخل الرابط.'
+        : 'Webhook URLs must use HTTPS and must not contain embedded credentials.');
+      return;
+    }
+
+    const supabase = getSupabase();
+    if (!isConfigured || !supabase) {
+      setWebhookStatusMessage(language === 'ar'
+        ? 'لم يتم الحفظ: قاعدة البيانات غير مُعدّة.'
+        : 'Not saved: the database is not configured.');
+      return;
+    }
+
     setIsSavingWebhook(true);
     setWebhookStatusMessage('');
     try {
-      const supabase = getSupabase();
-      const { isConfigured } = getSupabaseConfig();
-      if (isConfigured && supabase) {
-        await supabase
-          .from('webhook_settings')
-          .upsert({ ownerId: user.uid, webhookUrl, updatedAt: Date.now() });
-      }
-      setWebhookStatusMessage(language === 'ar' ? 'تم حفظ إعدادات الويب هوك' : 'Webhook settings saved');
+      const { error } = await supabase
+        .from('webhook_settings')
+        .upsert({ ownerId: user.uid, webhookUrl: normalizedUrl, updatedAt: Date.now() });
+      if (error) throw error;
+      setWebhookUrl(normalizedUrl);
+      setWebhookStatusMessage(language === 'ar'
+        ? 'تم حفظ الرابط. إرسال الطلبات الفعلي غير مفعّل حتى اكتمال خدمة التسليم الآمنة.'
+        : 'URL saved. Live order delivery remains disabled until secure server-side dispatch is implemented.');
     } catch (err) {
-      console.error(err);
-      setWebhookStatusMessage(language === 'ar' ? 'خطأ في حفظ الإعدادات' : 'Error saving settings');
+      console.error('Error saving webhook settings:', err);
+      setWebhookStatusMessage(language === 'ar'
+        ? 'فشل الحفظ. راجع صلاحيات قاعدة البيانات وحاول مرة أخرى.'
+        : 'Save failed. Check database permissions and try again.');
     } finally {
       setIsSavingWebhook(false);
     }
