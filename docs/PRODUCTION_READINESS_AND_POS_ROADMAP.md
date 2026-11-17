@@ -150,3 +150,12 @@ This is still configuration management, not a live provider integration. Branch 
 Added `sql/2026_11_20_enforce_outbox_lease_expiry.sql` as a follow-up migration. The original worker lifecycle identified expired leases for reclaim, but completion/retry only checked the worker ID; a slow worker could therefore attempt to acknowledge an event after its lease deadline if no other worker had reclaimed it yet. The new migration stores `lease_expires_at`, sets it atomically when claiming, permits reclaim only after expiry, and requires an unexpired lease for both completion and retry. Completion/retry clear all lease fields. Existing processing rows with missing lease metadata are safely returned to pending; existing active leases receive a bounded fallback expiry.
 
 Apply this migration after `2026_11_19_secure_guest_checkout.sql` in staging and test two-worker contention, expiry, reclaim, and stale-worker completion/retry rejection before enabling any worker. This is a SQL hardening change only; it does not deploy a worker or connect a provider adapter.
+
+
+## Canonical POS catalog validation checkpoint (2026-11-17)
+
+Added `src/lib/pos/catalog-normalizer.ts` as a strict boundary for vendor adapters to map external menu payloads into SooVoice's canonical `PosCatalogItem` contract. It bounds payload sizes and text lengths; validates currency codes, finite/non-negative item prices, signed modifier price deltas, timestamps, location IDs, provider item IDs, modifier IDs and selection constraints; and returns copied, normalized records with ISO timestamps. Duplicate provider item, branch, modifier-group and modifier-option identifiers are rejected rather than silently overwritten.
+
+Added `tests/pos-catalog-normalizer.test.ts` for valid normalization, signed modifier deltas, invalid currency/prices/timestamps, duplicate IDs, invalid modifier rules and malformed payloads.
+
+This is an adapter-facing validation layer only. It does not claim that any vendor adapter is registered, does not fetch a provider menu, and does not persist/synchronize the catalog. A real provider adapter and staging integration tests are still required.
