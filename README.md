@@ -105,7 +105,8 @@ npm run clean   # remove dist/
 | `VITE_SUPABASE_URL` | client (public) | Supabase project URL. |
 | `VITE_SUPABASE_ANON_KEY` | client (public) | Supabase anon key — safe to expose, protected by RLS. |
 | `SUPABASE_URL` | **server-only** | Supabase project URL used by trusted guest-order and POS connection APIs. |
-| `SUPABASE_ANON_KEY` | server-only | Supabase anon/publishable key used by the server to validate merchant access tokens with Supabase Auth. |\n| `SUPABASE_SERVICE_ROLE_KEY` | **server-only** | Service-role key used only by trusted order and POS connection endpoints. Never expose it to Vite/browser code. |
+| `SUPABASE_ANON_KEY` | server-only | Supabase anon/publishable key used by the server to validate merchant access tokens with Supabase Auth. |
+| `SUPABASE_SERVICE_ROLE_KEY` | **server-only** | Service-role key used only by trusted order and POS connection endpoints. Never expose it to Vite/browser code. |
 | `ORDER_TOKEN_SECRET` | **server-only** | At least 32 random characters; HMAC key for per-order guest capability tokens. |
 | `POS_CREDENTIALS_ENCRYPTION_KEY` | **server-only** | Base64-encoded 32-byte AES-256-GCM key for POS credentials. Generate with `openssl rand -base64 32`; never expose or commit it. |
 | `POS_CREDENTIALS_ENCRYPTION_KEY_VERSION` | server-only | Key version stored with encrypted POS credentials; defaults to `v1`. Keep the matching key available for every stored version. |
@@ -113,7 +114,8 @@ npm run clean   # remove dist/
 ## Security Model
 
 - **Trusted guest checkout.** `/api/store/orders` accepts product IDs and quantities only; the database reloads each merchant-owned, non-AI-only catalog price and atomically writes the order plus an outbox event. Guest tracking requires a per-order capability token; only its SHA-256 hash is stored and it expires after seven days. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ORDER_TOKEN_SECRET` server-side.
-- **POS connection secrets.** `GET /api/pos/connections` and `POST /api/pos/connections` require a Supabase Bearer access token. The server resolves the merchant ID from Supabase Auth (never from request input), encrypts credentials with AES-256-GCM before persistence, and returns metadata only. Connections remain `pending` until a real provider adapter and connection validation flow are implemented.\n- **Outbox is not POS delivery.** The transaction creates a durable `order.created` event, but a worker and provider adapter are still required before an order can be claimed as accepted by a cashier/POS.
+- **POS connection secrets.** `GET /api/pos/connections` and `POST /api/pos/connections` require a Supabase Bearer access token. The server resolves the merchant ID from Supabase Auth (never from request input), encrypts credentials with AES-256-GCM before persistence, and returns metadata only. Connections remain `pending` until a real provider adapter and connection validation flow are implemented.
+- **Outbox is not POS delivery.** The transaction creates a durable `order.created` event, but a worker and provider adapter are still required before an order can be claimed as accepted by a cashier/POS.
 
 - **No API keys in the browser.** The widget requests a short-lived **ephemeral token** from `/api/gemini-session`; the real `GEMINI_API_KEY` lives only in serverless functions.
 - **Signed webhooks.** Every webhook route requires `x-soovoice-signature: sha256=<hex>` (HMAC-SHA256 over the raw body). Verification is constant-time and fails closed when `WEBHOOK_SECRET` is missing.
@@ -127,17 +129,19 @@ The Integrations page includes a bilingual POS management panel. A merchant must
 
 - `GET/POST /api/pos/connections` lists a merchant's connections and stores new credential objects encrypted server-side. Secret fields are never returned to the browser.
 - `GET/POST/PATCH /api/pos/locations` lists, manually maps, and deactivates branch mappings. Deactivation preserves historical order references. Every operation derives the merchant from the verified Supabase session; location creation also verifies that the selected connection belongs to that merchant.
-- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, menu/catalog sync, order delivery, and a deployed worker are not implemented.\n- Outbox leases now have an explicit expiry timestamp. Expired workers cannot complete or retry an event; another worker may reclaim it after expiry.
+- A canonical POS catalog validation boundary rejects malformed provider IDs, currencies, unsafe prices, duplicate item/branch/modifier IDs, invalid timestamps, and inconsistent modifier selection rules. A tenant-scoped `pos_catalog_items` table and service-role-only snapshot RPC now provide an atomic persistence foundation, including stale-source protection and safe complete-snapshot deactivation. A typed server-side persistence boundary normalizes and filters records to the selected mapped branch before calling the RPC.
+- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, automatic provider fetching, a route that invokes catalog persistence, scheduled menu sync, order delivery, and a deployed worker are not implemented.
+- Outbox leases now have an explicit expiry timestamp. Expired workers cannot complete or retry an event; another worker may reclaim it after expiry.
 - New connections remain `pending`; adding credentials or a branch mapping does not mean the external POS is connected or synchronized.
 
-Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Configure the server-only Supabase URL, anon key, service-role key, and `POS_CREDENTIALS_ENCRYPTION_KEY` / version as documented in `.env.example`. Never expose server secrets through `VITE_*` variables.
+Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Apply `sql/2026_11_21_pos_catalog_storage.sql` after the POS registry and outbox migrations to create the catalog table and privileged snapshot RPC. Configure the server-only Supabase URL, anon key, service-role key, and `POS_CREDENTIALS_ENCRYPTION_KEY` / version as documented in `.env.example`. Never expose server secrets through `VITE_*` variables.
 
 ## Deployment (Vercel)
 
 1. Push to GitHub and import the repo in Vercel.
 2. Set the server-side env vars from the table above in Project Settings.
 3. Build command: `npm run build` — API routes are picked up automatically from `api/`.
-4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, and `sql/2026_11_20_enforce_outbox_lease_expiry.sql`. Verify them in staging before production.
+4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, `sql/2026_11_20_enforce_outbox_lease_expiry.sql`, and `sql/2026_11_21_pos_catalog_storage.sql`. Verify them in staging before production.
 5. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
    `store_settings` table that powers the merchant store profile, voice-widget
    visibility toggle, geo-fence and menu session duration. Until it is applied the
@@ -166,3 +170,10 @@ Merchants control the customer menu from **Settings → Table Experience & Acces
 ## License
 
 Apache-2.0 (see source headers).
+
+
+### POS catalog sync planning (foundation only)
+
+The POS catalog foundation now includes a pure sync planner that compares a normalized provider snapshot with the last persisted source snapshot for one manually mapped location. It emits create/update/unchanged/stale/deactivate operations, keys items by provider item ID, rejects older or ambiguous same-timestamp changes, and only proposes deactivation when the caller explicitly confirms that the provider response is a complete snapshot. Partial or paginated fetches must never be treated as complete.
+
+The planner does not write to the database or fetch provider data. Its compact content fingerprint is a change detector, not a cryptographic integrity hash. Future persistence must keep merchant-authored overrides separate from POS-owned fields and scope writes by verified merchant, connection and location. No live catalog sync is available yet.

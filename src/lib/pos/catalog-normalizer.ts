@@ -3,6 +3,9 @@ import type { PosCatalogItem, PosModifierGroup, PosModifierOption } from './type
 const MAX_ITEMS = 10_000;
 const MAX_GROUPS = 100;
 const MAX_OPTIONS = 200;
+const MAX_TOTAL_GROUPS = 20_000;
+const MAX_TOTAL_OPTIONS = 100_000;
+const MAX_TOTAL_LOCATION_LINKS = 50_000;
 const MAX_MONEY = 1_000_000;
 
 function text(value: unknown, field: string, max = 200): string {
@@ -19,16 +22,24 @@ function money(value: unknown, field: string): number {
   return Math.round(value * 100) / 100;
 }
 
+function signedMoney(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_MONEY) {
+    throw new Error(`INVALID_POS_CATALOG_${field.toUpperCase()}`);
+  }
+  return Math.round(value * 100) / 100;
+}
+
 function normalizeOption(value: unknown): PosModifierOption {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTION');
   }
   const row = value as Record<string, unknown>;
+  if (typeof row.available !== 'boolean') throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTION_AVAILABILITY');
   return {
     id: text(row.id, 'modifier_option_id', 160),
     ...(row.providerId === undefined ? {} : { providerId: text(row.providerId, 'modifier_option_provider_id', 160) }),
     name: text(row.name, 'modifier_option_name'),
-    priceDelta: money(row.priceDelta, 'modifier_option_price'),
+    priceDelta: signedMoney(row.priceDelta, 'modifier_option_price'),
     available: row.available === true,
   };
 }
@@ -46,6 +57,9 @@ function normalizeGroup(value: unknown): PosModifierGroup {
   if (!Number.isInteger(min) || !Number.isInteger(max) || (min as number) < 0 ||
       (max as number) < (min as number) || (max as number) > row.options.length) {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_SELECTIONS');
+  }
+  if (typeof row.required !== 'boolean' || row.required !== ((min as number) > 0)) {
+    throw new Error('INVALID_POS_CATALOG_MODIFIER_REQUIRED');
   }
   const options = row.options.map(normalizeOption);
   if (new Set(options.map(option => option.id)).size !== options.length) {
@@ -71,17 +85,31 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
   if (!Array.isArray(input) || input.length > MAX_ITEMS) {
     throw new Error('INVALID_POS_CATALOG');
   }
+  let totalGroups = 0;
+  let totalOptions = 0;
+  let totalLocationLinks = 0;
   const rows = input.map((value): PosCatalogItem => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       throw new Error('INVALID_POS_CATALOG_ITEM');
     }
     const row = value as Record<string, unknown>;
-    if (!Array.isArray(row.locationIds) || row.locationIds.length > 500 ||
+    if (typeof row.available !== 'boolean' || !Array.isArray(row.locationIds) || row.locationIds.length > 500 ||
         !Array.isArray(row.modifierGroups) || row.modifierGroups.length > MAX_GROUPS) {
       throw new Error('INVALID_POS_CATALOG_COLLECTION');
     }
     const currency = text(row.currency, 'currency', 3);
     if (!/^[A-Z]{3}$/.test(currency)) throw new Error('INVALID_POS_CATALOG_CURRENCY');
+    totalGroups += row.modifierGroups.length;
+    totalLocationLinks += row.locationIds.length;
+    totalOptions += row.modifierGroups.reduce((sum, group) => {
+      if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray((group as Record<string, unknown>).options)) {
+        throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTIONS');
+      }
+      return sum + ((group as Record<string, unknown>).options as unknown[]).length;
+    }, 0);
+    if (totalGroups > MAX_TOTAL_GROUPS || totalOptions > MAX_TOTAL_OPTIONS || totalLocationLinks > MAX_TOTAL_LOCATION_LINKS) {
+      throw new Error('POS_CATALOG_TOTAL_LIMIT_EXCEEDED');
+    }
     const modifierGroups = row.modifierGroups.map(normalizeGroup);
     if (new Set(modifierGroups.map(group => group.id)).size !== modifierGroups.length) {
       throw new Error('DUPLICATE_POS_CATALOG_MODIFIER_GROUP');
@@ -103,6 +131,11 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
       updatedAt: new Date(updatedAt).toISOString(),
     };
   });
+  for (const row of rows) {
+    if (new Set(row.locationIds).size !== row.locationIds.length) {
+      throw new Error('DUPLICATE_POS_CATALOG_LOCATION');
+    }
+  }
   const providerIds = rows.map(row => row.providerId);
   if (new Set(providerIds).size !== providerIds.length) {
     throw new Error('DUPLICATE_POS_CATALOG_PROVIDER_ITEM');

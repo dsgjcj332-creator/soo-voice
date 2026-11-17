@@ -150,3 +150,42 @@ This is still configuration management, not a live provider integration. Branch 
 Added `sql/2026_11_20_enforce_outbox_lease_expiry.sql` as a follow-up migration. The original worker lifecycle identified expired leases for reclaim, but completion/retry only checked the worker ID; a slow worker could therefore attempt to acknowledge an event after its lease deadline if no other worker had reclaimed it yet. The new migration stores `lease_expires_at`, sets it atomically when claiming, permits reclaim only after expiry, and requires an unexpired lease for both completion and retry. Completion/retry clear all lease fields. Existing processing rows with missing lease metadata are safely returned to pending; existing active leases receive a bounded fallback expiry.
 
 Apply this migration after `2026_11_19_secure_guest_checkout.sql` in staging and test two-worker contention, expiry, reclaim, and stale-worker completion/retry rejection before enabling any worker. This is a SQL hardening change only; it does not deploy a worker or connect a provider adapter.
+
+
+## Canonical POS catalog validation checkpoint (2026-11-17)
+
+Added `src/lib/pos/catalog-normalizer.ts` as a strict boundary for vendor adapters to map external menu payloads into SooVoice's canonical `PosCatalogItem` contract. It bounds payload sizes and text lengths; validates currency codes, finite/non-negative item prices, signed modifier price deltas, timestamps, location IDs, provider item IDs, modifier IDs and selection constraints; and returns copied, normalized records with ISO timestamps. Duplicate provider item, branch, modifier-group and modifier-option identifiers are rejected rather than silently overwritten.
+
+Added `tests/pos-catalog-normalizer.test.ts` for valid normalization, signed modifier deltas, invalid currency/prices/timestamps, duplicate IDs, invalid modifier rules and malformed payloads.
+
+This is an adapter-facing validation layer only. It does not claim that any vendor adapter is registered, does not fetch a provider menu, and does not persist/synchronize the catalog. A real provider adapter and staging integration tests are still required.
+
+
+## POS catalog synchronization planner checkpoint (2026-11-17)
+
+Added a pure, deterministic catalog sync planner for one manually mapped provider location. It keys records by provider item ID within the caller's connection/location scope and emits create, update, unchanged, stale and deactivate operations. Older provider timestamps are rejected; equal timestamps with different content are treated as ambiguous/stale rather than overwriting data. Deactivation is emitted only when the caller explicitly declares the provider response to be a complete snapshot, so paginated or partial fetches cannot accidentally hide products.
+
+The planner's content fingerprint is a compact change detector, not a cryptographic integrity primitive. It only describes POS-owned catalog fields; persistence code must keep merchant-authored fields/overrides separate and must scope every database read/write by verified owner, connection and mapped location. No catalog table, database write path, provider fetcher, scheduled sync or live menu import is added by this checkpoint.
+
+
+## Durable POS catalog storage checkpoint (2026-11-17)
+
+Added `sql/2026_11_21_pos_catalog_storage.sql` with a tenant-scoped `pos_catalog_items` table linked by composite owner/connection/location foreign keys. Merchants may read only their own rows; browser writes are revoked. A service-role-only atomic RPC validates the connection is actually `connected`, verifies the mapped location is active and belongs to that connection/merchant, upserts only strictly newer provider timestamps, marks stale incoming IDs as seen without overwriting newer stored content, and deactivates missing products only for an explicitly complete snapshot.
+
+Added `src/lib/pos/catalog-persistence.ts` as a narrow persistence boundary: it validates tenant/connection/location UUIDs, runs the canonical catalog normalizer, filters to the selected provider location, and calls only the privileged RPC. Unit tests cover scope validation, filtering, malformed payload rejection, safe RPC error handling and explicit empty complete snapshots.
+
+This is storage and a server-side persistence primitive, not a live sync feature. No API route currently invokes it, no provider adapter fetches menus, and no scheduled synchronization is running. Apply the migration in staging and test RLS, service-role authorization, timestamp conflicts, tenant/location isolation and complete-versus-partial snapshot behavior before wiring a provider.
+
+
+## Merchant-reviewed POS menu import checkpoint (2026-11-17)
+
+Added `src/lib/pos/catalog-review-planner.ts` as a read-only proposal layer between a future provider snapshot and the merchant's menu. It classifies proposed additions, ordinary field updates, merchant-edit conflicts, unchanged/stale provider rows, and products missing from an explicitly complete snapshot. Per-field merchant override flags protect locally curated names, descriptions, prices, availability and categories; conflicting provider values are shown as proposals rather than silently applied. The planner always marks the result as requiring merchant approval and performs no database writes.
+
+Added `tests/pos-catalog-review-planner.test.ts` for new products, protected fields, ordinary updates, partial/complete snapshot removal behavior, stale snapshots and duplicate links.
+
+This is not yet a connected review screen or import action. There is no API route fetching a real provider snapshot, no persisted merchant override schema, and no UI to approve/reject proposals. Until those pieces exist, the review planner is a tested pure foundation only; it must not be represented as live POS menu synchronization.
+
+
+## CI test repair checkpoint (2026-11-17)
+
+The first CI retry reached the test suite after dependencies installed successfully. It exposed two test-only defects: the POS credential test had an unmatched closing delimiter, and the catalog persistence test expected the wrong validator error code for a malformed catalog row. Both test files were corrected to match the actual implementation. The next CI run must confirm the full suite, TypeScript check and production build; no pass is claimed yet.
