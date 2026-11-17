@@ -23,9 +23,6 @@ export function Billing() {
   const { currency } = useSettings();
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("pro");
-  const [subscribedPlan, setSubscribedPlan] = useState("free");
-  const [activationNotice, setActivationNotice] = useState(false);
 
   // ROI Calculator states
   const [monthlyVisitors, setMonthlyVisitors] = useState(10000);
@@ -46,12 +43,6 @@ export function Billing() {
     navigator.clipboard.writeText(embedCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  // No fake payment gateway yet: subscriptions activate manually.
-  const handleSubscribe = () => {
-    setActivationNotice(true);
-    setTimeout(() => setActivationNotice(false), 6000);
   };
 
   const pricingPlans = [
@@ -79,7 +70,7 @@ export function Billing() {
       id: "pro",
       nameAr: "الباقة الاحترافية (Pro)",
       nameEn: "Growth Pro",
-      price: 49,
+      price: null,
       descriptionAr: "للمتاجر والمطاعم المتوسطة الباحثة عن تفعيل المنيو الرقمي وطلب الطاولات.",
       descriptionEn: "Perfect for restaurants and mid-sized stores needing QR ordering.",
       featuresAr: [
@@ -102,7 +93,7 @@ export function Billing() {
       id: "enterprise",
       nameAr: "الباقة البرمجية المفتوحة (Enterprise)",
       nameEn: "Scale Enterprise",
-      price: 149,
+      price: null,
       descriptionAr: "للشركات ومتاجر قطع الغيار الكبرى التي تمتلك كتالوج يبلغ 2000+ منتج مخفي للذكاء الاصطناعي.",
       descriptionEn: "For large operations and spare-parts dealers with massive hidden catalogs.",
       featuresAr: [
@@ -144,27 +135,24 @@ export function Billing() {
         <div className="lg:col-span-2 space-y-8">
           
           {/* Subscription Tiers */}
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+            {language === "ar"
+              ? "تنبيه: الدفع الإلكتروني وإدارة الاشتراكات الآلية غير متصلين حاليًا. أسعار الباقات المدفوعة لم تعتمد بعد، ولن يتم إنشاء اشتراك أو تحصيل مبلغ من هذه الصفحة."
+              : "Notice: automated billing and subscription management are not connected yet. Paid plan prices are not finalized, and this page will not create a subscription or charge a payment."}
+          </div>
           <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6 border-b pb-4">
               <h2 className="text-lg font-bold text-slate-800">
                 {language === "ar" ? "اشتراك المتجر الحالي" : "Merchant Subscription Plan"}
               </h2>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 uppercase">
-                {language === "ar" ? `الخطة الحالية: ${subscribedPlan.toUpperCase()}` : `Current: ${subscribedPlan.toUpperCase()}`}
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
+                {language === "ar" ? "حالة الاشتراك: تحتاج تحقق" : "Subscription status: unverified"}
               </span>
             </div>
 
-            {activationNotice && (
-              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs font-semibold text-amber-800 leading-relaxed">
-                {language === "ar"
-                  ? "الدفع الإلكتروني غير مفعّل بعد في النسخة الحالية — لتفعيل باقة مدفوعة تواصل معنا على billing@soovoice.app وسيتم تنشيط حسابك يدويًا بعد تأكيد الدفع."
-                  : "Online payment is not enabled yet — to activate a paid plan, contact us at billing@soovoice.app and your account will be activated manually after payment confirmation."}
-              </div>
-            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {pricingPlans.map((plan) => {
-                const isActive = subscribedPlan === plan.id;
                 return (
                   <div 
                     key={plan.id}
@@ -187,8 +175,8 @@ export function Billing() {
                       </p>
                       
                       <div className="my-4">
-                        <span className="text-3xl font-extrabold text-slate-800" dir="ltr">{formatPrice(plan.price, currency)}</span>
-                        <span className="text-slate-400 text-xs font-semibold"> / {language === "ar" ? "شهرياً" : "mo"}</span>
+                        <span className="text-2xl font-extrabold text-slate-800" dir="auto">{plan.price === null ? (language === "ar" ? "يحدد لاحقًا" : "To be confirmed") : formatPrice(plan.price, currency)}</span>
+                        {plan.price !== null && <span className="text-slate-400 text-xs font-semibold"> / {language === "ar" ? "شهرياً" : "mo"}</span>}
                       </div>
 
                       <ul className="space-y-2 border-t pt-4">
@@ -203,24 +191,12 @@ export function Billing() {
 
                     <div className="mt-6 pt-4 border-t border-slate-100">
                       <button
-                        onClick={handleSubscribe}
-                        disabled={isActive}
-                        className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                          isActive 
-                            ? "bg-slate-100 text-slate-400 cursor-default" 
-                            : plan.popular
-                              ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100 shadow-md"
-                              : "bg-slate-900 hover:bg-slate-800 text-white"
-                        }`}
+                        type="button"
+                        disabled
+                        title={language === "ar" ? "سيتم تفعيل الاشتراكات بعد ربط بوابة الدفع ونظام الاشتراكات" : "Subscriptions will be enabled after billing and payment integration"}
+                        className="w-full cursor-not-allowed rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-500"
                       >
-                        {isActive ? (
-                          <>
-                            <CheckCircle className="w-4 h-4 text-emerald-500" />
-                            {language === "ar" ? "نشط حالياً" : "Active Now"}
-                          </>
-                        ) : (
-                          language === "ar" ? "اشترك الآن" : "Subscribe"
-                        )}
+                        {language === "ar" ? "الاشتراك غير متاح حاليًا" : "Subscriptions unavailable"}
                       </button>
                     </div>
                   </div>
