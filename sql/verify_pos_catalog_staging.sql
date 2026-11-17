@@ -69,7 +69,10 @@ begin
      or has_table_privilege('authenticated', 'public.pos_catalog_menu_links', 'DELETE')
      or has_table_privilege('authenticated', 'public.pos_catalog_menu_link_events', 'INSERT')
      or has_table_privilege('authenticated', 'public.pos_catalog_menu_link_events', 'UPDATE')
-     or has_table_privilege('authenticated', 'public.pos_catalog_menu_link_events', 'DELETE') then
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_link_events', 'DELETE')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_link_events', 'INSERT')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_link_events', 'UPDATE')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_link_events', 'DELETE') then
     raise exception 'POS_STAGING_UNEXPECTED_CLIENT_WRITE_GRANTS';
   end if;
 
