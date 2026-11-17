@@ -230,3 +230,154 @@ $$;
 reset role;
 
 select 'POS_POSTGRES_INTEGRATION_TESTS_PASSED' as result;
+
+
+-- Exercise the transactional merchant-approved menu apply RPC, not only its DDL.
+insert into public.menu_items(id, "ownerId", name, description, price, "isAiOnly")
+values ('menu-burger-relinked', '11111111-1111-4111-8111-111111111111',
+        'Local Burger', 'Local description', 60.00, false);
+
+-- Remove the merchant field protections for this explicit apply test.
+update public.pos_catalog_menu_links
+   set field_overrides = '{}'::jsonb
+ where owner_id = '11111111-1111-4111-8111-111111111111'
+   and location_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+   and provider_item_id = 'burger-1'
+   and menu_item_id = 'menu-burger-relinked';
+
+do $$
+declare
+  v_result jsonb;
+  v_replay jsonb;
+  v_name text;
+  v_price numeric;
+  v_event_count integer;
+begin
+  v_result := public.apply_pos_catalog_menu_fields(
+    '11111111-1111-4111-8111-111111111111',
+    '11111111-1111-4111-8111-111111111111',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'burger-1', 'menu-burger-relinked',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    array['name','price'],
+    '{"name":"Local Burger","price":60.00}'::jsonb,
+    '{"name":"Burger Fresh","price":70.00}'::jsonb
+  );
+  if v_result->>'applied' <> 'true' or v_result->>'replayed' <> 'false'
+     or v_result->'before' <> '{"name":"Local Burger","price":60.00}'::jsonb
+     or v_result->'after' <> '{"name":"Burger Fresh","price":70.00}'::jsonb then
+    raise exception 'POS_TEST_MENU_APPLY_RESULT_INVALID';
+  end if;
+
+  select name, price into v_name, v_price from public.menu_items
+   where id = 'menu-burger-relinked';
+  if v_name <> 'Burger Fresh' or v_price <> 70.00 then
+    raise exception 'POS_TEST_MENU_APPLY_DID_NOT_UPDATE_SELECTED_FIELDS';
+  end if;
+
+  select count(*) into v_event_count from public.pos_catalog_menu_apply_events
+   where owner_id = '11111111-1111-4111-8111-111111111111';
+  if v_event_count <> 1 then
+    raise exception 'POS_TEST_MENU_APPLY_AUDIT_EVENT_MISSING';
+  end if;
+
+  -- An identical request is replayed without a second write or audit event.
+  v_replay := public.apply_pos_catalog_menu_fields(
+    '11111111-1111-4111-8111-111111111111',
+    '11111111-1111-4111-8111-111111111111',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'burger-1', 'menu-burger-relinked',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    array['name','price'],
+    '{"name":"Local Burger","price":60.00}'::jsonb,
+    '{"name":"Burger Fresh","price":70.00}'::jsonb
+  );
+  if v_replay->>'replayed' <> 'true' or v_replay->>'eventId' <> v_result->>'eventId' then
+    raise exception 'POS_TEST_MENU_APPLY_IDEMPOTENT_REPLAY_FAILED';
+  end if;
+
+  -- Reusing the idempotency key with a different payload must fail closed.
+  begin
+    perform public.apply_pos_catalog_menu_fields(
+      '11111111-1111-4111-8111-111111111111',
+      '11111111-1111-4111-8111-111111111111',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'burger-1', 'menu-burger-relinked',
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      array['name'],
+      '{"name":"Local Burger"}'::jsonb,
+      '{"name":"Tampered"}'::jsonb
+    );
+    raise exception 'POS_TEST_MENU_APPLY_IDEMPOTENCY_CONFLICT_NOT_REJECTED';
+  exception when unique_violation then
+    null;
+  end;
+
+  -- Optimistic concurrency must reject stale before-values.
+  begin
+    perform public.apply_pos_catalog_menu_fields(
+      '11111111-1111-4111-8111-111111111111',
+      '11111111-1111-4111-8111-111111111111',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'burger-1', 'menu-burger-relinked',
+      'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      array['name'],
+      '{"name":"Local Burger"}'::jsonb,
+      '{"name":"Should not apply"}'::jsonb
+    );
+    raise exception 'POS_TEST_MENU_APPLY_STALE_VALUE_NOT_REJECTED';
+  exception when serialization_failure then
+    null;
+  end;
+
+  -- A merchant-protected field cannot be changed even by this service RPC.
+  update public.pos_catalog_menu_links set field_overrides = '{"name":true}'::jsonb
+   where owner_id = '11111111-1111-4111-8111-111111111111'
+     and location_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+     and provider_item_id = 'burger-1'
+     and menu_item_id = 'menu-burger-relinked';
+  begin
+    perform public.apply_pos_catalog_menu_fields(
+      '11111111-1111-4111-8111-111111111111',
+      '11111111-1111-4111-8111-111111111111',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'burger-1', 'menu-burger-relinked',
+      '99999999-9999-4999-8999-999999999999',
+      array['name'],
+      '{"name":"Burger Fresh"}'::jsonb,
+      '{"name":"Protected overwrite"}'::jsonb
+    );
+    raise exception 'POS_TEST_MENU_APPLY_PROTECTED_FIELD_NOT_REJECTED';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  -- Authenticated clients cannot execute the service-role-only RPC.
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  begin
+    perform public.apply_pos_catalog_menu_fields(
+      '11111111-1111-4111-8111-111111111111',
+      '11111111-1111-4111-8111-111111111111',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'burger-1', 'menu-burger-relinked',
+      '88888888-8888-4888-8888-888888888888',
+      array['name'],
+      '{"name":"Burger Fresh"}'::jsonb,
+      '{"name":"Client overwrite"}'::jsonb
+    );
+    raise exception 'POS_TEST_AUTHENTICATED_MENU_APPLY_WAS_NOT_REJECTED';
+  exception when insufficient_privilege then
+    null;
+  end;
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+
+  if has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'INSERT')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'UPDATE')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_apply_events', 'DELETE')
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'INSERT')
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.pos_catalog_menu_apply_events', 'DELETE') then
+    raise exception 'POS_TEST_MENU_APPLY_AUDIT_TABLE_WRITABLE_OUTSIDE_RPC';
+  end if;
+end;
+$$;
