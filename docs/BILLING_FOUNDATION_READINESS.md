@@ -27,3 +27,14 @@ invoices, payment records, usage metering, and an append-only subscription event
    redemption limits, webhook replay, refunds and reconciliation.
 
 Run `tests/billing-migrations-integration.sql` after applying the migration.
+
+
+## Platform admin read access
+
+The Super Admin overview now reads billing counts through RLS policies that
+recognize only trusted JWT `app_metadata.role = admin` or
+`app_metadata.roles` containing `admin`. User-editable `user_metadata` is
+never accepted as an admin claim. Admin access is read-only from the browser;
+all billing mutations remain reserved for trusted server-side workflows.
+The overview intentionally omits revenue totals until verified payment
+reconciliation is implemented.
