@@ -63,6 +63,12 @@ test('rejects invalid modifier selection rules and duplicate options', () => {
   assert.throws(() => normalizePosCatalog([duplicateOption]), /DUPLICATE_POS_CATALOG_MODIFIER_OPTION/);
 });
 
+test('rejects modifier options without an explicit availability state', () => {
+  const row = item();
+  delete (row.modifierGroups[0].options[0] as { available?: boolean }).available;
+  assert.throws(() => normalizePosCatalog([row]), /MODIFIER_OPTION_AVAILABILITY/);
+});
+
 test('rejects oversized or malformed catalog payloads', () => {
   assert.throws(() => normalizePosCatalog({ items: [] }), /INVALID_POS_CATALOG/);
   assert.throws(() => normalizePosCatalog([null]), /INVALID_POS_CATALOG_ITEM/);
