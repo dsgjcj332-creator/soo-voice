@@ -7,8 +7,13 @@ begin;
 
 alter table public.orders
   add column if not exists guest_token_hash text,
+  add column if not exists guest_token_expires_at timestamptz,
   add column if not exists idempotency_key text,
   add column if not exists request_hash text;
+
+create index if not exists orders_guest_token_expiry_idx
+  on public.orders(id, guest_token_expires_at)
+  where guest_token_hash is not null;
 
 create unique index if not exists orders_owner_idempotency_uidx
   on public.orders ("ownerId", idempotency_key)
@@ -141,10 +146,10 @@ begin
   v_order_id := 'order_' || replace(gen_random_uuid()::text, '-', '');
   insert into public.orders (
     id, "ownerId", "tableNumber", items, total, status, "createdAt",
-    guest_token_hash, idempotency_key, request_hash
+    guest_token_hash, guest_token_expires_at, idempotency_key, request_hash
   ) values (
     v_order_id, p_owner_id, p_table_number, v_items, v_total, 'pending',
-    v_created_at, p_guest_token_hash, p_idempotency_key, p_request_hash
+    v_created_at, p_guest_token_hash, now() + interval '7 days', p_idempotency_key, p_request_hash
   );
 
   insert into public.order_outbox(order_id, owner_id, event_type, payload)
