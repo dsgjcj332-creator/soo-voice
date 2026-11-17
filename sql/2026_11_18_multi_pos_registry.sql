@@ -87,7 +87,7 @@ create table if not exists public.pos_order_links (
   foreign key(owner_id, connection_id)
     references public.pos_connections(owner_id, id) on delete cascade,
   foreign key(owner_id, location_id)
-    references public.pos_locations(owner_id, id) on delete set null
+    references public.pos_locations(owner_id, id)
 );
 
 create index if not exists pos_order_links_owner_idx
