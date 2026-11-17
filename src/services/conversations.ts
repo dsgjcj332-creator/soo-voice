@@ -31,13 +31,6 @@ function sortConversations(items: Conversation[]): Conversation[] {
   });
 }
 
-/**
- * Keeps a tenant-scoped conversation list in sync with the initial snapshot
- * and subsequent Realtime INSERT/UPDATE/DELETE events.
- *
- * Realtime changes received while the first query is in flight are replayed
- * over that snapshot so a late initial response cannot erase newer events.
- */
 export function subscribeToConversations(
   ownerId: string,
   callback: (convs: Conversation[]) => void,
@@ -71,11 +64,9 @@ export function subscribeToConversations(
       return;
     }
 
-    // Do not allow a Realtime payload for another tenant into this list.
     if (incoming.ownerId && incoming.ownerId !== ownerId) return;
     const existingIndex = conversations.findIndex((item) => item.id === id);
     const next = { ...(existingIndex >= 0 ? conversations[existingIndex] : {}), ...incoming } as Conversation;
-
     if (existingIndex >= 0) {
       conversations = conversations.map((item, index) => index === existingIndex ? next : item);
     } else {
@@ -119,7 +110,6 @@ export function subscribeToConversations(
         publish();
         return;
       }
-
       conversations = (data ?? []).filter((row) => row.ownerId === ownerId) as Conversation[];
       for (const change of pendingChanges) applyChange(change);
       pendingChanges.length = 0;
