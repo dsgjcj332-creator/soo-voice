@@ -458,3 +458,39 @@ $$;
 reset role;
 
 select 'POS_POSTGRES_INTEGRATION_TESTS_PASSED' as result;
+
+
+-- Durable guest order rate limits: per-merchant and per-client buckets.
+do $rate_limit$
+declare
+  v_allowed boolean;
+  v_owner_bucket text := 'owner:' || repeat('a', 64);
+  v_client_one text := 'client:' || repeat('b', 64);
+  v_client_two text := 'client:' || repeat('c', 64);
+begin
+  v_allowed := public.consume_guest_order_rate_limit(v_owner_bucket, v_client_one, 60, 3, 2);
+  if v_allowed is distinct from true then raise exception 'RATE_LIMIT_FIRST_REQUEST_DENIED'; end if;
+  v_allowed := public.consume_guest_order_rate_limit(v_owner_bucket, v_client_one, 60, 3, 2);
+  if v_allowed is distinct from true then raise exception 'RATE_LIMIT_SECOND_REQUEST_DENIED'; end if;
+  v_allowed := public.consume_guest_order_rate_limit(v_owner_bucket, v_client_one, 60, 3, 2);
+  if v_allowed is distinct from false then raise exception 'RATE_LIMIT_CLIENT_LIMIT_NOT_ENFORCED'; end if;
+  v_allowed := public.consume_guest_order_rate_limit(v_owner_bucket, v_client_two, 60, 3, 2);
+  if v_allowed is distinct from false then raise exception 'RATE_LIMIT_MERCHANT_LIMIT_NOT_ENFORCED'; end if;
+
+  if has_table_privilege('anon', 'public.guest_order_rate_limit_buckets', 'SELECT')
+     or has_table_privilege('authenticated', 'public.guest_order_rate_limit_buckets', 'SELECT')
+     or has_function_privilege('anon', 'public.consume_guest_order_rate_limit(text,text,integer,integer,integer)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.consume_guest_order_rate_limit(text,text,integer,integer,integer)', 'EXECUTE') then
+    raise exception 'RATE_LIMIT_EXPOSED_TO_CLIENT_ROLE';
+  end if;
+
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  begin
+    perform public.consume_guest_order_rate_limit(v_owner_bucket, v_client_two, 60, 3, 2);
+    raise exception 'RATE_LIMIT_RPC_ALLOWED_AUTHENTICATED_CALL';
+  exception when insufficient_privilege then
+    null;
+  end;
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+end;
+$rate_limit$;
