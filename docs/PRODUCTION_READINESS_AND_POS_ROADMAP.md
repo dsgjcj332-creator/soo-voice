@@ -32,7 +32,7 @@ SooVoice is a multi-tenant voice-ordering and restaurant integration platform. P
 
 ### P0 — Stop unsafe production behavior
 - Replace broad anonymous order policies with a guest capability-token design (store only token hashes; guest may read only the matching order; guest cannot update status).
-- Move all order status transitions and order deletion to authenticated server-side operations with merchant/branch authorization.
+- Move all order status transitions and order deletion to authenticated server-side operations with merchant/branch authorization. A first SQL hardening migration and safer setup script now remove broad anonymous access; apply and verify them in a staging Supabase project before rollout.
 - Enforce tenant scoping in every menu, knowledge, settings, order and analytics query. Missing tenant identity must fail closed.
 - Remove browser reliance on a shared static admin API key. Verify Supabase JWT server-side and derive tenant membership from trusted database records.
 - Add rate limits and abuse controls to Gemini token and TTS endpoints; enforce per-tenant usage budgets.
