@@ -318,19 +318,16 @@ export function StoreDemo() {
       : "Speak with the voice assistant below for ingredients, chef recommendations, and dish details.";
   };
 
-  // Submit the table order to the kitchen (Supabase `orders` table + webhook).
-  //
-  // If the orders table does not have an anon INSERT RLS policy, the
-  // insert will be rejected and the guest sees an error. We detect that
-  // specific failure mode and show a clearer message in both languages
-  // so the merchant knows to apply sql/orders_setup.sql.
+  // Submit the table order. Until the trusted server-side order endpoint
+  // validates catalog prices and creates the order, never report success
+  // when Supabase is unavailable. Browser-provided prices are not trusted.
   const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
   const handleSubmitOrder = async () => {
     if (cartItems.length === 0) return;
     setCheckoutStatus('sending');
     setSubmitErrorKind(null);
     try {
-      const orderId = 'order_' + Math.floor(100000 + Math.random() * 900000);
+      const orderId = 'order_' + crypto.randomUUID();
 
       // ---- Payload sanitization (why this matters) ----
       // The guest phone can feed us data Postgres rejects, and most of
@@ -369,7 +366,12 @@ export function StoreDemo() {
 
       const supabase = getSupabase();
       const { isConfigured } = getSupabaseConfig();
-      if (isConfigured && supabase) {
+      if (!isConfigured || !supabase) {
+        setSubmitErrorKind('schema');
+        throw new Error('Order storage is not configured. The order was not placed.');
+      }
+
+      {
         const { error } = await supabase.from('orders').insert(newOrder);
         if (error) {
           // Log everything Supabase gives us — code/details/hint are what
