@@ -3,6 +3,9 @@ import type { PosCatalogItem, PosModifierGroup, PosModifierOption } from './type
 const MAX_ITEMS = 10_000;
 const MAX_GROUPS = 100;
 const MAX_OPTIONS = 200;
+const MAX_TOTAL_GROUPS = 20_000;
+const MAX_TOTAL_OPTIONS = 100_000;
+const MAX_TOTAL_LOCATION_LINKS = 50_000;
 const MAX_MONEY = 1_000_000;
 
 function text(value: unknown, field: string, max = 200): string {
@@ -31,6 +34,7 @@ function normalizeOption(value: unknown): PosModifierOption {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTION');
   }
   const row = value as Record<string, unknown>;
+  if (typeof row.available !== 'boolean') throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTION_AVAILABILITY');
   return {
     id: text(row.id, 'modifier_option_id', 160),
     ...(row.providerId === undefined ? {} : { providerId: text(row.providerId, 'modifier_option_provider_id', 160) }),
@@ -81,6 +85,9 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
   if (!Array.isArray(input) || input.length > MAX_ITEMS) {
     throw new Error('INVALID_POS_CATALOG');
   }
+  let totalGroups = 0;
+  let totalOptions = 0;
+  let totalLocationLinks = 0;
   const rows = input.map((value): PosCatalogItem => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       throw new Error('INVALID_POS_CATALOG_ITEM');
@@ -92,6 +99,17 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
     }
     const currency = text(row.currency, 'currency', 3);
     if (!/^[A-Z]{3}$/.test(currency)) throw new Error('INVALID_POS_CATALOG_CURRENCY');
+    totalGroups += row.modifierGroups.length;
+    totalLocationLinks += row.locationIds.length;
+    totalOptions += row.modifierGroups.reduce((sum, group) => {
+      if (!group || typeof group !== 'object' || Array.isArray(group) || !Array.isArray((group as Record<string, unknown>).options)) {
+        throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTIONS');
+      }
+      return sum + ((group as Record<string, unknown>).options as unknown[]).length;
+    }, 0);
+    if (totalGroups > MAX_TOTAL_GROUPS || totalOptions > MAX_TOTAL_OPTIONS || totalLocationLinks > MAX_TOTAL_LOCATION_LINKS) {
+      throw new Error('POS_CATALOG_TOTAL_LIMIT_EXCEEDED');
+    }
     const modifierGroups = row.modifierGroups.map(normalizeGroup);
     if (new Set(modifierGroups.map(group => group.id)).size !== modifierGroups.length) {
       throw new Error('DUPLICATE_POS_CATALOG_MODIFIER_GROUP');
