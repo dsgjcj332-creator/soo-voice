@@ -244,7 +244,7 @@ export function useStoreSettings(ownerId?: string | null, remote = false) {
       setSettings(next);
       saveLocalStoreSettings(ownerId, next);
       },
-    [ownerId, remote, isConfigured]
+    [ownerId]
   );
 
   return { settings, update, save, loading };
