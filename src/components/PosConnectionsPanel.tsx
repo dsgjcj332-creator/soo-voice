@@ -6,7 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
 type PosMenuItem = { id: string; name: string; price: number };
-type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string };
+type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
+type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string; field_overrides: Partial<Record<PosCatalogField, boolean>> };
 
 type PosConnection = {
   id: string;
@@ -35,6 +36,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [menuItems, setMenuItems] = useState<PosMenuItem[]>([]);
   const [catalogMappings, setCatalogMappings] = useState<PosCatalogMapping[]>([]);
   const [mappingSelections, setMappingSelections] = useState<Record<string, string>>({});
+  const [mappingOverrides, setMappingOverrides] = useState<Record<string, Partial<Record<PosCatalogField, boolean>>>>({});
   const [savingMappingId, setSavingMappingId] = useState('');
   const [branchConnectionId, setBranchConnectionId] = useState('');
   const [branchProviderId, setBranchProviderId] = useState('');
@@ -121,7 +123,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   }, [reviewLocationId, user, isArabic]);
 
   useEffect(() => {
-    if (!reviewLocationId) { setMenuItems([]); setCatalogMappings([]); setMappingSelections({}); return; }
+    if (!reviewLocationId) { setMenuItems([]); setCatalogMappings([]); setMappingSelections({}); setMappingOverrides({}); return; }
     let cancelled = false;
     const loadMappingOptions = async () => {
       try {
@@ -138,7 +140,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     if (!reviewLocationId || !menuItemId) return;
     setSavingMappingId(item.provider_item_id); setCatalogError('');
     try {
-      const saved = await request('catalog/mappings', 'POST', { locationId: reviewLocationId, providerItemId: item.provider_item_id, menuItemId, fieldOverrides: {} });
+      const saved = await request('catalog/mappings', 'POST', { locationId: reviewLocationId, providerItemId: item.provider_item_id, menuItemId, fieldOverrides: mappingOverrides[item.provider_item_id] || catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.field_overrides || {} });
       setCatalogMappings(current => [...current.filter(mapping => mapping.provider_item_id !== item.provider_item_id), saved as PosCatalogMapping]);
       setMessage(isArabic ? 'تم حفظ ربط المنتج بموافقتك. لم يتم تغيير المنيو أو السعر.' : 'Product mapping approved and saved. The menu and price were not changed.');
       setError(false);
@@ -317,6 +319,23 @@ export function PosConnectionsPanel({ language }: { language: string }) {
                   {menuItems.map(menuItem => <option key={menuItem.id} value={menuItem.id}>{menuItem.name} · {Number(menuItem.price).toFixed(2)}</option>)}
                 </select>
               </label>
+              <div className="w-full rounded-lg bg-slate-50 p-3">
+                <p className="mb-2 text-[11px] font-bold text-slate-600">{isArabic ? 'احمِ حقول المنيو من تحديثات الكاشير' : 'Protect merchant-owned fields from POS updates'}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {([
+                    ['name', isArabic ? 'الاسم' : 'Name'],
+                    ['description', isArabic ? 'الوصف' : 'Description'],
+                    ['price', isArabic ? 'السعر' : 'Price'],
+                    ['available', isArabic ? 'التوفر' : 'Availability'],
+                    ['categoryId', isArabic ? 'التصنيف' : 'Category'],
+                  ] as Array<[PosCatalogField, string]>).map(([field, label]) => (
+                    <label key={field} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                      <input type="checkbox" checked={(mappingOverrides[item.provider_item_id] ?? catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.field_overrides ?? {})[field] === true} onChange={e => setMappingOverrides(current => ({ ...current, [item.provider_item_id]: { ...(current[item.provider_item_id] ?? catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.field_overrides ?? {}), [field]: e.target.checked } }))} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <button type="button" onClick={() => void saveCatalogMapping(item)} disabled={savingMappingId === item.provider_item_id || !(mappingSelections[item.provider_item_id] || catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id) || !menuItems.length} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                 {savingMappingId === item.provider_item_id ? (isArabic ? 'جارٍ الحفظ...' : 'Saving...') : (catalogMappings.some(mapping => mapping.provider_item_id === item.provider_item_id) ? (isArabic ? 'تحديث الربط' : 'Update mapping') : (isArabic ? 'اعتماد الربط' : 'Approve mapping'))}
               </button>
