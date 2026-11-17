@@ -235,3 +235,17 @@ The apply workflow is now implemented through a separate, service-role-only data
 - `tests/pos-migrations-integration.sql` exercises the RPC against PostgreSQL, including atomic field updates, audit event creation, idempotent replay, changed-payload rejection, optimistic-concurrency conflicts, protected-field denial, authenticated-role denial and tenant RLS.
 
 CI run #441880 passed POS API tests, TypeScript, production build, all POS migrations, RLS/grants/FK verification and PostgreSQL integration tests. This is still isolated CI PostgreSQL, not the actual Supabase Staging project. Before merging or enabling in production, apply the migrations in a dedicated Supabase Staging project and run `sql/verify_pos_catalog_staging.sql` plus two-tenant/branch acceptance tests there. No live POS vendor adapter, OAuth flow, scheduled catalog sync or POS order dispatch is implied by this milestone.
+
+
+## Provider-neutral POS webhook ingress checkpoint (2026-11-18)
+
+A first inbound catalog event path is implemented for connected POS connections that can send signed outbound webhooks, or for merchant-operated middleware that translates a vendor payload into the canonical SooVoice contract.
+
+- `POST /api/pos/webhooks/:connectionId` resolves the connection and mapped active branch from stored records; caller-supplied owner and internal branch IDs are never trusted.
+- The encrypted connection credential envelope supplies a `webhookSecret`. Signatures use HMAC-SHA256 over the exact raw request bytes prefixed by the Unix timestamp, timing-safe digest comparison, and a five-minute timestamp window.
+- The first supported event is `catalog.snapshot`. The route validates the canonical catalog shape and filters records to the selected provider branch.
+- `sql/2026_11_24_pos_webhook_ingress.sql` adds a service-role-only RPC that records the event and invokes catalog snapshot persistence in one database transaction. A unique connection/event ID prevents duplicate delivery from applying the snapshot twice.
+- Unit tests cover valid signatures, tampered bodies, malformed signatures, stale/future timestamps and weak/missing secrets. PostgreSQL integration tests cover atomic catalog ingestion, duplicate replay and service-role-only execution.
+- Contract and payload examples: `docs/POS_UNIVERSAL_WEBHOOK_CONTRACT.md`.
+
+This is a generic ingress contract, not automatic compatibility with every POS product. Each vendor still needs its own API/auth adapter or middleware capable of producing the canonical signed payload. Provider webhook subscription setup, secret provisioning/rotation UI, order events, polling/scheduled sync and actual POS order dispatch remain future work. CI PostgreSQL is isolated infrastructure; actual Supabase Staging migration and two-merchant acceptance testing remain required before release.
