@@ -380,7 +380,7 @@ export function StoreDemo() {
             message: error.message,
             details: (error as any).details,
             hint: (error as any).hint,
-            payload: newOrder,
+            // Do not log customer/order payloads in the browser console.
           });
           const msg = (error.message || '').toLowerCase();
           // Detect RLS rejection (anonymous guest cannot insert) — the most
@@ -415,17 +415,10 @@ export function StoreDemo() {
           setSubmitErrorKind('generic');
           throw error;
         }
-        // Dispatch webhook if configured (non-blocking)
-        try {
-          const { data: wh } = await supabase.from('webhook_settings').select('*').eq('ownerId', resolvedOwnerId).single();
-          if (wh?.webhookUrl) {
-            fetch(wh.webhookUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ event: 'order.created', timestamp: Date.now(), webhook_secret: wh.webhookSecret, data: newOrder }),
-            }).catch(() => {});
-          }
-        } catch {}
+        // Outbound merchant webhooks must be dispatched by the trusted
+        // server-side outbox, never by this public browser page. In particular,
+        // never read or expose webhookSecret in client code or request bodies.
+        // The durable outbox worker is a production-readiness dependency.
       }
 
       // Two-phase transition to avoid the removeChild crash:
