@@ -215,3 +215,9 @@ Added `tests/pos-catalog-menu-mapping-api.test.ts` using a local Express test se
 ## POS mapping audit history checkpoint (2026-11-17)
 
 Extended the mapping migration with append-only `pos_catalog_menu_link_events`. A database trigger records mapping creation, relinking, field-protection changes and re-approval, including the merchant actor and before/after state. Merchant sessions receive read-only RLS access; writes are reserved for the trusted service role and trigger. Added a tenant- and branch-scoped history API and displayed the latest events beside each POS catalog item in the review panel. API tests now cover history authorization and branch filtering. This audit log records mapping approvals only; it does not yet log or execute changes to the live menu because the explicit apply workflow is not implemented.
+
+## POS catalog staging verification checklist
+
+A read-only post-migration schema check is available at `sql/verify_pos_catalog_staging.sql`. Apply the POS registry, catalog storage and menu-mapping migrations in chronological order in a dedicated Supabase Staging project, then run this verification script in the Supabase SQL editor. It checks required objects, RLS enablement and owner-read policies, authenticated read-only grants, absence of anonymous catalog reads, service-role-only catalog snapshot RPC execution, tenant foreign keys, and the enabled mapping audit trigger/security configuration.
+
+The verification script does not seed data or prove row-level behavior by itself. Follow it with staging tests using two separate merchant identities and seeded connections/locations/catalog/menu rows to verify cross-tenant denial, branch isolation, snapshot timestamp conflict behavior, partial versus complete snapshots, mapping approval/relink/protection audit events, and rollback behavior. Do not apply these migrations to production based on static CI or the read-only verification alone.
