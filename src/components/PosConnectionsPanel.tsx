@@ -3,7 +3,9 @@ import { AlertCircle, CheckCircle2, Loader2, Plus, RefreshCw, ShieldCheck } from
 import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };\n\ntype PosConnection = {
+type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
+
+type PosConnection = {
   id: string;
   provider: string;
   display_name: string | null;
@@ -21,7 +23,14 @@ const PROVIDERS = [
 export function PosConnectionsPanel({ language }: { language: string }) {
   const { user } = useAuth();
   const isArabic = language === 'ar';
-  const [connections, setConnections] = useState<PosConnection[]>([]);\n  const [locations, setLocations] = useState<PosLocation[]>([]);\n  const [branchConnectionId, setBranchConnectionId] = useState('');\n  const [branchProviderId, setBranchProviderId] = useState('');\n  const [branchName, setBranchName] = useState('');\n  const [branchTimezone, setBranchTimezone] = useState('Africa/Cairo');\n  const [branchCurrency, setBranchCurrency] = useState('EGP');\n  const [savingBranch, setSavingBranch] = useState(false);
+  const [connections, setConnections] = useState<PosConnection[]>([]);
+  const [locations, setLocations] = useState<PosLocation[]>([]);
+  const [branchConnectionId, setBranchConnectionId] = useState('');
+  const [branchProviderId, setBranchProviderId] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [branchTimezone, setBranchTimezone] = useState('Africa/Cairo');
+  const [branchCurrency, setBranchCurrency] = useState('EGP');
+  const [savingBranch, setSavingBranch] = useState(false);
   const [provider, setProvider] = useState('foodics');
   const [displayName, setDisplayName] = useState('');
   const [credentialsText, setCredentialsText] = useState('');
@@ -63,7 +72,17 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     } finally {
       setLoading(false);
     }
-  }, [request, isArabic]);\n\n  const loadLocations = useCallback(async () => {\n    try {\n      const rows = await request('locations', 'GET');\n      setLocations(Array.isArray(rows) ? rows : []);\n    } catch (err) {\n      setError(true);\n      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تحميل الفروع.' : 'Could not load branches.'));\n    }\n  }, [request, isArabic]);
+  }, [request, isArabic]);
+
+  const loadLocations = useCallback(async () => {
+    try {
+      const rows = await request('locations', 'GET');
+      setLocations(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setError(true);
+      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تحميل الفروع.' : 'Could not load branches.'));
+    }
+  }, [request, isArabic]);
 
   useEffect(() => {
     if (user?.provider === 'supabase') { void loadConnections(); void loadLocations(); }
@@ -90,7 +109,8 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       setDisplayName('');
       setShowForm(false);
       setMessage(isArabic ? 'تم حفظ بيانات الربط المشفّرة. الحالة: قيد الإعداد، ولم يتم اختبار الاتصال بعد.' : 'Encrypted credentials saved. Status: pending setup; the provider connection has not been tested.');
-      await loadConnections();\n      await loadLocations();
+      await loadConnections();
+      await loadLocations();
     } catch (err) {
       setError(true);
       setMessage(err instanceof Error ? err.message : (isArabic ? 'فشل حفظ الربط.' : 'Could not save connection.'));
@@ -171,7 +191,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
         </label>
       </div>
       <label className="block text-xs font-bold text-slate-600">{isArabic ? 'بيانات الاعتماد بصيغة JSON' : 'Credentials as JSON'}
-        <textarea value={credentialsText} onChange={e => setCredentialsText(e.target.value)} required rows={6} autoComplete="off" spellCheck={false} placeholder={'{\n  "apiKey": "YOUR_SECRET",\n  "storeId": "YOUR_STORE_ID"\n}'} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs" />
+        <textarea value={credentialsText} onChange={e => setCredentialsText(e.target.value)} required rows={6} autoComplete="off" spellCheck={false} placeholder={'{"apiKey":"YOUR_SECRET","storeId":"YOUR_STORE_ID"}' } className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs" />
       </label>
       <p className="text-xs leading-5 text-slate-500">{isArabic ? 'استخدم أسماء الحقول التي يحددها مزوّدك. لا تلصق بيانات حقيقية في بيئة تجريبية غير موثوقة. لن نعرض هذه القيم بعد الحفظ.' : 'Use the field names specified by your provider. Do not paste live secrets into an untrusted test environment. Values will not be displayed after saving.'}</p>
       <div className="flex flex-wrap gap-2">
@@ -192,6 +212,40 @@ export function PosConnectionsPanel({ language }: { language: string }) {
           <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${connection.status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{isArabic ? label[0] : label[1]}</span>
         </div>;
       })}
+    </div>
+
+    <div className="mt-8 border-t border-slate-100 pt-6">
+      <div className="mb-4">
+        <h3 className="font-extrabold text-slate-900">{isArabic ? 'الفروع ونقاط البيع' : 'Branches and locations'}</h3>
+        <p className="mt-1 text-xs text-slate-500">{isArabic ? 'أضف معرّف الفرع كما يظهر في نظام الكاشير لربطه يدويًا.' : 'Enter the branch identifier exactly as it appears in your POS system to map it manually.'}</p>
+      </div>
+      {connections.length > 0 && <form onSubmit={saveBranch} className="grid gap-3 rounded-2xl bg-slate-50 p-4 md:grid-cols-2">
+        <label className="text-xs font-bold text-slate-600">{isArabic ? 'اتصال الكاشير' : 'POS connection'}
+          <select required value={branchConnectionId} onChange={e => setBranchConnectionId(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm">
+            <option value="">{isArabic ? 'اختر الاتصال' : 'Select connection'}</option>
+            {connections.map(item => <option key={item.id} value={item.id}>{item.display_name || item.provider}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-bold text-slate-600">{isArabic ? 'اسم الفرع' : 'Branch name'}
+          <input required maxLength={120} value={branchName} onChange={e => setBranchName(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+        </label>
+        <label className="text-xs font-bold text-slate-600">{isArabic ? 'معرّف الفرع لدى المزوّد' : 'Provider branch ID'}
+          <input required maxLength={160} value={branchProviderId} onChange={e => setBranchProviderId(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-sm" />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs font-bold text-slate-600">{isArabic ? 'المنطقة الزمنية' : 'Timezone'}
+            <input value={branchTimezone} onChange={e => setBranchTimezone(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+          </label>
+          <label className="text-xs font-bold text-slate-600">{isArabic ? 'العملة' : 'Currency'}
+            <input maxLength={3} value={branchCurrency} onChange={e => setBranchCurrency(e.target.value.toUpperCase())} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+          </label>
+        </div>
+        <button type="submit" disabled={savingBranch || !branchConnectionId || !branchName.trim() || !branchProviderId.trim()} className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-50 md:col-span-2">{savingBranch ? (isArabic ? 'جارٍ الحفظ...' : 'Saving...') : (isArabic ? 'حفظ ربط الفرع' : 'Save branch mapping')}</button>
+      </form>}
+      <div className="mt-3 space-y-2">
+        {locations.map(location => <div key={location.id} className="flex flex-wrap justify-between gap-2 rounded-xl border border-slate-200 p-3 text-sm"><div><p className="font-bold text-slate-800">{location.name}</p><p className="text-xs text-slate-500">{location.provider_location_id} · {location.timezone || '—'} · {location.currency || '—'}</p></div><span className="text-xs font-bold text-emerald-700">{isArabic ? 'مضاف' : 'Mapped'}</span></div>)}
+        {locations.length === 0 && <p className="py-3 text-xs text-slate-500">{isArabic ? 'لم تتم إضافة فروع بعد.' : 'No branches mapped yet.'}</p>}
+      </div>
     </div>
   </section>;
 }
