@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Copy, KeyRound, Loader2, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -59,6 +59,8 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [rotatingWebhookConnectionId, setRotatingWebhookConnectionId] = useState('');
 
   const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'catalog/apply' | 'catalog/apply-events' | 'menu-items', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
     const supabase = getSupabase();
@@ -224,6 +226,32 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     }
   };
 
+  const rotateWebhookSecret = async (connection: PosConnection) => {
+    const confirmed = window.confirm(isArabic
+      ? 'سيتم إنشاء سر جديد وإبطال السر السابق فورًا. حدّث إعدادات مزوّد الكاشير قبل استقبال الأحداث. هل تريد المتابعة؟'
+      : 'A new secret will immediately invalidate the previous one. Update your POS provider before sending more events. Continue?');
+    if (!confirmed) return;
+    setRotatingWebhookConnectionId(connection.id);
+    setWebhookSecret('');
+    setError(false);
+    setMessage('');
+    try {
+      const result = await request(`connections/${connection.id}/webhook-secret`, 'POST');
+      if (!result || typeof result.secret !== 'string' || result.secret.length < 32) {
+        throw new Error(isArabic ? 'لم يتم استلام السر الجديد بشكل صحيح.' : 'The new secret response was invalid.');
+      }
+      setWebhookSecret(result.secret);
+      setMessage(isArabic
+        ? 'تم إنشاء السر. انسخه واحفظه الآن؛ لن نعرضه مرة أخرى. السر السابق لم يعد صالحًا.'
+        : 'Secret generated. Copy and store it now; it will not be shown again. The previous secret is no longer valid.');
+    } catch (err) {
+      setError(true);
+      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تدوير السر.' : 'Could not rotate webhook secret.'));
+    } finally {
+      setRotatingWebhookConnectionId('');
+    }
+  };
+
   const saveBranch = async (event: React.FormEvent) => {
     event.preventDefault();
     setSavingBranch(true);
@@ -322,6 +350,16 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       </div>
     </form>}
 
+    {webhookSecret && <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p className="text-sm font-bold text-amber-950">{isArabic ? 'احفظ سر Webhook الآن — يظهر مرة واحدة فقط' : 'Store this webhook secret now — it is shown only once'}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <code dir="ltr" className="min-w-0 flex-1 break-all rounded-lg border border-amber-200 bg-white p-3 text-xs text-slate-800">{webhookSecret}</code>
+        <button type="button" onClick={() => { void navigator.clipboard.writeText(webhookSecret).then(() => setMessage(isArabic ? 'تم نسخ السر.' : 'Secret copied.')).catch(() => setMessage(isArabic ? 'تعذر النسخ؛ انسخ السر يدويًا.' : 'Copy failed; copy the secret manually.')); }} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white"><Copy className="h-3.5 w-3.5" />{isArabic ? 'نسخ' : 'Copy'}</button>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-amber-900">{isArabic ? 'أرسل هذا السر إلى إعدادات الـWebhook لدى مزوّدك. لا تشاركه في رسائل أو سجلات عامة. إذا أغلقت الصفحة أو فقدته، أنشئ سرًا جديدًا.' : 'Configure your POS provider with this secret. Do not share it in public messages or logs. If you close the page or lose it, generate a new secret.'}</p>
+      <button type="button" onClick={() => setWebhookSecret('')} className="mt-3 text-xs font-bold text-amber-900 underline">{isArabic ? 'إخفاء السر' : 'Hide secret'}</button>
+    </div>}
+
     {message && <p role="status" className={`mt-4 flex items-start gap-2 text-sm ${error ? 'text-rose-700' : 'text-emerald-700'}`}><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{message}</p>}
 
     <div className="mt-6 space-y-3">
@@ -331,7 +369,13 @@ export function PosConnectionsPanel({ language }: { language: string }) {
         const label = statusLabel(connection.status);
         return <div key={connection.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 p-4">
           <div><p className="font-bold text-slate-800">{connection.display_name || PROVIDERS.find(p => p[0] === connection.provider)?.[1] || connection.provider}</p><p className="mt-1 text-xs text-slate-500">{connection.provider}</p></div>
-          <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${connection.status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{isArabic ? label[0] : label[1]}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${connection.status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>{isArabic ? label[0] : label[1]}</span>
+            <button type="button" onClick={() => void rotateWebhookSecret(connection)} disabled={rotatingWebhookConnectionId === connection.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              {rotatingWebhookConnectionId === connection.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+              {isArabic ? 'إنشاء / تجديد سر Webhook' : 'Generate / rotate webhook secret'}
+            </button>
+          </div>
         </div>;
       })}
     </div>
