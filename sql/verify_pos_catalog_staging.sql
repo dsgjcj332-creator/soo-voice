@@ -4,6 +4,7 @@
 --   2026_11_21_pos_catalog_storage.sql
 --   2026_11_22_pos_catalog_menu_mapping.sql
 --   2026_11_23_pos_catalog_menu_apply.sql
+--   2026_11_24_pos_webhook_ingress.sql
 -- This script creates/updates no objects and writes no rows.
 
 do $$
@@ -13,6 +14,9 @@ declare
   );
   v_trigger_fn regprocedure := to_regprocedure(
     'public.log_pos_catalog_menu_link_change()'
+  );
+  v_webhook_fn regprocedure := to_regprocedure(
+    'public.ingest_pos_catalog_webhook(uuid,uuid,uuid,text,text,jsonb,jsonb,boolean)'
   );
   v_missing text;
 begin
@@ -24,7 +28,7 @@ begin
     raise exception 'POS_STAGING_MISSING_REQUIRED_TABLES';
   end if;
 
-  if v_sync_fn is null or v_trigger_fn is null then
+  if v_sync_fn is null or v_trigger_fn is null or v_webhook_fn is null then
     raise exception 'POS_STAGING_MISSING_REQUIRED_FUNCTIONS';
   end if;
 
@@ -151,6 +155,17 @@ begin
     raise exception 'POS_STAGING_MENU_APPLY_RPC_SECURITY_INVALID';
   end if;
 
-  raise notice 'POS_STAGING_VERIFICATION_PASSED: RLS, grants, RPC privileges, tenant foreign keys and mapping audit trigger are present.';
+  if has_function_privilege('anon', v_webhook_fn, 'EXECUTE')
+     or has_function_privilege('authenticated', v_webhook_fn, 'EXECUTE')
+     or not has_function_privilege('service_role', v_webhook_fn, 'EXECUTE')
+     or not exists (
+       select 1 from pg_proc
+        where oid = v_webhook_fn and prosecdef
+          and proconfig @> array['search_path=public']::text[]
+     ) then
+    raise exception 'POS_STAGING_WEBHOOK_RPC_SECURITY_INVALID';
+  end if;
+
+  raise notice 'POS_STAGING_VERIFICATION_PASSED: RLS, grants, RPC privileges, tenant foreign keys, audit trigger and webhook ingress are present.';
 end;
 $$;
