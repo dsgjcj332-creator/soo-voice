@@ -371,7 +371,7 @@ export function createApiApp() {
   app.get('/api/pos/catalog/mapping-events/:locationId?', posConnectionRateLimit, async (req, res) => {
     const auth = await authenticatePosMerchant(req);
     if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
-    const locationId = typeof req.query.locationId === 'string' ? req.query.locationId : '';
+    const locationId = typeof req.params.locationId === 'string' ? req.params.locationId : typeof req.query.locationId === 'string' ? req.query.locationId : '';
     if (!isUuid(locationId)) { res.status(400).json({ error: 'A valid POS location ID is required' }); return; }
     try {
       const locationQuery = new URLSearchParams({
