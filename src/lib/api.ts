@@ -368,6 +368,40 @@ export function createApiApp() {
     }
   });
 
+  app.get('/api/pos/catalog/mapping-events', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const locationId = typeof req.query.locationId === 'string' ? req.query.locationId : '';
+    if (!isUuid(locationId)) { res.status(400).json({ error: 'A valid POS location ID is required' }); return; }
+    try {
+      const locationQuery = new URLSearchParams({
+        select: 'id', id: `eq.${locationId}`, owner_id: `eq.${auth.ownerId}`, limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      if (!Array.isArray(locations) || locations.length !== 1) { res.status(404).json({ error: 'POS location not found' }); return; }
+
+      const query = new URLSearchParams({
+        select: 'id,mapping_id,provider_item_id,menu_item_id,actor_id,event_type,previous_state,current_state,created_at',
+        owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`,
+        order: 'created_at.desc', limit: '200',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_menu_link_events?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) { res.status(503).json({ error: 'POS mapping history is temporarily unavailable' }); return; }
+      const rows = await response.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS mapping history error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS mapping history is temporarily unavailable' });
+    }
+  });
+
   app.post('/api/pos/catalog/mappings', posConnectionRateLimit, async (req, res) => {
     const auth = await authenticatePosMerchant(req);
     if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
