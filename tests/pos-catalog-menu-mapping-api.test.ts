@@ -9,8 +9,12 @@ const accessToken = 'merchant-session-token-abcdefghijklmnopqrstuvwxyz';
 const originalFetch = globalThis.fetch;
 
 type MockOptions = {
-  menuRows?: Array<{ id: string }>;
+  menuRows?: Array<{ id: string; name?: string; description?: string | null; price?: number; ownerId?: string; isAiOnly?: boolean }>;
   mappingStatus?: number;
+  locationCurrency?: string | null;
+  catalogCurrency?: string;
+  fieldOverrides?: Record<string, boolean>;
+  mappingApprovedBy?: string;
 };
 
 async function withApi(
@@ -50,10 +54,30 @@ function json(data: unknown, status = 200) {
 
 function successfulSupabase(url: URL, init: RequestInit | undefined, options: MockOptions = {}) {
   if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
-  if (url.pathname === '/rest/v1/pos_locations') return json([{ id: locationId, connection_id: connectionId }]);
-  if (url.pathname === '/rest/v1/pos_catalog_items') return json([{ provider_item_id: 'provider-tea-1' }]);
+  if (url.pathname === '/rest/v1/pos_locations') return json([{
+    id: locationId, connection_id: connectionId, currency: options.locationCurrency === undefined ? 'EGP' : options.locationCurrency,
+  }]);
+  if (url.pathname === '/rest/v1/pos_catalog_items') return json([{
+    provider_item_id: 'provider-tea-1', name: 'Tea POS Name', description: 'POS description',
+    currency: options.catalogCurrency ?? 'EGP', unit_price: 45.5, active: true,
+  }]);
   if (url.pathname === '/rest/v1/pos_catalog_menu_link_events') return json([{ id: 'event-1', provider_item_id: 'provider-tea-1', event_type: 'created', actor_id: ownerId, created_at: '2026-11-17T12:00:00.000Z' }]);
-  if (url.pathname === '/rest/v1/menu_items') return json(options.menuRows ?? [{ id: 'menu-tea-1' }]);
+  if (url.pathname === '/rest/v1/menu_items') return json(options.menuRows ?? [{
+    id: 'menu-tea-1', name: 'Tea old', description: 'Old description', price: 30,
+    ownerId, isAiOnly: false,
+  }]);
+  if (url.pathname === '/rest/v1/pos_catalog_menu_links' && init?.method !== 'POST') return json([{
+    id: 'mapping-1', connection_id: connectionId, provider_item_id: 'provider-tea-1',
+    menu_item_id: 'menu-tea-1', field_overrides: options.fieldOverrides ?? {},
+    approved_by: options.mappingApprovedBy ?? ownerId, approved_at: '2026-11-17T12:00:00.000Z',
+  }]);
+  if (url.pathname === '/rest/v1/rpc/apply_pos_catalog_menu_fields' && init?.method === 'POST') {
+    return json({ applied: true, replayed: false, eventId: 'apply-event-1' });
+  }
+  if (url.pathname === '/rest/v1/pos_catalog_menu_apply_events') return json([{
+    id: 'apply-event-1', provider_item_id: 'provider-tea-1', selected_fields: ['name'],
+    before_state: { name: 'Tea old' }, after_state: { name: 'Tea POS Name' },
+  }]);
   if (url.pathname === '/rest/v1/pos_catalog_menu_links' && init?.method === 'POST') {
     if (options.mappingStatus && options.mappingStatus !== 201) return json({ message: 'mapping conflict' }, options.mappingStatus);
     const body = JSON.parse(String(init.body));
@@ -174,6 +198,113 @@ test('POS mapping history is restricted to the authenticated merchant and select
       assert.equal(events.length, 1);
       assert.equal(events[0].event_type, 'created');
       const historyRequest = requests.find(request => request.url.pathname === '/rest/v1/pos_catalog_menu_link_events');
+      assert.equal(historyRequest?.url.searchParams.get('owner_id'), `eq.${ownerId}`);
+      assert.equal(historyRequest?.url.searchParams.get('location_id'), `eq.${locationId}`);
+    },
+  );
+});
+
+
+test('POS menu apply derives values from the stored snapshot and executes only explicit merchant-selected fields', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/apply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationId, providerItemId: 'provider-tea-1', menuItemId: 'menu-tea-1',
+          requestId: '770e8400-e29b-41d4-a716-446655440000',
+          selectedFields: ['name', 'price'],
+          patch: { name: 'CLIENT FORGED NAME', price: 0 },
+          expected: { name: 'CLIENT FORGED NAME', price: 0 },
+        }),
+      });
+      assert.equal(response.status, 200);
+      const result = await response.json() as Record<string, unknown>;
+      assert.equal(result.applied, true);
+
+      const rpc = requests.find(request => request.url.pathname === '/rest/v1/rpc/apply_pos_catalog_menu_fields');
+      assert.equal(rpc?.init?.method, 'POST');
+      const rpcBody = JSON.parse(String(rpc?.init?.body));
+      assert.equal(rpcBody.p_owner_id, ownerId);
+      assert.equal(rpcBody.p_actor_id, ownerId);
+      assert.equal(rpcBody.p_request_id, '770e8400-e29b-41d4-a716-446655440000');
+      assert.deepEqual(rpcBody.p_selected_fields, ['name', 'price']);
+      assert.deepEqual(rpcBody.p_expected, { name: 'Tea old', price: 30 });
+      assert.deepEqual(rpcBody.p_patch, { name: 'Tea POS Name', price: 45.5 });
+      assert.equal((rpc?.init?.headers as Record<string, string>).Authorization, 'Bearer service-role-test-key');
+      assert.equal(requests.some(request => request.url.pathname === '/rest/v1/menu_items' && request.init?.method === 'PATCH'), false);
+    },
+  );
+});
+
+test('POS menu apply refuses price updates when branch and catalog currencies differ', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init, { catalogCurrency: 'USD', locationCurrency: 'EGP' }),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/apply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationId, providerItemId: 'provider-tea-1', menuItemId: 'menu-tea-1',
+          requestId: '770e8400-e29b-41d4-a716-446655440001', selectedFields: ['price'],
+        }),
+      });
+      assert.equal(response.status, 409);
+      assert.equal(requests.some(request => request.url.pathname === '/rest/v1/rpc/apply_pos_catalog_menu_fields'), false);
+    },
+  );
+});
+
+test('POS menu apply refuses merchant-protected fields before calling the RPC', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init, { fieldOverrides: { name: true } }),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/apply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationId, providerItemId: 'provider-tea-1', menuItemId: 'menu-tea-1',
+          requestId: '770e8400-e29b-41d4-a716-446655440002', selectedFields: ['name'],
+        }),
+      });
+      assert.equal(response.status, 409);
+      assert.equal(requests.some(request => request.url.pathname === '/rest/v1/rpc/apply_pos_catalog_menu_fields'), false);
+    },
+  );
+});
+
+test('POS menu apply requires a stable UUID idempotency key and explicit supported fields', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/apply`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationId, providerItemId: 'provider-tea-1', menuItemId: 'menu-tea-1',
+          requestId: 'not-a-uuid', selectedFields: ['name', 'ownerId'],
+        }),
+      });
+      assert.equal(response.status, 400);
+      assert.equal(requests.some(request => request.url.pathname.startsWith('/rest/v1/')), false);
+    },
+  );
+});
+
+test('POS menu apply history is restricted to the authenticated merchant and selected branch', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/apply-events/${locationId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      assert.equal(response.status, 200);
+      const events = await response.json() as Array<Record<string, unknown>>;
+      assert.equal(events.length, 1);
+      assert.equal(events[0].id, 'apply-event-1');
+      const historyRequest = requests.find(request => request.url.pathname === '/rest/v1/pos_catalog_menu_apply_events');
       assert.equal(historyRequest?.url.searchParams.get('owner_id'), `eq.${ownerId}`);
       assert.equal(historyRequest?.url.searchParams.get('location_id'), `eq.${locationId}`);
     },
