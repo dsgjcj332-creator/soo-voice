@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2, Plus, RefreshCw, ShieldCheck } from
 import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-type PosConnection = {
+type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };\n\ntype PosConnection = {
   id: string;
   provider: string;
   display_name: string | null;
@@ -21,7 +21,7 @@ const PROVIDERS = [
 export function PosConnectionsPanel({ language }: { language: string }) {
   const { user } = useAuth();
   const isArabic = language === 'ar';
-  const [connections, setConnections] = useState<PosConnection[]>([]);
+  const [connections, setConnections] = useState<PosConnection[]>([]);\n  const [locations, setLocations] = useState<PosLocation[]>([]);\n  const [branchConnectionId, setBranchConnectionId] = useState('');\n  const [branchProviderId, setBranchProviderId] = useState('');\n  const [branchName, setBranchName] = useState('');\n  const [branchTimezone, setBranchTimezone] = useState('Africa/Cairo');\n  const [branchCurrency, setBranchCurrency] = useState('EGP');\n  const [savingBranch, setSavingBranch] = useState(false);
   const [provider, setProvider] = useState('foodics');
   const [displayName, setDisplayName] = useState('');
   const [credentialsText, setCredentialsText] = useState('');
@@ -31,14 +31,14 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
 
-  const request = useCallback(async (method: 'GET' | 'POST', body?: unknown) => {
+  const request = useCallback(async (path: 'connections' | 'locations', method: 'GET' | 'POST', body?: unknown) => {
     const supabase = getSupabase();
     if (!supabase || !user || user.provider !== 'supabase') {
       throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified Supabase session is required.');
     }
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session?.access_token) throw new Error(isArabic ? 'انتهت جلسة الدخول. سجّل الدخول مجددًا.' : 'Your session expired. Please sign in again.');
-    const response = await fetch('/api/pos/connections', {
+    const response = await fetch(`/api/pos/${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${session.access_token}`,
@@ -55,7 +55,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     setLoading(true);
     setError(false);
     try {
-      const rows = await request('GET');
+      const rows = await request('connections', 'GET');
       setConnections(Array.isArray(rows) ? rows : []);
     } catch (err) {
       setError(true);
@@ -63,11 +63,11 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     } finally {
       setLoading(false);
     }
-  }, [request, isArabic]);
+  }, [request, isArabic]);\n\n  const loadLocations = useCallback(async () => {\n    try {\n      const rows = await request('locations', 'GET');\n      setLocations(Array.isArray(rows) ? rows : []);\n    } catch (err) {\n      setError(true);\n      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تحميل الفروع.' : 'Could not load branches.'));\n    }\n  }, [request, isArabic]);
 
   useEffect(() => {
-    if (user?.provider === 'supabase') void loadConnections();
-  }, [user?.provider, user?.uid, loadConnections]);
+    if (user?.provider === 'supabase') { void loadConnections(); void loadLocations(); }
+  }, [user?.provider, user?.uid, loadConnections, loadLocations]);
 
   const saveConnection = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -85,17 +85,42 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     setSaving(true);
     setError(false);
     try {
-      await request('POST', { provider, displayName: displayName.trim() || undefined, credentials });
+      await request('connections', 'POST', { provider, displayName: displayName.trim() || undefined, credentials });
       setCredentialsText('');
       setDisplayName('');
       setShowForm(false);
       setMessage(isArabic ? 'تم حفظ بيانات الربط المشفّرة. الحالة: قيد الإعداد، ولم يتم اختبار الاتصال بعد.' : 'Encrypted credentials saved. Status: pending setup; the provider connection has not been tested.');
-      await loadConnections();
+      await loadConnections();\n      await loadLocations();
     } catch (err) {
       setError(true);
       setMessage(err instanceof Error ? err.message : (isArabic ? 'فشل حفظ الربط.' : 'Could not save connection.'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveBranch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingBranch(true);
+    setError(false);
+    setMessage('');
+    try {
+      await request('locations', 'POST', {
+        connectionId: branchConnectionId,
+        providerLocationId: branchProviderId.trim(),
+        name: branchName.trim(),
+        timezone: branchTimezone.trim() || undefined,
+        currency: branchCurrency.trim() || undefined,
+      });
+      setBranchProviderId('');
+      setBranchName('');
+      setMessage(isArabic ? 'تم حفظ ربط الفرع يدويًا. لم يتم اكتشافه تلقائيًا من مزوّد الكاشير.' : 'Branch mapping saved manually. It was not discovered automatically from the POS provider.');
+      await loadLocations();
+    } catch (err) {
+      setError(true);
+      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر حفظ الفرع.' : 'Could not save branch.'));
+    } finally {
+      setSavingBranch(false);
     }
   };
 
