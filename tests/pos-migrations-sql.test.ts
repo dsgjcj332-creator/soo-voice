@@ -30,7 +30,7 @@ test('versioned SQL migrations have balanced dollar-quoted blocks', async () => 
 
     const withoutStringsAndComments = sql
       .replace(/'(?:''|[^'])*'/g, "''")
-      .replace(/--[^\\n]*/g, '');
+      .replace(/--[^\n]*/g, '');
     assert.doesNotMatch(
       withoutStringsAndComments,
       /(?<![A-Za-z0-9_$])\$(?![A-Za-z0-9_$])/,
