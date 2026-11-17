@@ -308,6 +308,133 @@ export function createApiApp() {
       res.status(503).json({ error: 'POS catalog review is temporarily unavailable' });
     }
   });
+  // ============ POS CATALOG MENU MAPPINGS ============
+  // A mapping is an explicit merchant approval record; this route never edits menu_items.
+  app.get('/api/pos/catalog/mappings', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const locationId = typeof req.query.locationId === 'string' ? req.query.locationId : '';
+    if (!isUuid(locationId)) { res.status(400).json({ error: 'A valid POS location ID is required' }); return; }
+    try {
+      const locationQuery = new URLSearchParams({
+        select: 'id', id: `eq.${locationId}`, owner_id: `eq.${auth.ownerId}`, active: 'eq.true', limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      if (!Array.isArray(locations) || locations.length !== 1) { res.status(404).json({ error: 'Active POS location not found' }); return; }
+
+      const query = new URLSearchParams({
+        select: 'id,connection_id,location_id,provider_item_id,menu_item_id,field_overrides,approved_at,updated_at',
+        owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`, order: 'approved_at.desc', limit: '1000',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_menu_links?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) { res.status(503).json({ error: 'POS menu mappings are temporarily unavailable' }); return; }
+      const rows = await response.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS catalog mapping list error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS menu mappings are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/catalog/mappings', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const body = req.body || {};
+    const locationId = typeof body.locationId === 'string' ? body.locationId : '';
+    const providerItemId = typeof body.providerItemId === 'string' ? body.providerItemId.trim() : '';
+    const menuItemId = typeof body.menuItemId === 'string' ? body.menuItemId.trim() : '';
+    const rawOverrides = body.fieldOverrides && typeof body.fieldOverrides === 'object' && !Array.isArray(body.fieldOverrides)
+      ? body.fieldOverrides : {};
+    const allowedFields = ['name', 'description', 'price', 'available', 'categoryId'];
+    const fieldOverrides: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(rawOverrides)) {
+      if (!allowedFields.includes(key) || typeof value !== 'boolean') {
+        res.status(400).json({ error: 'Invalid field override selection' }); return;
+      }
+      if (value) fieldOverrides[key] = true;
+    }
+    if (!isUuid(locationId) || !providerItemId || providerItemId.length > 160 ||
+        !menuItemId || menuItemId.length > 128) {
+      res.status(400).json({ error: 'Location, POS product and menu item are required' }); return;
+    }
+
+    try {
+      const locationQuery = new URLSearchParams({
+        select: 'id,connection_id', id: `eq.${locationId}`, owner_id: `eq.${auth.ownerId}`, active: 'eq.true', limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string; connection_id: string }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      if (!Array.isArray(locations) || locations.length !== 1) { res.status(404).json({ error: 'Active POS location not found' }); return; }
+
+      const catalogQuery = new URLSearchParams({
+        select: 'provider_item_id', owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`,
+        provider_item_id: `eq.${providerItemId}`, active: 'eq.true', limit: '1',
+      });
+      const catalogResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_items?${catalogQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const catalogRows = await catalogResponse.json().catch(() => null) as Array<{ provider_item_id: string }> | null;
+      if (!catalogResponse.ok) { res.status(503).json({ error: 'Could not verify POS product' }); return; }
+      if (!Array.isArray(catalogRows) || catalogRows.length !== 1) { res.status(404).json({ error: 'Active POS product not found in this branch' }); return; }
+
+      // menu_items uses the existing camelCase ownerId tenant column. Verify ownership
+      // before accepting a free-form menu item ID; never trust an ID supplied by the browser.
+      const menuQuery = new URLSearchParams({
+        select: 'id', id: `eq.${menuItemId}`, ownerId: `eq.${auth.ownerId}`, isAiOnly: 'eq.false', limit: '1',
+      });
+      const menuResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/menu_items?${menuQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const menuRows = await menuResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!menuResponse.ok) { res.status(503).json({ error: 'Could not verify SooVoice menu item' }); return; }
+      if (!Array.isArray(menuRows) || menuRows.length !== 1) { res.status(404).json({ error: 'SooVoice menu item not found for this merchant' }); return; }
+
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_menu_links?on_conflict=connection_id,location_id,provider_item_id`, {
+        method: 'POST',
+        headers: {
+          ...posServiceHeaders(auth.backend.serviceKey),
+          Prefer: 'resolution=merge-duplicates,return=representation',
+        },
+        body: JSON.stringify({
+          owner_id: auth.ownerId,
+          connection_id: locations[0].connection_id,
+          location_id: locationId,
+          provider_item_id: providerItemId,
+          menu_item_id: menuItemId,
+          field_overrides: fieldOverrides,
+          approved_by: auth.ownerId,
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows) || rows.length !== 1) {
+        if (response.status === 409) { res.status(409).json({ error: 'This menu item is already linked to another POS product in this branch' }); return; }
+        console.error('[API] POS catalog mapping save failed:', response.status);
+        res.status(503).json({ error: 'Could not save POS menu mapping' }); return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        id: rows[0].id, location_id: rows[0].location_id,
+        provider_item_id: rows[0].provider_item_id, menu_item_id: rows[0].menu_item_id,
+        field_overrides: rows[0].field_overrides, approved_at: rows[0].approved_at,
+      });
+    } catch (err) {
+      console.error('[API] POS catalog mapping save error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS menu mapping' });
+    }
+  });
+
   // ============ POS LOCATION / BRANCH MANAGEMENT ============
   // Branch records are manually mapped until provider discovery adapters exist.
   app.get('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
