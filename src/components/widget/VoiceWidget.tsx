@@ -12,7 +12,7 @@ import { cn } from "../../lib/utils";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { useSettings, Dialect, VoiceTone, BusinessType } from "../../contexts/SettingsContext";
 import { useKnowledge } from "../../contexts/KnowledgeContext";
-import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
+import { GoogleGenAI, Modality, LiveServerMessage, Type } from "@google/genai";
 import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 import { currencyPromptLabel } from "../../lib/currency";
@@ -533,14 +533,14 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
                   name: "add_to_cart",
                   description: "Add a dish from the menu to the guest's table order. Call this when the guest asks to order, add, or have a specific dish. Pass the dish's id exactly as it appears in the menu; the kitchen will receive it.",
                   parameters: {
-                    type: "object",
+                    type: Type.OBJECT,
                     properties: {
                       dish_id: {
-                        type: "string",
+                        type: Type.STRING,
                         description: "The id of the dish to add, exactly as it appears in the menu list (e.g. 'item_42'). Do not pass the dish name."
                       },
                       quantity: {
-                        type: "number",
+                        type: Type.NUMBER,
                         description: "How many of this dish to add. Defaults to 1. Only use a value > 1 when the guest explicitly asks for more than one.",
                       },
                     },
