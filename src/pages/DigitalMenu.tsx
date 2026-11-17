@@ -257,45 +257,54 @@ export function DigitalMenu() {
     }
   };
 
-  // Submit the import with a progress indicator
+  // Import the complete validated batch into the same source used by normal menu edits.
   const handleImportSubmit = async () => {
-    if (!user || parsedItems.length === 0) return;
+    if (!user || parsedItems.length === 0 || importing) return;
     setImporting(true);
     setImportProgress(0);
+    setImportError("");
 
     try {
-      const totalCount = parsedItems.length;
-      for (let i = 0; i < totalCount; i++) {
-        const item = parsedItems[i];
-        const itemId = "item_imported_" + Math.random().toString(36).substring(2, 11);
-        
-        const newItem: MenuItem = {
-          id: itemId,
-          ownerId: user.uid,
-          name: item.name,
-          price: item.price,
-          description: item.description,
-          category: item.category,
-          isAiOnly: item.isAiOnly,
-          createdAt: Date.now() - (i * 1000) // Stagger slightly for ordering
-        };
+      const importedItems: MenuItem[] = parsedItems.map((item, index) => ({
+        id: "item_imported_" + crypto.randomUUID(),
+        ownerId: user.uid,
+        name: String(item.name).trim(),
+        price: Number(item.price),
+        description: String(item.description || ""),
+        category: String(item.category || categories[0]?.id || "Main Course"),
+        isAiOnly: Boolean(item.isAiOnly),
+        createdAt: Date.now() - (index * 1000),
+      }));
 
-        // Save to the local store
-        addLocalDoc('menu_items', newItem, user.uid);
-        setImportProgress(Math.round(((i + 1) / totalCount) * 100));
+      if (importedItems.some((item) => !item.name || !Number.isFinite(item.price) || item.price <= 0)) {
+        throw new Error(language === "ar" ? "يوجد منتج باسم أو سعر غير صالح." : "The import contains an invalid product name or price.");
       }
 
-      setImporting(false);
+      if (user.provider === "local") {
+        const existing = getLocalCollection("menu_items", user.uid);
+        setLocalCollection("menu_items", [...existing, ...importedItems], user.uid);
+      } else {
+        const supabase = getSupabase();
+        if (!isSupabaseMode || !supabase) {
+          throw new Error(language === "ar" ? "قاعدة البيانات غير متاحة؛ لم يتم حفظ أي منتج." : "Database is unavailable; no products were saved.");
+        }
+        const { error } = await supabase.from("menu_items").insert(importedItems);
+        if (error) throw error;
+      }
+
+      setItems((current) => [...importedItems, ...current].sort((a, b) => b.createdAt - a.createdAt));
+      setImportProgress(100);
       setShowImportModal(false);
       setParsedItems([]);
       triggerNotification(
-        language === "ar" 
-          ? `تم استيراد ${totalCount} منتج بنجاح إلى المنيو!` 
-          : `Successfully imported ${totalCount} items to your catalog!`
+        language === "ar"
+          ? `تم حفظ واستيراد ${importedItems.length} منتج بنجاح إلى المنيو!`
+          : `Successfully saved ${importedItems.length} products to your catalog!`
       );
     } catch (err) {
-      console.error("Error importing items:", err);
-      setImportError(language === "ar" ? "فشل استيراد المنتجات" : "Failed to import items");
+      console.error("Error importing menu items:", err);
+      setImportError(err instanceof Error ? err.message : (language === "ar" ? "فشل استيراد المنتجات. لم يتم تأكيد الحفظ." : "Import failed. Product persistence was not confirmed."));
+    } finally {
       setImporting(false);
     }
   };
@@ -551,43 +560,32 @@ export function DigitalMenu() {
   };
 
   const handleDeleteItem = async (itemId: string) => {
-    if (!window.confirm(language === "ar" ? "هل أنت متأكد من الحذف؟" : "Are you sure you want to delete this item?")) return;
-    
-    try {
-      if (user?.provider === 'local') {
-        deleteLocalDoc('menu_items', itemId, user?.uid);
-        setItems((prev: MenuItem[]) => prev.filter(d => d.id !== itemId));
-      } else {
-        const { isConfigured } = getSupabaseConfig();
-        const supabase = getSupabase();
+    if (!user || !window.confirm(language === "ar" ? "هل أنت متأكد من حذف المنتج؟" : "Are you sure you want to delete this item?")) return;
 
-        if (isConfigured && supabase) {
-          try {
-            const { error } = await supabase
-              .from('menu_items')
-              .delete()
-              .eq('id', itemId);
-            
-            if (error) throw error;
-            
-            setItems((prev: MenuItem[]) => prev.filter(d => d.id !== itemId));
-          } catch (err) {
-            console.warn("Failed to delete from Supabase menu_items. Syncing local test buffer:", err);
-            const localItems = JSON.parse(localStorage.getItem(`sb_items_${user?.uid}`) || '[]');
-            const updated = localItems.filter((d: any) => d.id !== itemId);
-            localStorage.setItem(`sb_items_${user?.uid}`, JSON.stringify(updated));
-            setItems(updated);
-          }
-        } else {
-          // No-op: persistence is handled by Supabase / local store
+    try {
+      if (user.provider === "local") {
+        deleteLocalDoc("menu_items", itemId, user.uid);
+      } else {
+        const supabase = getSupabase();
+        if (!isSupabaseMode || !supabase) {
+          throw new Error(language === "ar" ? "قاعدة البيانات غير متاحة؛ لم يتم حذف المنتج." : "Database unavailable; the item was not deleted.");
         }
+        const { data, error } = await supabase
+          .from("menu_items")
+          .delete()
+          .eq("id", itemId)
+          .eq("ownerId", user.uid)
+          .select("id")
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error(language === "ar" ? "المنتج غير موجود أو لا تملك صلاحية حذفه." : "Item not found or you are not allowed to delete it.");
       }
-      
-      triggerNotification(
-        language === "ar" ? "تم حذف المنتج بنجاح!" : "Product deleted successfully!"
-      );
+
+      setItems((current) => current.filter((item) => item.id !== itemId));
+      triggerNotification(language === "ar" ? "تم حذف المنتج بنجاح!" : "Product deleted successfully!");
     } catch (err) {
       console.error("Error deleting menu item:", err);
+      setNotification(err instanceof Error ? err.message : (language === "ar" ? "فشل حذف المنتج." : "Could not delete the item."));
     }
   };
 
@@ -595,14 +593,13 @@ export function DigitalMenu() {
   const handleBulkAISeeding = async () => {
     if (!user) return;
     if (!window.confirm(
-      language === "ar" 
-        ? "سيتم إضافة 15 منتج تجريبي مخفي (للذكاء الاصطناعي فقط) لتجربة البحث الذكي والمساعد الصوتي. يمكنك حذفها في أي وقت. هل تريد المتابعة؟" 
-        : "This will add 15 sample hidden (AI-only) products to test smart voice search and indexing. You can delete them anytime. Continue?"
+      language === "ar"
+        ? "سيتم إضافة 15 منتجًا تجريبيًا مخفيًا للذكاء الاصطناعي. يمكنك حذفها لاحقًا. هل تريد المتابعة؟"
+        : "Add 15 sample AI-only products to this menu? You can delete them later."
     )) return;
 
+    setLoading(true);
     try {
-      setLoading(true);
-      
       const samplePrefixes = ["Signature Gourmet", "Artisan Chef", "La Piazza", "Smoky Kitchen", "Organic Blend"];
       const parts = [
         { name: "Truffle Mushroom Angus Burger / برجر المشروم والترافل الفاخر", price: 16, category: "Main Course", desc: "Prime Black Angus beef, melted Swiss cheese, caramelized onions & authentic black truffle sauce." },
@@ -615,67 +612,39 @@ export function DigitalMenu() {
         { name: "Chef Wagyu Secret Truffle Slider / سلايدر واغيو الشيف السري", price: 21, category: "Secret Menu", desc: "Off-menu gourmet slider with black truffle cream and caramelized glaze (AI exclusive)." }
       ];
 
-      const seededItemsList: MenuItem[] = [];
-
-      for (let i = 0; i < 15; i++) {
-        const randPrefix = samplePrefixes[i % samplePrefixes.length];
-        const randPart = parts[i % parts.length];
-        const itemId = `bulk_item_${i}_${Math.random().toString(36).substring(2, 5)}`;
-        
-        const bulkItem: MenuItem = {
-          id: itemId,
+      const seededItems: MenuItem[] = Array.from({ length: 15 }, (_, index) => {
+        const prefix = samplePrefixes[index % samplePrefixes.length];
+        const part = parts[index % parts.length];
+        return {
+          id: `bulk_item_${crypto.randomUUID()}`,
           ownerId: user.uid,
-          name: `${randPrefix} ${randPart.name}`,
-          price: randPart.price + (i * 2),
-          description: `Special listing from ${randPrefix}. ${randPart.desc}`,
-          category: randPart.category,
-          isAiOnly: true, // Marked as AI-ONLY (Hidden from standard Catalog)
-          createdAt: Date.now() - (i * 60000)
+          name: `${prefix} ${part.name}`,
+          price: part.price + (index * 2),
+          description: `Special listing from ${prefix}. ${part.desc}`,
+          category: part.category,
+          isAiOnly: true,
+          createdAt: Date.now() - (index * 60000),
         };
-        
-        seededItemsList.push(bulkItem);
+      });
 
-        if (user.provider === 'local') {
-          addLocalDoc('menu_items', bulkItem, user.uid);
-        } else {
-          const { isConfigured } = getSupabaseConfig();
-          const supabase = getSupabase();
-          
-          if (isConfigured && supabase) {
-            try {
-              await supabase
-                .from('menu_items')
-                .insert([bulkItem]);
-            } catch (sbErr) {
-              console.warn("Failed to insert seeded item in Supabase table:", sbErr);
-            }
-          }
-        }
-      }
-
-      if (user.provider === 'local') {
-        const localItems = getLocalCollection('menu_items', user.uid);
-        const updated = [...seededItemsList, ...localItems];
-        setLocalCollection('menu_items', updated, user.uid);
-        setItems((prev: MenuItem[]) => [...seededItemsList, ...prev].sort((a, b) => b.createdAt - a.createdAt));
+      if (user.provider === "local") {
+        const existing = getLocalCollection("menu_items", user.uid);
+        setLocalCollection("menu_items", [...seededItems, ...existing], user.uid);
       } else {
-        const { isConfigured } = getSupabaseConfig();
-        if (isConfigured) {
-          const localItems = JSON.parse(localStorage.getItem(`sb_items_${user.uid}`) || '[]');
-          const updated = [...seededItemsList, ...localItems];
-          localStorage.setItem(`sb_items_${user.uid}`, JSON.stringify(updated));
-          setItems((prev: MenuItem[]) => [...seededItemsList, ...prev].sort((a, b) => b.createdAt - a.createdAt));
+        const supabase = getSupabase();
+        if (!isSupabaseMode || !supabase) {
+          throw new Error(language === "ar" ? "قاعدة البيانات غير متاحة؛ لم تتم إضافة المنتجات." : "Database unavailable; no sample products were added.");
         }
+        const { error } = await supabase.from("menu_items").insert(seededItems);
+        if (error) throw error;
       }
 
-      setLoading(false);
-      triggerNotification(
-        language === "ar" 
-          ? "تمت إضافة 15 منتج تجريبي للذكاء الاصطناعي بنجاح!"
-          : "15 sample AI-only products added successfully!"
-      );
+      setItems((current) => [...seededItems, ...current].sort((a, b) => b.createdAt - a.createdAt));
+      triggerNotification(language === "ar" ? "تم حفظ 15 منتجًا تجريبيًا بنجاح!" : "15 sample products saved successfully!");
     } catch (err) {
       console.error("Bulk seeding error:", err);
+      setNotification(err instanceof Error ? err.message : (language === "ar" ? "فشل حفظ المنتجات التجريبية." : "Could not save sample products."));
+    } finally {
       setLoading(false);
     }
   };
