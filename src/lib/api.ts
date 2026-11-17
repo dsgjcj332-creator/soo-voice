@@ -245,17 +245,9 @@ export function createApiApp() {
       void ownerId;
       void since;
 
-      // Placeholder analytics response for Supabase-only mode
-      res.json({
-        totalCalls: 0,
-        successfulCalls: 0,
-        failedCalls: 0,
-        conversionRate: 0,
-        activeUsers: 0,
-        intentDistribution: [],
-        peakHours: [],
-        satisfactionScore: 0,
-      });
+      // Never return fabricated success-shaped data. Until the tenant-scoped
+      // analytics repository is configured, make the missing capability explicit.
+      return res.status(501).json({ error: 'Analytics storage is not implemented yet' });
     } catch (err) {
       console.error('[API] Analytics error:', err);
       res.status(500).json({ error: 'Failed to fetch analytics' });
@@ -270,15 +262,9 @@ export function createApiApp() {
       void ownerId;
       const maxLimit = Math.min(parseInt(String(limit)) || 50, 200);
 
-      // Placeholder conversations response for Supabase-only mode
-      const conversations: any[] = [];
-      if (status && status !== 'All') {
-        // filter placeholder
-      }
-      const sorted = conversations
-        .sort((a: any, b: any) => b.createdAt - a.createdAt)
-        .slice(0, maxLimit);
-      res.json({ conversations: sorted, total: sorted.length });
+      void status;
+      void maxLimit;
+      return res.status(501).json({ error: 'Conversation storage is not implemented yet' });
     } catch (err) {
       console.error('[API] Conversations error:', err);
       res.status(500).json({ error: 'Failed to fetch conversations' });
@@ -290,10 +276,7 @@ export function createApiApp() {
     try {
       const { ownerId } = req.params;
       void ownerId;
-      // Placeholder orders response for Supabase-only mode
-      const orders: any[] = [];
-      orders.sort((a: any, b: any) => b.createdAt - a.createdAt);
-      res.json({ orders, total: orders.length });
+      return res.status(501).json({ error: 'Order storage is not implemented yet' });
     } catch (err) {
       console.error('[API] Orders error:', err);
       res.status(500).json({ error: 'Failed to fetch orders' });
@@ -307,8 +290,8 @@ export function createApiApp() {
       if (!['pending', 'preparing', 'completed', 'cancelled'].includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
-      // Placeholder update for Supabase-only mode
-      res.json({ success: true, orderId, status });
+      void orderId;
+      return res.status(501).json({ error: 'Order status persistence is not implemented yet' });
     } catch (err) {
       console.error('[API] Order status update error:', err);
       res.status(500).json({ error: 'Failed to update order status' });
@@ -318,8 +301,8 @@ export function createApiApp() {
   app.delete('/api/orders/:orderId', requireApiKey, async (req, res) => {
     try {
       const { orderId } = req.params;
-      // Placeholder delete for Supabase-only mode
-      res.json({ success: true, orderId });
+      void orderId;
+      return res.status(501).json({ error: 'Order deletion is not implemented yet' });
     } catch (err) {
       console.error('[API] Order delete error:', err);
       res.status(500).json({ error: 'Failed to delete order' });
@@ -331,8 +314,7 @@ export function createApiApp() {
     try {
       const { ownerId } = req.params;
       void ownerId;
-      // Placeholder webhook settings for Supabase-only mode
-      res.json({ webhookUrl: '', webhookSecret: '' });
+      return res.status(501).json({ error: 'Webhook settings storage is not implemented yet' });
     } catch (err) {
       console.error('[API] Webhook settings error:', err);
       res.status(500).json({ error: 'Failed to fetch webhook settings' });
@@ -344,26 +326,25 @@ export function createApiApp() {
     const { shop, platform } = req.query;
     // NOTE: never log the authorization `code` — it is a bearer credential.
     console.log(`[OAuth] Callback received for ${platform || 'unknown'} / shop ${shop || 'unknown'}`);
-    res.json({
-      success: true,
-      message: 'OAuth callback received. Token exchange must happen server-side.',
+    return res.status(501).json({
+      error: 'OAuth token exchange is not configured. No account was connected.',
     });
   });
 
   // ============ WEBHOOKS (all signature-verified) ============
   app.post('/api/webhooks/app/uninstalled', verifyWebhookSignature, (req, res) => {
-    console.log('[Webhook] App uninstalled — data erase queued');
-    res.status(200).json({ received: true, event: 'app/uninstalled' });
+    console.warn('[Webhook] app/uninstalled received but durable processing is not configured');
+    res.status(503).json({ error: 'Webhook processing is temporarily unavailable; retry later' });
   });
 
   app.post('/api/webhooks/products/updated', verifyWebhookSignature, (req, res) => {
-    console.log('[Webhook] Product updated — AI knowledge base sync queued');
-    res.status(200).json({ received: true, event: 'products/updated' });
+    console.warn('[Webhook] products/updated received but durable processing is not configured');
+    res.status(503).json({ error: 'Webhook processing is temporarily unavailable; retry later' });
   });
 
   app.post('/api/webhooks/orders/created', verifyWebhookSignature, (req, res) => {
-    console.log('[Webhook] Order created');
-    res.status(200).json({ received: true, event: 'orders/created' });
+    console.warn('[Webhook] orders/created received but durable processing is not configured');
+    res.status(503).json({ error: 'Webhook processing is temporarily unavailable; retry later' });
   });
 
   // ============ USERS ============
@@ -371,8 +352,8 @@ export function createApiApp() {
     try {
       const { uid } = req.params;
       void uid;
-      // Placeholder user fetch for Supabase-only mode
-      res.status(404).json({ error: 'User not found' });
+      void uid;
+      return res.status(501).json({ error: 'User repository is not implemented yet' });
     } catch (err) {
       console.error('[API] User fetch error:', err);
       res.status(500).json({ error: 'Failed to fetch user' });
@@ -389,8 +370,9 @@ export function createApiApp() {
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No valid fields to update' });
       }
-      // Placeholder user update for Supabase-only mode
-      res.json({ success: true, uid, ...updates });
+      void uid;
+      void updates;
+      return res.status(501).json({ error: 'User persistence is not implemented yet' });
     } catch (err) {
       console.error('[API] User update error:', err);
       res.status(500).json({ error: 'Failed to update user' });
