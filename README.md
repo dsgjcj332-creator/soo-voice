@@ -121,6 +121,17 @@ npm run clean   # remove dist/
 - **Rate limiting.** Global per-IP limit (600 req/min) plus a stricter limit on token minting (30 req/min), per serverless instance.
 - **CORS allowlist.** Set `ALLOWED_ORIGINS` to lock the API to known dashboard/widget origins once merchant domains are registered.
 
+## POS connections and branch mappings
+
+The Integrations page includes a bilingual POS management panel. A merchant must have a real Supabase Auth session; local demo users are not authorized to create or manage POS connections.
+
+- `GET/POST /api/pos/connections` lists a merchant's connections and stores new credential objects encrypted server-side. Secret fields are never returned to the browser.
+- `GET/POST/DELETE /api/pos/locations` lists, manually maps, and removes branch mappings. Every operation derives the merchant from the verified Supabase session; location creation also verifies that the selected connection belongs to that merchant.
+- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, menu/catalog sync, order delivery, and a deployed worker are not implemented.
+- New connections remain `pending`; adding credentials or a branch mapping does not mean the external POS is connected or synchronized.
+
+Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Configure the server-only Supabase URL, anon key, service-role key, and `POS_CREDENTIALS_ENCRYPTION_KEY` / version as documented in `.env.example`. Never expose server secrets through `VITE_*` variables.
+
 ## Deployment (Vercel)
 
 1. Push to GitHub and import the repo in Vercel.
