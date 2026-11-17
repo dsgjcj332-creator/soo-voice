@@ -51,11 +51,11 @@ drop policy if exists "store_settings_owner_insert" on store_settings;
 create policy "store_settings_owner_insert"
   on store_settings for insert
   to authenticated
-  with check (ownerId = auth.uid());
+  with check ("ownerId" = auth.uid());
 
 drop policy if exists "store_settings_owner_update" on store_settings;
 create policy "store_settings_owner_update"
   on store_settings for update
   to authenticated
-  using (ownerId = auth.uid())
-  with check (ownerId = auth.uid());
+  using ("ownerId" = auth.uid())
+  with check ("ownerId" = auth.uid());
