@@ -87,8 +87,12 @@ test('apply plan validates prices and rejects empty or duplicate selections', ()
 });
 
 test('apply plan refuses fields that are unchanged or absent from the review diff', () => {
+  const unchanged = {
+    ...entry,
+    changes: { ...entry.changes, name: { current: 'Same name', proposed: 'Same name', protectedByMerchant: false } },
+  };
   assert.throws(
-    () => buildApprovedPosMenuApplyPlan(entry, mapping, ['name', 'description'].slice(1)),
+    () => buildApprovedPosMenuApplyPlan(unchanged, mapping, ['name']),
     /POS_APPLY_FIELD_HAS_NO_CHANGE/,
   );
 });
