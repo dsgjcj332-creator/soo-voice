@@ -5,9 +5,9 @@
 -- Run once in the Supabase SQL Editor (Dashboard → SQL → New query → Run).
 
 create table if not exists store_settings (
-  ownerId uuid primary key,
-  restaurantName text not null default '',
-  restaurantNameEn text not null default '',
+  "ownerId" uuid primary key,
+  "restaurantName" text not null default '',
+  "restaurantNameEn" text not null default '',
   phone text not null default '',
   address text not null default '',
   "logoUrl" text not null default '',
@@ -15,13 +15,13 @@ create table if not exists store_settings (
   instagram text not null default '',
   facebook text not null default '',
   whatsapp text not null default '',
-  showVoiceWidget boolean not null default true,
-  geoEnabled boolean not null default false,
-  geoRadiusKm numeric not null default 0.5,
-  geoLat double precision,
-  geoLng double precision,
-  sessionMinutes integer not null default 0,
-  updatedAt bigint not null default 0
+  "showVoiceWidget" boolean not null default true,
+  "geoEnabled" boolean not null default false,
+  "geoRadiusKm" numeric not null default 0.5,
+  "geoLat" double precision,
+  "geoLng" double precision,
+  "sessionMinutes" integer not null default 0,
+  "updatedAt" bigint not null default 0
 );
 
 alter table store_settings enable row level security;
