@@ -14,8 +14,8 @@ export function OAuthInstall() {
   // persistence is configured here yet.
   const rawPlatform = searchParams.get("platform") || "POS";
   const rawShop = searchParams.get("shop") || "";
-  const platform = rawPlatform.replace(/[\\u0000-\\u001f\\u007f]/g, "").slice(0, 80) || "POS";
-  const shopName = rawShop.replace(/[\\u0000-\\u001f\\u007f]/g, "").slice(0, 160);
+  const platform = rawPlatform.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) || "POS";
+  const shopName = rawShop.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 160);
 
   const isArabic = language === "ar";
 
