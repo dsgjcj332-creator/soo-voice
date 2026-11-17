@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { Store, Search, Filter, Check, ShieldBan, X } from "lucide-react";
+import { Store, Search, Check, ShieldBan, X } from "lucide-react";
 import { subscribeToMerchants, approveMerchant, blockMerchant, deleteMerchant, Merchant } from "../../services/merchants";
 
 export function AdminMerchants() {
