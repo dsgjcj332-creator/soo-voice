@@ -126,7 +126,7 @@ npm run clean   # remove dist/
 The Integrations page includes a bilingual POS management panel. A merchant must have a real Supabase Auth session; local demo users are not authorized to create or manage POS connections.
 
 - `GET/POST /api/pos/connections` lists a merchant's connections and stores new credential objects encrypted server-side. Secret fields are never returned to the browser.
-- `GET/POST/DELETE /api/pos/locations` lists, manually maps, and removes branch mappings. Every operation derives the merchant from the verified Supabase session; location creation also verifies that the selected connection belongs to that merchant.
+- `GET/POST/PATCH /api/pos/locations` lists, manually maps, and deactivates branch mappings. Deactivation preserves historical order references. Every operation derives the merchant from the verified Supabase session; location creation also verifies that the selected connection belongs to that merchant.
 - Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, menu/catalog sync, order delivery, and a deployed worker are not implemented.
 - New connections remain `pending`; adding credentials or a branch mapping does not mean the external POS is connected or synchronized.
 
