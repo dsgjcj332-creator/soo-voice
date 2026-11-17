@@ -377,7 +377,7 @@ begin
     raise exception 'POS_TEST_MENU_APPLY_AUDIT_CROSSTENANT_READ';
   end if;
 end;
-$;
+$$;
 reset role;
 
 -- Anonymous sessions must not be able to read catalog snapshots.
