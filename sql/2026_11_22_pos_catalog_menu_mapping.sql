@@ -20,7 +20,9 @@ create table if not exists public.pos_catalog_menu_links (
   foreign key(owner_id, connection_id)
     references public.pos_connections(owner_id, id) on delete cascade,
   foreign key(owner_id, location_id)
-    references public.pos_locations(owner_id, id) on delete cascade
+    references public.pos_locations(owner_id, id) on delete cascade,
+  foreign key(connection_id, location_id, provider_item_id)
+    references public.pos_catalog_items(connection_id, location_id, provider_item_id) on delete cascade
 );
 
 -- Append-only history for merchant mapping approvals and protection changes.
@@ -53,9 +55,8 @@ drop policy if exists pos_catalog_menu_link_events_owner_read on public.pos_cata
 create policy pos_catalog_menu_link_events_owner_read on public.pos_catalog_menu_link_events
   for select to authenticated using (owner_id = auth.uid());
 
-revoke all on public.pos_catalog_menu_link_events from public, anon, authenticated;
-grant select on public.pos_catalog_menu_link_events to authenticated;
-grant all on public.pos_catalog_menu_link_events to service_role;
+revoke all on public.pos_catalog_menu_link_events from public, anon, authenticated, service_role;
+grant select on public.pos_catalog_menu_link_events to authenticated, service_role;
 
 create or replace function public.log_pos_catalog_menu_link_change()
 returns trigger
