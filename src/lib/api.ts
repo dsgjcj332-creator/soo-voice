@@ -280,6 +280,120 @@ export function createApiApp() {
     }
   });
 
+  // ============ POS LOCATION / BRANCH MANAGEMENT ============
+  // Branch records are manually mapped until provider discovery adapters exist.
+  app.get('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,connection_id,provider_location_id,name,timezone,currency,active,created_at',
+        owner_id: `eq.${auth.ownerId}`,
+        order: 'created_at.desc',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) {
+        console.error('[API] POS location list failed:', response.status);
+        res.status(503).json({ error: 'POS locations are temporarily unavailable' });
+        return;
+      }
+      const rows = await response.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS location list error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS locations are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const body = req.body || {};
+    const connectionId = typeof body.connectionId === 'string' ? body.connectionId : '';
+    const providerLocationId = typeof body.providerLocationId === 'string' ? body.providerLocationId.trim() : '';
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : '';
+    const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : '';
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(connectionId) ||
+        !providerLocationId || providerLocationId.length > 160 ||
+        !name || name.length > 120 ||
+        (currency && !/^[A-Z]{3}$/.test(currency))) {
+      res.status(400).json({ error: 'Invalid POS location details' });
+      return;
+    }
+    if (timezone) {
+      try { new Intl.DateTimeFormat('en-US', { timeZone: timezone }); }
+      catch {
+        res.status(400).json({ error: 'Invalid IANA timezone' });
+        return;
+      }
+    }
+    try {
+      const ownerQuery = new URLSearchParams({
+        select: 'id',
+        id: `eq.${connectionId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        limit: '1',
+      });
+      const ownerResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${ownerQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const ownedConnections = await ownerResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!ownerResponse.ok) {
+        res.status(503).json({ error: 'Could not verify POS connection ownership' });
+        return;
+      }
+      if (!Array.isArray(ownedConnections) || ownedConnections.length !== 1) {
+        res.status(404).json({ error: 'POS connection not found' });
+        return;
+      }
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations`, {
+        method: 'POST',
+        headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({
+          owner_id: auth.ownerId,
+          connection_id: connectionId,
+          provider_location_id: providerLocationId,
+          name,
+          timezone: timezone || null,
+          currency: currency || null,
+          active: true,
+        }),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows) || rows.length !== 1) {
+        // A duplicate provider location is a conflict; other DB failures remain unavailable.
+        if (response.status === 409) {
+          res.status(409).json({ error: 'This provider location is already mapped to this connection' });
+          return;
+        }
+        console.error('[API] POS location create failed:', response.status);
+        res.status(503).json({ error: 'Could not save POS location' });
+        return;
+      }
+      const row = rows[0];
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        id: row.id, connection_id: row.connection_id,
+        provider_location_id: row.provider_location_id, name: row.name,
+        timezone: row.timezone, currency: row.currency, active: row.active,
+        created_at: row.created_at,
+      });
+    } catch (err) {
+      console.error('[API] POS location create error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS location' });
+    }
+  });
+
   // ============ TRUSTED GUEST ORDER FLOW ============
   // Browser clients submit catalog IDs and quantities only. The database
   // function reloads prices and atomically writes the order + outbox event.
