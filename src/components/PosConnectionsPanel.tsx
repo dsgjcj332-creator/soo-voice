@@ -4,6 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
+type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
 
 type PosConnection = {
   id: string;
@@ -25,6 +26,10 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const isArabic = language === 'ar';
   const [connections, setConnections] = useState<PosConnection[]>([]);
   const [locations, setLocations] = useState<PosLocation[]>([]);
+  const [reviewLocationId, setReviewLocationId] = useState('');
+  const [catalogRows, setCatalogRows] = useState<PosCatalogRow[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
   const [branchConnectionId, setBranchConnectionId] = useState('');
   const [branchProviderId, setBranchProviderId] = useState('');
   const [branchName, setBranchName] = useState('');
@@ -87,6 +92,27 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   useEffect(() => {
     if (user?.provider === 'supabase') { void loadConnections(); void loadLocations(); }
   }, [user?.provider, user?.uid, loadConnections, loadLocations]);
+
+  useEffect(() => {
+    if (!reviewLocationId) { setCatalogRows([]); setCatalogError(''); return; }
+    let cancelled = false;
+    const loadCatalog = async () => {
+      setCatalogLoading(true); setCatalogError('');
+      try {
+        const supabase = getSupabase();
+        if (!supabase || !user || user.provider !== 'supabase') throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified session is required.');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !session?.access_token) throw new Error(isArabic ? 'انتهت جلسة الدخول.' : 'Your session expired.');
+        const response = await fetch(`/api/pos/catalog?locationId=${encodeURIComponent(reviewLocationId)}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+        const result = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(result.error || (isArabic ? 'تعذر تحميل المنتجات.' : 'Could not load catalog.'));
+        if (!cancelled) setCatalogRows(Array.isArray(result) ? result : []);
+      } catch (err) { if (!cancelled) setCatalogError(err instanceof Error ? err.message : 'Catalog unavailable'); }
+      finally { if (!cancelled) setCatalogLoading(false); }
+    };
+    void loadCatalog();
+    return () => { cancelled = true; };
+  }, [reviewLocationId, user, isArabic]);
 
   const saveConnection = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -231,6 +257,31 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       })}
     </div>
 
+    <div className="mt-8 border-t border-slate-100 pt-6">
+      <div className="mb-4">
+        <h3 className="font-extrabold text-slate-900">{isArabic ? 'مراجعة منيو الكاشير' : 'POS catalog review'}</h3>
+        <p className="mt-1 text-xs leading-5 text-slate-500">{isArabic ? 'راجع المنتجات المحفوظة من الكاشير قبل ربطها بمنيو SooVoice. المعاينة لا تغيّر المنيو.' : 'Review stored POS products before mapping them to SooVoice. Preview does not change your menu.'}</p>
+      </div>
+      <label className="block max-w-xl text-xs font-bold text-slate-600">{isArabic ? 'اختر الفرع' : 'Select branch'}
+        <select value={reviewLocationId} onChange={e => setReviewLocationId(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm">
+          <option value="">{isArabic ? 'اختر فرعًا' : 'Choose a branch'}</option>
+          {locations.filter(location => location.active).map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+        </select>
+      </label>
+      {reviewLocationId && <div className="mt-4">
+        {catalogLoading && <p className="py-4 text-sm text-slate-500">{isArabic ? 'جارٍ تحميل المنتجات...' : 'Loading products...'}</p>}
+        {catalogError && <p role="alert" className="py-3 text-sm text-rose-700">{catalogError}</p>}
+        {!catalogLoading && !catalogError && catalogRows.length === 0 && <div className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">{isArabic ? 'لا توجد لقطة منيو محفوظة. يلزم موصل كاشير فعلي لجلب المنتجات.' : 'No catalog snapshot exists. A real POS adapter is required to fetch products.'}</div>}
+        {!catalogLoading && !catalogError && catalogRows.length > 0 && <div className="space-y-2">
+          <p className="text-xs text-slate-500">{isArabic ? `عدد المنتجات: ${catalogRows.length} — معاينة فقط، دون تعديل تلقائي` : `Products: ${catalogRows.length} — preview only, no automatic changes`}</p>
+          {catalogRows.map(item => <article key={item.id} className="rounded-xl border border-slate-200 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="font-bold text-slate-800">{item.name}</p><p className="mt-1 text-xs text-slate-500">{item.provider_item_id}{item.category_id ? ` · ${item.category_id}` : ''}</p>{item.description && <p className="mt-2 text-xs text-slate-600">{item.description}</p>}</div>
+            <div className="text-end"><p className="font-extrabold text-slate-900">{Number(item.unit_price).toFixed(2)} {item.currency}</p><span className={`mt-1 inline-block rounded-full px-2 py-1 text-[11px] font-bold ${item.active && item.available ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item.active && item.available ? (isArabic ? 'متاح بالكاشير' : 'Available in POS') : (isArabic ? 'غير متاح / متوقف' : 'Unavailable / inactive')}</span></div></div>
+            <p className="mt-2 text-[11px] text-slate-400">{isArabic ? 'آخر تحديث: ' : 'Source updated: '}{new Date(item.source_updated_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</p>
+          </article>)}
+        </div>}
+      </div>}
+    </div>
     <div className="mt-8 border-t border-slate-100 pt-6">
       <div className="mb-4">
         <h3 className="font-extrabold text-slate-900">{isArabic ? 'الفروع ونقاط البيع' : 'Branches and locations'}</h3>
