@@ -62,7 +62,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_event_type text;
   v_previous jsonb;
