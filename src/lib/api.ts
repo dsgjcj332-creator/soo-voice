@@ -447,6 +447,7 @@ export function createApiApp() {
         id: `eq.${connectionId}`,
         owner_id: `eq.${auth.ownerId}`,
         credentials_ciphertext: `eq.${current.credentials_ciphertext}`,
+        credentials_key_version: `eq.${current.credentials_key_version}`,
         select: 'id',
       });
       const update = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${updateQuery}`, {
