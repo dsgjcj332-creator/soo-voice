@@ -390,7 +390,7 @@ export function createApiApp() {
       // menu_items uses the existing camelCase ownerId tenant column. Verify ownership
       // before accepting a free-form menu item ID; never trust an ID supplied by the browser.
       const menuQuery = new URLSearchParams({
-        select: 'id', id: `eq.${menuItemId}`, ownerId: `eq.${auth.ownerId}`, isAiOnly: 'eq.false', limit: '1',
+        select: 'id', id: `eq.${menuItemId}`, ownerId: `eq.${auth.ownerId}`, or: '(isAiOnly.is.null,isAiOnly.eq.false)', limit: '1',
       });
       const menuResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/menu_items?${menuQuery}`, {
         headers: posServiceHeaders(auth.backend.serviceKey),
