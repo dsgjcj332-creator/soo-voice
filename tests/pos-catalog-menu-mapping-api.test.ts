@@ -51,7 +51,8 @@ function json(data: unknown, status = 200) {
 function successfulSupabase(url: URL, init: RequestInit | undefined, options: MockOptions = {}) {
   if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
   if (url.pathname === '/rest/v1/pos_locations') return json([{ id: locationId, connection_id: connectionId }]);
-  if (url.pathname === '/rest/v1/pos_catalog_items') return json([{ provider_item_id: 'provider-tea-1' }]);\n  if (url.pathname === '/rest/v1/pos_catalog_menu_link_events') return json([{ id: 'event-1', provider_item_id: 'provider-tea-1', event_type: 'created', actor_id: ownerId, created_at: '2026-11-17T12:00:00.000Z' }]);
+  if (url.pathname === '/rest/v1/pos_catalog_items') return json([{ provider_item_id: 'provider-tea-1' }]);
+  if (url.pathname === '/rest/v1/pos_catalog_menu_link_events') return json([{ id: 'event-1', provider_item_id: 'provider-tea-1', event_type: 'created', actor_id: ownerId, created_at: '2026-11-17T12:00:00.000Z' }]);
   if (url.pathname === '/rest/v1/menu_items') return json(options.menuRows ?? [{ id: 'menu-tea-1' }]);
   if (url.pathname === '/rest/v1/pos_catalog_menu_links' && init?.method === 'POST') {
     if (options.mappingStatus && options.mappingStatus !== 201) return json({ message: 'mapping conflict' }, options.mappingStatus);
