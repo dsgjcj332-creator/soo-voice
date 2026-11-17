@@ -166,3 +166,12 @@ This is an adapter-facing validation layer only. It does not claim that any vend
 Added a pure, deterministic catalog sync planner for one manually mapped provider location. It keys records by provider item ID within the caller's connection/location scope and emits create, update, unchanged, stale and deactivate operations. Older provider timestamps are rejected; equal timestamps with different content are treated as ambiguous/stale rather than overwriting data. Deactivation is emitted only when the caller explicitly declares the provider response to be a complete snapshot, so paginated or partial fetches cannot accidentally hide products.
 
 The planner's content fingerprint is a compact change detector, not a cryptographic integrity primitive. It only describes POS-owned catalog fields; persistence code must keep merchant-authored fields/overrides separate and must scope every database read/write by verified owner, connection and mapped location. No catalog table, database write path, provider fetcher, scheduled sync or live menu import is added by this checkpoint.
+
+
+## Durable POS catalog storage checkpoint (2026-11-17)
+
+Added `sql/2026_11_21_pos_catalog_storage.sql` with a tenant-scoped `pos_catalog_items` table linked by composite owner/connection/location foreign keys. Merchants may read only their own rows; browser writes are revoked. A service-role-only atomic RPC validates the connection is actually `connected`, verifies the mapped location is active and belongs to that connection/merchant, upserts only strictly newer provider timestamps, marks stale incoming IDs as seen without overwriting newer stored content, and deactivates missing products only for an explicitly complete snapshot.
+
+Added `src/lib/pos/catalog-persistence.ts` as a narrow persistence boundary: it validates tenant/connection/location UUIDs, runs the canonical catalog normalizer, filters to the selected provider location, and calls only the privileged RPC. Unit tests cover scope validation, filtering, malformed payload rejection, safe RPC error handling and explicit empty complete snapshots.
+
+This is storage and a server-side persistence primitive, not a live sync feature. No API route currently invokes it, no provider adapter fetches menus, and no scheduled synchronization is running. Apply the migration in staging and test RLS, service-role authorization, timestamp conflicts, tenant/location isolation and complete-versus-partial snapshot behavior before wiring a provider.
