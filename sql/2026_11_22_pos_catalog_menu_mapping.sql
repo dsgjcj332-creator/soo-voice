@@ -33,6 +33,7 @@ create policy pos_catalog_menu_links_owner_read on public.pos_catalog_menu_links
 
 revoke all on public.pos_catalog_menu_links from anon, authenticated;
 grant select on public.pos_catalog_menu_links to authenticated;
+grant all on public.pos_catalog_menu_links to service_role;
 revoke all on public.pos_catalog_menu_links from public;
 
 commit;
