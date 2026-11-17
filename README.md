@@ -177,3 +177,8 @@ Apache-2.0 (see source headers).
 The POS catalog foundation now includes a pure sync planner that compares a normalized provider snapshot with the last persisted source snapshot for one manually mapped location. It emits create/update/unchanged/stale/deactivate operations, keys items by provider item ID, rejects older or ambiguous same-timestamp changes, and only proposes deactivation when the caller explicitly confirms that the provider response is a complete snapshot. Partial or paginated fetches must never be treated as complete.
 
 The planner does not write to the database or fetch provider data. Its compact content fingerprint is a change detector, not a cryptographic integrity hash. Future persistence must keep merchant-authored overrides separate from POS-owned fields and scope writes by verified merchant, connection and location. No live catalog sync is available yet.
+
+
+### POS catalog review preview
+
+The authenticated POS panel now exposes a read-only branch catalog preview through `GET /api/pos/catalog?locationId=...`. The server verifies the Supabase session, confirms the active branch belongs to that merchant, and returns only that branch's stored catalog snapshot. This is a preview of persisted snapshots only: it does not fetch a live vendor catalog, map POS products to `menu_items`, approve changes, or write to the merchant menu. Those actions remain blocked until a real provider adapter and explicit approval workflow are implemented.
