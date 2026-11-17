@@ -81,7 +81,10 @@ begin
      or p_request_hash is null or p_request_hash !~ '^[0-9a-f]{64}$' then
     raise exception 'INVALID_SECURITY_TOKEN';
   end if;
-  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) < 1 or jsonb_array_length(p_items) > 50 then
+  if p_items is null or jsonb_typeof(p_items) is distinct from 'array' then
+    raise exception 'INVALID_ITEMS';
+  end if;
+  if jsonb_array_length(p_items) < 1 or jsonb_array_length(p_items) > 50 then
     raise exception 'INVALID_ITEMS';
   end if;
 
