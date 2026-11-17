@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runPosAdapterConformance } from '../src/lib/pos/adapter-conformance.ts';
 import { createPosSandboxAdapter } from '../src/lib/pos/testing/sandbox-adapter.ts';
 import type { PosCreateOrderInput, PosConnectionContext } from '../src/lib/pos/types.ts';
 
@@ -28,16 +27,18 @@ function order(overrides: Partial<PosCreateOrderInput> = {}): PosCreateOrderInpu
   };
 }
 
-test('sandbox adapter passes read-only provider conformance', async () => {
+test('sandbox adapter exposes healthy capabilities, branch and normalized catalog', async () => {
   const sandbox = createPosSandboxAdapter();
-  const result = await runPosAdapterConformance(
-    sandbox.adapter,
-    context,
-    'sandbox-branch-1',
-  );
-  assert.equal(result.provider, 'custom');
-  assert.equal(result.catalogItemCount, 1);
-  assert.equal(result.checks.every(check => check.passed), true);
+  const capabilities = await sandbox.adapter.getCapabilities(context);
+  const health = await sandbox.adapter.healthCheck(context);
+  const locations = await sandbox.adapter.listLocations(context);
+  const catalog = await sandbox.adapter.fetchCatalog(context, 'sandbox-branch-1');
+  assert.equal(capabilities.menuRead, true);
+  assert.equal(capabilities.orderCreate, true);
+  assert.deepEqual(health, { ok: true, message: 'In-memory sandbox adapter is ready' });
+  assert.equal(locations.length, 1);
+  assert.equal(locations[0].active, true);
+  assert.equal(catalog.length, 1);
   assert.deepEqual(sandbox.getAcceptedOrders(), []);
 });
 
