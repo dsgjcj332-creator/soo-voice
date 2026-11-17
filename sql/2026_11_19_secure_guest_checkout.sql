@@ -184,3 +184,116 @@ revoke all on function public.create_guest_order(text,text,jsonb,text,text,text)
 grant execute on function public.create_guest_order(text,text,jsonb,text,text,text) to service_role;
 
 commit;
+
+
+-- Durable worker leases and retry lifecycle. A worker claims rows with
+-- SKIP LOCKED so multiple server instances cannot process the same event.
+alter table public.order_outbox
+  add column if not exists locked_at timestamptz,
+  add column if not exists locked_by text,
+  add column if not exists max_attempts integer not null default 12
+    check (max_attempts between 1 and 100);
+
+create or replace function public.claim_order_outbox(
+  p_worker_id text,
+  p_limit integer default 10,
+  p_lease_seconds integer default 120
+) returns setof public.order_outbox
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_worker_id is null or length(p_worker_id) < 8 or length(p_worker_id) > 128
+     or p_limit is null or p_limit < 1 or p_limit > 50
+     or p_lease_seconds is null or p_lease_seconds < 30 or p_lease_seconds > 900 then
+    raise exception 'INVALID_WORKER_CLAIM';
+  end if;
+
+  return query
+  with candidates as (
+    select id
+      from public.order_outbox
+     where (
+       (status in ('pending','failed') and next_attempt_at <= now())
+       or (status = 'processing' and locked_at < now() - make_interval(secs => p_lease_seconds))
+     )
+       and attempts < max_attempts
+     order by created_at asc
+     for update skip locked
+     limit p_limit
+  )
+  update public.order_outbox o
+     set status = 'processing',
+         locked_at = now(),
+         locked_by = p_worker_id
+    from candidates c
+   where o.id = c.id
+  returning o.*;
+end;
+$$;
+
+create or replace function public.complete_order_outbox(
+  p_event_id uuid,
+  p_worker_id text
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_updated integer;
+begin
+  update public.order_outbox
+     set status = 'delivered',
+         delivered_at = now(),
+         locked_at = null,
+         locked_by = null,
+         last_error_code = null
+   where id = p_event_id
+     and status = 'processing'
+     and locked_by = p_worker_id;
+  get diagnostics v_updated = row_count;
+  return v_updated = 1;
+end;
+$$;
+
+create or replace function public.retry_order_outbox(
+  p_event_id uuid,
+  p_worker_id text,
+  p_error_code text
+) returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_attempts integer;
+  v_max_attempts integer;
+  v_status text;
+begin
+  update public.order_outbox
+     set attempts = attempts + 1,
+         status = case when attempts + 1 >= max_attempts then 'dead_letter' else 'failed' end,
+         next_attempt_at = now() + make_interval(secs => least(3600, (power(2, least(attempts, 10))::integer * 5))),
+         locked_at = null,
+         locked_by = null,
+         last_error_code = left(coalesce(p_error_code, 'DISPATCH_FAILED'), 80)
+   where id = p_event_id
+     and status = 'processing'
+     and locked_by = p_worker_id
+  returning attempts, max_attempts, status into v_attempts, v_max_attempts, v_status;
+
+  if not found then
+    raise exception 'OUTBOX_LEASE_NOT_OWNED';
+  end if;
+  return v_status;
+end;
+$$;
+
+revoke all on function public.claim_order_outbox(text,integer,integer) from public, anon, authenticated;
+revoke all on function public.complete_order_outbox(uuid,text) from public, anon, authenticated;
+revoke all on function public.retry_order_outbox(uuid,text,text) from public, anon, authenticated;
+grant execute on function public.claim_order_outbox(text,integer,integer) to service_role;
+grant execute on function public.complete_order_outbox(uuid,text) to service_role;
+grant execute on function public.retry_order_outbox(uuid,text,text) to service_role;
+
