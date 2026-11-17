@@ -16,10 +16,10 @@ update public.order_outbox
    and locked_at is null;
 
 -- Preserve still-live leases created before this migration. Their original
--- claim duration was bounded to 900 seconds; use 120 seconds only as a safe
+-- claim duration was bounded to 900 seconds; use the maximum allowed 15-minute lease as a safe
 -- fallback when a timestamp is unexpectedly absent.
 update public.order_outbox
-   set lease_expires_at = coalesce(lease_expires_at, locked_at + interval '120 seconds')
+   set lease_expires_at = coalesce(lease_expires_at, locked_at + interval '15 minutes')
  where status = 'processing'
    and locked_at is not null
    and lease_expires_at is null;
