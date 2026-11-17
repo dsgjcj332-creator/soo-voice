@@ -129,19 +129,19 @@ The Integrations page includes a bilingual POS management panel. A merchant must
 
 - `GET/POST /api/pos/connections` lists a merchant's connections and stores new credential objects encrypted server-side. Secret fields are never returned to the browser.
 - `GET/POST/PATCH /api/pos/locations` lists, manually maps, and deactivates branch mappings. Deactivation preserves historical order references. Every operation derives the merchant from the verified Supabase session; location creation also verifies that the selected connection belongs to that merchant.
-- A canonical POS catalog validation boundary now rejects malformed provider IDs, currencies, unsafe prices, duplicate item/branch/modifier IDs, invalid timestamps, and inconsistent modifier selection rules before normalized data is accepted. Signed modifier price deltas are supported. This is validation only; it does not yet persist or synchronize catalog rows.
-- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, menu/catalog sync, order delivery, and a deployed worker are not implemented.
+- A canonical POS catalog validation boundary rejects malformed provider IDs, currencies, unsafe prices, duplicate item/branch/modifier IDs, invalid timestamps, and inconsistent modifier selection rules. A tenant-scoped `pos_catalog_items` table and service-role-only snapshot RPC now provide an atomic persistence foundation, including stale-source protection and safe complete-snapshot deactivation. A typed server-side persistence boundary normalizes and filters records to the selected mapped branch before calling the RPC.
+- Branch IDs are entered manually for now. Provider branch discovery, provider credential validation, connection health checks, OAuth, automatic provider fetching, a route that invokes catalog persistence, scheduled menu sync, order delivery, and a deployed worker are not implemented.
 - Outbox leases now have an explicit expiry timestamp. Expired workers cannot complete or retry an event; another worker may reclaim it after expiry.
 - New connections remain `pending`; adding credentials or a branch mapping does not mean the external POS is connected or synchronized.
 
-Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Configure the server-only Supabase URL, anon key, service-role key, and `POS_CREDENTIALS_ENCRYPTION_KEY` / version as documented in `.env.example`. Never expose server secrets through `VITE_*` variables.
+Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Apply `sql/2026_11_21_pos_catalog_storage.sql` after the POS registry and outbox migrations to create the catalog table and privileged snapshot RPC. Configure the server-only Supabase URL, anon key, service-role key, and `POS_CREDENTIALS_ENCRYPTION_KEY` / version as documented in `.env.example`. Never expose server secrets through `VITE_*` variables.
 
 ## Deployment (Vercel)
 
 1. Push to GitHub and import the repo in Vercel.
 2. Set the server-side env vars from the table above in Project Settings.
 3. Build command: `npm run build` — API routes are picked up automatically from `api/`.
-4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, and `sql/2026_11_20_enforce_outbox_lease_expiry.sql`. Verify them in staging before production.
+4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, `sql/2026_11_20_enforce_outbox_lease_expiry.sql`, and `sql/2026_11_21_pos_catalog_storage.sql`. Verify them in staging before production.
 5. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
    `store_settings` table that powers the merchant store profile, voice-widget
    visibility toggle, geo-fence and menu session duration. Until it is applied the
