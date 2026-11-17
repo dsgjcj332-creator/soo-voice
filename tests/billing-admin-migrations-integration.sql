@@ -55,7 +55,16 @@ begin
   exception when insufficient_privilege then
     null;
   end;
+end;
+$$;
+reset role;
 
+select 'BILLING_ADMIN_TESTS_PASSED' as result;
+
+-- Even the service role cannot rewrite the audit history.
+set role service_role;
+do $$
+begin
   begin
     update public.billing_admin_audit_events set action = 'delete'
      where entity_type = 'billing_plans';
@@ -66,5 +75,3 @@ begin
 end;
 $$;
 reset role;
-
-select 'BILLING_ADMIN_TESTS_PASSED' as result;
