@@ -252,7 +252,7 @@ create or replace function public.complete_order_outbox(
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_event public.order_outbox%rowtype;
   v_provider text;
@@ -315,7 +315,7 @@ begin
    where id = p_event_id;
   return true;
 end;
-$;
+$$;
 
 create or replace function public.retry_order_outbox(
   p_event_id uuid,
