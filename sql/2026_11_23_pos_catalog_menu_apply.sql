@@ -65,8 +65,8 @@ begin
   end if;
   if p_expected is null or jsonb_typeof(p_expected) <> 'object'
      or p_patch is null or jsonb_typeof(p_patch) <> 'object'
-     or jsonb_object_length(p_expected) <> cardinality(p_selected_fields)
-     or jsonb_object_length(p_patch) <> cardinality(p_selected_fields) then
+     or (select count(*) from jsonb_object_keys(p_expected)) <> cardinality(p_selected_fields)
+     or (select count(*) from jsonb_object_keys(p_patch)) <> cardinality(p_selected_fields) then
     raise exception 'INVALID_POS_MENU_APPLY_PAYLOAD' using errcode = '22023';
   end if;
   foreach v_field in array p_selected_fields loop
