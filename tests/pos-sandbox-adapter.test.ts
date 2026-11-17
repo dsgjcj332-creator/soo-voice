@@ -1,0 +1,129 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { runPosAdapterConformance } from '../src/lib/pos/adapter-conformance.ts';
+import { createPosSandboxAdapter } from '../src/lib/pos/testing/sandbox-adapter.ts';
+import type { PosCreateOrderInput, PosConnectionContext } from '../src/lib/pos/types.ts';
+
+const context: PosConnectionContext = {
+  merchantId: 'merchant-sandbox-1',
+  connectionId: 'connection-sandbox-1',
+  locationId: 'sandbox-location-1',
+};
+
+function order(overrides: Partial<PosCreateOrderInput> = {}): PosCreateOrderInput {
+  return {
+    merchantId: context.merchantId,
+    locationId: 'sandbox-location-1',
+    localOrderId: 'local-order-1',
+    idempotencyKey: 'request-1',
+    currency: 'EGP',
+    lines: [{
+      catalogItemId: 'sandbox-item-1',
+      providerItemId: 'sandbox-product-1',
+      quantity: 2,
+      modifierOptionIds: ['sandbox-small'],
+    }],
+    fulfillment: 'pickup',
+    ...overrides,
+  };
+}
+
+test('sandbox adapter passes read-only provider conformance', async () => {
+  const sandbox = createPosSandboxAdapter();
+  const result = await runPosAdapterConformance(
+    sandbox.adapter,
+    context,
+    'sandbox-branch-1',
+  );
+  assert.equal(result.provider, 'custom');
+  assert.equal(result.catalogItemCount, 1);
+  assert.equal(result.checks.every(check => check.passed), true);
+  assert.deepEqual(sandbox.getAcceptedOrders(), []);
+});
+
+test('sandbox adapter exposes only its seeded branch and catalog', async () => {
+  const sandbox = createPosSandboxAdapter();
+  const locations = await sandbox.adapter.listLocations(context);
+  const catalog = await sandbox.adapter.fetchCatalog(context, 'sandbox-branch-1');
+  assert.equal(locations.length, 1);
+  assert.equal(locations[0].active, true);
+  assert.equal(catalog.length, 1);
+  await assert.rejects(
+    sandbox.adapter.fetchCatalog(context, 'another-branch'),
+    /POS_SANDBOX_LOCATION_NOT_FOUND/,
+  );
+});
+
+test('sandbox adapter accepts a valid order and records its provider ID', async () => {
+  const sandbox = createPosSandboxAdapter();
+  const result = await sandbox.adapter.createOrder(context, order());
+  assert.equal(result.status, 'accepted');
+  assert.equal(result.providerOrderId, 'sandbox-order-000001');
+  assert.equal(sandbox.getAcceptedOrders().length, 1);
+});
+
+test('sandbox adapter returns the same provider order for an identical retry', async () => {
+  const sandbox = createPosSandboxAdapter();
+  const first = await sandbox.adapter.createOrder(context, order());
+  const retry = await sandbox.adapter.createOrder(context, order());
+  assert.deepEqual(retry, first);
+  assert.equal(sandbox.getAcceptedOrders().length, 1);
+});
+
+test('sandbox adapter rejects idempotency-key reuse with a changed order', async () => {
+  const sandbox = createPosSandboxAdapter();
+  await sandbox.adapter.createOrder(context, order());
+  await assert.rejects(
+    sandbox.adapter.createOrder(context, order({ lines: [{
+      catalogItemId: 'sandbox-item-1',
+      providerItemId: 'sandbox-product-1',
+      quantity: 3,
+      modifierOptionIds: ['sandbox-small'],
+    }] })),
+    /POS_SANDBOX_IDEMPOTENCY_CONFLICT/,
+  );
+  assert.equal(sandbox.getAcceptedOrders().length, 1);
+});
+
+test('sandbox adapter rejects tenant and branch mismatches', async () => {
+  const sandbox = createPosSandboxAdapter();
+  await assert.rejects(
+    sandbox.adapter.createOrder(context, order({ merchantId: 'another-merchant' })),
+    /POS_SANDBOX_TENANT_MISMATCH/,
+  );
+  await assert.rejects(
+    sandbox.adapter.createOrder(context, order({ locationId: 'another-location' })),
+    /POS_SANDBOX_LOCATION_MISMATCH/,
+  );
+});
+
+test('sandbox adapter validates catalog items, quantities and required modifiers', async () => {
+  const sandbox = createPosSandboxAdapter();
+  await assert.rejects(
+    sandbox.adapter.createOrder(context, order({ lines: [{
+      catalogItemId: 'unknown-item',
+      providerItemId: 'unknown-item',
+      quantity: 1,
+      modifierOptionIds: ['sandbox-small'],
+    }] })),
+    /POS_SANDBOX_ITEM_NOT_AVAILABLE/,
+  );
+  await assert.rejects(
+    sandbox.adapter.createOrder(context, order({ lines: [{
+      catalogItemId: 'sandbox-item-1',
+      providerItemId: 'sandbox-product-1',
+      quantity: 0,
+      modifierOptionIds: ['sandbox-small'],
+    }] })),
+    /POS_SANDBOX_INVALID_QUANTITY/,
+  );
+  await assert.rejects(
+    sandbox.adapter.createOrder(context, order({ lines: [{
+      catalogItemId: 'sandbox-item-1',
+      providerItemId: 'sandbox-product-1',
+      quantity: 1,
+      modifierOptionIds: [],
+    }] })),
+    /POS_SANDBOX_INVALID_MODIFIERS/,
+  );
+});
