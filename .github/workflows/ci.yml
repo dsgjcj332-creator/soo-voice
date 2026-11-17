@@ -70,6 +70,7 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_21_pos_catalog_storage.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_24_pos_webhook_ingress.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_22_pos_catalog_menu_mapping.sql
       - name: Verify schema, RLS and grants
         run: psql -X -v ON_ERROR_STOP=1 -f sql/verify_pos_catalog_staging.sql
