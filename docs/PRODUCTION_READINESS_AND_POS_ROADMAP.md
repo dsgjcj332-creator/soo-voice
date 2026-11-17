@@ -122,3 +122,10 @@ Added the leased outbox lifecycle to the secure checkout migration:
 - Added tests for accepted, pending, missing-connection and invalid-batch cases.
 
 **Not yet an operating worker:** no provider adapter is registered, no connection credential encryption/decryption or connection-to-order routing policy exists, and no scheduled worker is deployed. The batch processor is an execution core, not proof that orders are currently delivered. Do not manually mark outbox rows delivered. Before enabling a worker, implement authenticated merchant location/connection selection, server-side secret decryption, adapter registration, a scheduled runner protected by a dedicated worker secret, and end-to-end sandbox tests.
+
+
+## POS credential encryption checkpoint (2026-11-17)
+
+Added a server-only AES-256-GCM utility for POS credential objects. It uses a fresh 96-bit IV per encryption, an authentication tag, version-bound additional authenticated data, and a versioned envelope stored in the existing `pos_connections.credentials_ciphertext` plus `credentials_key_version` fields. Invalid/missing keys, version mismatches, malformed envelopes and authentication failures fail closed. Tests cover round-trip, nonce uniqueness, tampering, key-version mismatch and invalid inputs.
+
+This is an encryption primitive only: no connection-management endpoint, merchant authorization flow, credential persistence, key-ring rotation, provider adapter or scheduled worker is implemented by this checkpoint. The deployment key must be generated and stored in the server secret manager. Before storing live credentials, implement an authenticated server route that derives the merchant from a verified session and never returns decrypted credentials.
