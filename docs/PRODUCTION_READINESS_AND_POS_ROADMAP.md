@@ -129,3 +129,10 @@ Added the leased outbox lifecycle to the secure checkout migration:
 Added a server-only AES-256-GCM utility for POS credential objects. It uses a fresh 96-bit IV per encryption, an authentication tag, version-bound additional authenticated data, and a versioned envelope stored in the existing `pos_connections.credentials_ciphertext` plus `credentials_key_version` fields. Invalid/missing keys, version mismatches, malformed envelopes and authentication failures fail closed. Tests cover round-trip, nonce uniqueness, tampering, key-version mismatch and invalid inputs.
 
 This is an encryption primitive only: no connection-management endpoint, merchant authorization flow, credential persistence, key-ring rotation, provider adapter or scheduled worker is implemented by this checkpoint. The deployment key must be generated and stored in the server secret manager. Before storing live credentials, implement an authenticated server route that derives the merchant from a verified session and never returns decrypted credentials.
+
+
+## Authenticated POS connection API checkpoint (2026-11-17)
+
+Added `GET /api/pos/connections` and `POST /api/pos/connections`. Both require a Supabase Bearer access token and verify it with the Supabase Auth `/auth/v1/user` endpoint. The owner ID is taken from the verified user response, never request data. Creation accepts an allowlisted provider ID, optional display name and a non-empty credentials object capped at 16 KiB; credentials are encrypted before writing to `pos_connections`. List and create responses use explicit metadata allowlists and never return credential ciphertext or plaintext. Requests fail closed unless the server has the Supabase URL, anon key, service-role key and POS encryption key configured.
+
+This does not yet validate vendor-specific credential formats, connect to a provider, create branch records, decrypt credentials for a worker, or mark a connection connected. Newly created connections deliberately remain `pending`. The UI must send the current Supabase session access token; local demo users are not accepted as authenticated merchants.
