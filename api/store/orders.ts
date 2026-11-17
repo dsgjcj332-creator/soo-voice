@@ -116,6 +116,53 @@ export default async function handler(req: any, res: any) {
   }
   items.sort((a, b) => a.id.localeCompare(b.id));
 
+  // Durable owner + per-client limits are shared across serverless instances.
+  // HMAC bucket keys ensure raw IP addresses are never stored.
+  const forwardedFor = req.headers?.['x-forwarded-for'];
+  const clientIp = (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor)
+    ?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  const crypto = require('crypto');
+  const ownerBucket = 'owner:' + crypto.createHmac('sha256', tokenSecret)
+    .update('guest-order-owner:v1:' + ownerId).digest('hex');
+  const clientBucket = 'client:' + crypto.createHmac('sha256', tokenSecret)
+    .update('guest-order-client:v1:' + ownerId + ':' + clientIp).digest('hex');
+
+  try {
+    const limitResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_guest_order_rate_limit`, {
+      method: 'POST',
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        p_owner_bucket: ownerBucket,
+        p_client_bucket: clientBucket,
+        p_window_seconds: 60,
+        p_owner_limit: 120,
+        p_client_limit: 20,
+      }),
+    });
+    const allowed = limitResponse.ok ? await limitResponse.json().catch(() => null) : null;
+    if (!limitResponse.ok || typeof allowed !== 'boolean') {
+      console.error('[api/store/orders] Rate-limit RPC unavailable:', limitResponse.status);
+      res.statusCode = 503;
+      res.end(JSON.stringify({ error: 'Order protection is temporarily unavailable' }));
+      return;
+    }
+    if (!allowed) {
+      res.setHeader('Retry-After', '60');
+      res.statusCode = 429;
+      res.end(JSON.stringify({ error: 'Too many orders. Please wait before trying again.' }));
+      return;
+    }
+  } catch (err: any) {
+    console.error('[api/store/orders] Rate-limit error:', err?.message || 'unknown');
+    res.statusCode = 503;
+    res.end(JSON.stringify({ error: 'Order protection is temporarily unavailable' }));
+    return;
+  }
+
   // --- Derive capability token (HMAC) + hashes ---
   const guestToken = hmacBase64Url(
     tokenSecret,
