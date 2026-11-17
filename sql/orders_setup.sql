@@ -41,36 +41,40 @@ create index if not exists orders_owner_created_idx
   on orders ("ownerId", "createdAt" desc);
 
 -- ============================================================
--- 2. Row Level Security + the three guest policies
+-- 2. Row Level Security — authenticated merchant owner only
 -- ============================================================
+-- Anonymous guest checkout/tracking is intentionally disabled here.
+-- Do not add public SELECT/UPDATE policies. A secure guest capability-token
+-- endpoint must be implemented before anonymous tracking can be re-enabled.
 alter table orders enable row level security;
 
--- Guests read their own order's status (tracking timeline).
 drop policy if exists "orders_public_read" on orders;
-create policy "orders_public_read"
-  on orders for select
-  to anon, authenticated
-  using (true);
-
--- Anonymous guests place the order (the QR flow has no login).
 drop policy if exists "orders_public_insert" on orders;
-create policy "orders_public_insert"
-  on orders for insert
-  to anon, authenticated
-  with check (true);
-
--- Status transitions (kitchen marks preparing / completed, guest cancels).
 drop policy if exists "orders_public_update_status" on orders;
-create policy "orders_public_update_status"
-  on orders for update
-  to anon, authenticated
-  using (true)
-  with check (true);
-
--- Kitchen dashboard archives (deletes) served tickets.
--- authenticated only — anonymous visitors must never be able to delete.
 drop policy if exists "orders_authenticated_delete" on orders;
-create policy "orders_authenticated_delete"
+
+drop policy if exists "orders_owner_select" on orders;
+drop policy if exists "orders_owner_insert" on orders;
+drop policy if exists "orders_owner_update" on orders;
+drop policy if exists "orders_owner_delete" on orders;
+
+create policy "orders_owner_select"
+  on orders for select
+  to authenticated
+  using ("ownerId" = auth.uid()::text);
+
+create policy "orders_owner_insert"
+  on orders for insert
+  to authenticated
+  with check ("ownerId" = auth.uid()::text);
+
+create policy "orders_owner_update"
+  on orders for update
+  to authenticated
+  using ("ownerId" = auth.uid()::text)
+  with check ("ownerId" = auth.uid()::text);
+
+create policy "orders_owner_delete"
   on orders for delete
   to authenticated
-  using (true);
+  using ("ownerId" = auth.uid()::text);
