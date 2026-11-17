@@ -314,7 +314,7 @@ export function createApiApp() {
     if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
     try {
       const query = new URLSearchParams({
-        select: 'id,name,price',
+        select: 'id,name,description,price',
         ownerId: `eq.${auth.ownerId}`,
         or: '(isAiOnly.is.null,isAiOnly.eq.false)',
         order: 'name.asc',
