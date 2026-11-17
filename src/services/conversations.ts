@@ -96,13 +96,14 @@ export function subscribeToConversations(
     )
     .subscribe();
 
-  supabase
-    .from('conversations')
-    .select('*')
-    .eq('ownerId', ownerId)
-    .order('createdAt', { ascending: false })
-    .limit(200)
-    .then(({ data, error }) => {
+  void (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('ownerId', ownerId)
+        .order('createdAt', { ascending: false })
+        .limit(200);
       if (disposed) return;
       if (error) {
         onError?.(error.message);
@@ -115,13 +116,13 @@ export function subscribeToConversations(
       pendingChanges.length = 0;
       initialLoadComplete = true;
       publish();
-    })
-    .catch((error: unknown) => {
+    } catch (error: unknown) {
       if (disposed) return;
       initialLoadComplete = true;
       onError?.(error instanceof Error ? error.message : 'Failed to load conversations');
       publish();
-    });
+    }
+  })();
 
   return () => {
     disposed = true;
