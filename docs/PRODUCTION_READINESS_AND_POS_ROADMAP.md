@@ -196,3 +196,12 @@ The first CI retry reached the test suite after dependencies installed successfu
 - Added an authenticated, tenant-scoped read-only endpoint for stored POS catalog snapshots.
 - Added a branch selector and product preview to the POS integrations panel.
 - No automatic menu mutation, product linking, or merchant approval persistence is implemented yet; live provider catalog fetching still requires a real vendor adapter.
+
+
+## Explicit POS-to-menu mapping checkpoint (2026-11-17)
+
+Added `sql/2026_11_22_pos_catalog_menu_mapping.sql` with tenant-scoped durable links between one mapped POS branch/product and one SooVoice `menu_items` row. The mapping table stores the approving merchant, approval timestamp and field-level override flags. Composite owner/connection/location foreign keys prevent cross-tenant or cross-branch references; authenticated merchants have read-only RLS access and only trusted server code can write mappings.
+
+Added `GET/POST /api/pos/catalog/mappings`. Both routes verify the Supabase merchant session and active branch ownership. Creation additionally verifies that the POS product is present and active in the selected branch and that the target `menu_items` row belongs to the same merchant and is not AI-only. The endpoint stores an approval/link record only; it never edits the menu item or silently applies provider values. A unique branch/menu-item constraint prevents linking one local item to multiple POS products in the same branch.
+
+Remaining before this is usable end-to-end: apply the migration in staging, add the UI for selecting a local menu item and recording field overrides, add API integration tests against a seeded Supabase schema, and implement a separate explicit apply workflow with audit history. No live provider adapter or automatic catalog fetch is implied by this mapping foundation.
