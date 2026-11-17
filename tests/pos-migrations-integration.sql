@@ -137,7 +137,7 @@ $$;
 
 
 -- Webhook event receipt and catalog sync are atomic and idempotent.
-do $
+do $webhook$
 declare
   v_first jsonb;
   v_replay jsonb;
@@ -196,7 +196,7 @@ begin
   end;
   perform set_config('request.jwt.claim.role', 'service_role', true);
 end;
-$;
+$webhook$;
 
 -- Authenticated merchant can read only their own catalog and mapping history.
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
