@@ -79,6 +79,34 @@ begin
     '[{"providerId":"burger-1","name":"Burger Deluxe","currency":"EGP","unitPrice":"65.00","available":true,"modifierGroups":[],"updatedAt":"2026-11-18T10:00:00Z"}]'::jsonb,
     true
   );
+  -- A complete snapshot can deactivate the item when the provider omits it.
+  perform public.sync_pos_catalog_snapshot(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '[]'::jsonb,
+    true
+  );
+  -- A stale record in a later complete snapshot must not reactivate it.
+  perform public.sync_pos_catalog_snapshot(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '[{"providerId":"burger-1","name":"Old Burger","currency":"EGP","unitPrice":"10.00","available":true,"modifierGroups":[],"updatedAt":"2026-11-16T10:00:00Z"}]'::jsonb,
+    true
+  );
+  select active into v_active from public.pos_catalog_items where provider_item_id = 'burger-1';
+  if v_active is distinct from false then
+    raise exception 'POS_TEST_STALE_SNAPSHOT_REACTIVATED_DEACTIVATED_PRODUCT';
+  end if;
+  -- A genuinely newer snapshot is allowed to reactivate the product.
+  perform public.sync_pos_catalog_snapshot(
+    '11111111-1111-4111-8111-111111111111',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '[{"providerId":"burger-1","name":"Burger Fresh","currency":"EGP","unitPrice":"70.00","available":true,"modifierGroups":[],"updatedAt":"2026-11-19T10:00:00Z"}]'::jsonb,
+    true
+  );
   select name, active into v_name, v_active
     from public.pos_catalog_items where provider_item_id = 'burger-1';
   if v_name <> 'Burger Deluxe' or v_active is distinct from true then
@@ -126,11 +154,47 @@ begin
      set field_overrides = '{"price":true,"name":true}'::jsonb
    where provider_item_id = 'burger-1';
 
+  update public.pos_catalog_menu_links
+     set menu_item_id = 'menu-burger-relinked'
+   where provider_item_id = 'burger-1';
+
+  update public.pos_catalog_menu_links
+     set approved_at = now()
+   where provider_item_id = 'burger-1';
+
+  -- A mapping cannot point at a provider item absent from this branch catalog.
+  begin
+    insert into public.pos_catalog_menu_links(
+      owner_id, connection_id, location_id, provider_item_id,
+      menu_item_id, approved_by
+    ) values (
+      '11111111-1111-4111-8111-111111111111',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      'missing-provider-item', 'menu-missing', 
+      '11111111-1111-4111-8111-111111111111'
+    );
+    raise exception 'POS_TEST_MAPPING_ACCEPTED_UNKNOWN_CATALOG_ITEM';
+  exception when foreign_key_violation then
+    null;
+  end;
+
+  if has_table_privilege('service_role', 'public.pos_catalog_menu_link_events', 'UPDATE')
+     or has_table_privilege('service_role', 'public.pos_catalog_menu_link_events', 'DELETE') then
+    raise exception 'POS_TEST_SERVICE_ROLE_CAN_MUTATE_AUDIT_HISTORY';
+  end if;
+
   select count(*) into v_event_count
     from public.pos_catalog_menu_link_events
    where owner_id = '11111111-1111-4111-8111-111111111111';
-  if v_event_count <> 2 then
+  if v_event_count <> 4 then
     raise exception 'POS_TEST_MAPPING_AUDIT_EVENTS_MISSING';
+  end if;
+  if (select count(*) from public.pos_catalog_menu_link_events where event_type = 'created') <> 1
+     or (select count(*) from public.pos_catalog_menu_link_events where event_type = 'protection_updated') <> 1
+     or (select count(*) from public.pos_catalog_menu_link_events where event_type = 'relinked') <> 1
+     or (select count(*) from public.pos_catalog_menu_link_events where event_type = 'reapproved') <> 1 then
+    raise exception 'POS_TEST_MAPPING_AUDIT_EVENT_TYPES_MISSING';
   end if;
 end;
 $$;
@@ -144,7 +208,7 @@ begin
   if (select count(*) from public.pos_catalog_items) <> 1 then
     raise exception 'POS_TEST_CATALOG_RLS_TENANT_ISOLATION_FAILED';
   end if;
-  if (select count(*) from public.pos_catalog_menu_link_events) <> 2 then
+  if (select count(*) from public.pos_catalog_menu_link_events) <> 4 then
     raise exception 'POS_TEST_AUDIT_RLS_TENANT_ISOLATION_FAILED';
   end if;
 end;
