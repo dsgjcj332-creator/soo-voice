@@ -7,6 +7,11 @@ import {
   ArrowRight,
   Receipt,
   ChefHat as Kitchen,
+  ClipboardCheck,
+  MessageSquare,
+  Utensils,
+  Mic,
+  PlugZap,
 } from "lucide-react";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -51,6 +56,33 @@ export function DashboardOverview() {
   const { currency } = useSettings();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [completedDailyTasks, setCompletedDailyTasks] = useState<string[]>([]);
+
+  const localDayKey = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  })();
+  const dailyTasksStorageKey = user?.uid ? `soovoice:daily-tasks:${user.uid}:${localDayKey}` : null;
+
+  useEffect(() => {
+    if (!dailyTasksStorageKey) return;
+    try {
+      const saved = window.localStorage.getItem(dailyTasksStorageKey);
+      const parsed = saved ? JSON.parse(saved) : [];
+      setCompletedDailyTasks(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    } catch {
+      setCompletedDailyTasks([]);
+    }
+  }, [dailyTasksStorageKey]);
+
+  useEffect(() => {
+    if (!dailyTasksStorageKey) return;
+    try {
+      window.localStorage.setItem(dailyTasksStorageKey, JSON.stringify(completedDailyTasks));
+    } catch {
+      // The checklist remains usable for this session if browser storage is unavailable.
+    }
+  }, [dailyTasksStorageKey, completedDailyTasks]);
 
   // Load + subscribe to orders (live, like the kitchen page)
   useEffect(() => {
@@ -133,6 +165,46 @@ export function DashboardOverview() {
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 5);
 
+  const dailyTasks = [
+    {
+      id: "kitchen",
+      title: isAr ? "راجع الطلبات والمطبخ" : "Review orders and kitchen",
+      description: activeOrders.length
+        ? (isAr ? `${activeOrders.length} طلبات محتاجة متابعة` : `${activeOrders.length} orders need attention`)
+        : (isAr ? "تأكد إن مفيش طلبات معلقة" : "Make sure no orders are waiting"),
+      href: "/app/kitchen",
+      Icon: Kitchen,
+    },
+    {
+      id: "conversations",
+      title: isAr ? "راجع محادثات العملاء" : "Review guest conversations",
+      description: isAr ? "تابع الاستفسارات والتحويلات للم 직원" : "Follow up on questions and staff handoffs",
+      href: "/app/conversations",
+      Icon: MessageSquare,
+    },
+    {
+      id: "menu",
+      title: isAr ? "راجع المنيو والأسعار" : "Review menu and prices",
+      description: isAr ? "تأكد إن الأصناف والأسعار والتوافر محدثين" : "Check item details, prices and availability",
+      href: "/app/digital-menu",
+      Icon: Utensils,
+    },
+    {
+      id: "voice",
+      title: isAr ? "اختبر المساعد الصوتي" : "Test the voice assistant",
+      description: isAr ? "جرّب سؤالًا وطلبًا بصوت العميل" : "Try a guest question and an order flow",
+      href: "/app/voice-studio",
+      Icon: Mic,
+    },
+    {
+      id: "connections",
+      title: isAr ? "راجع حالة الربط" : "Review connections",
+      description: isAr ? "تأكد من إعدادات الربط المتاحة" : "Check the integrations configured for this venue",
+      href: "/app/integration",
+      Icon: PlugZap,
+    },
+  ];
+
   const timeAgo = (ts: number) => {
     const diff = Math.floor((Date.now() - ts) / 1000);
     if (diff < 60) return isAr ? `قبل ${diff} ثانية` : `${diff}s ago`;
@@ -159,6 +231,53 @@ export function DashboardOverview() {
           {isAr ? "ما يحدث الآن" : "What's happening now"}
         </h1>
       </header>
+
+      {/* Daily execution center — checklist is stored per merchant and day in this browser. */}
+      <section id="daily-execution" className="mb-8 rounded-2xl border border-indigo-100 bg-white p-5 shadow-xs md:p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-bold text-slate-800">
+              <ClipboardCheck className="h-5 w-5 text-indigo-600" />
+              {isAr ? "التنفيذ اليومي" : "Daily execution"}
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {isAr ? "قائمة متابعة يومية للمطعم — محفوظة على هذا الجهاز." : "A daily restaurant checklist — saved in this browser on this device."}
+            </p>
+          </div>
+          <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700">
+            {completedDailyTasks.length} / {dailyTasks.length} {isAr ? "مكتمل" : "completed"}
+          </span>
+        </div>
+        <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${(completedDailyTasks.length / dailyTasks.length) * 100}%` }} />
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {dailyTasks.map(({ id, title, description, href, Icon }) => {
+            const done = completedDailyTasks.includes(id);
+            return (
+              <div key={id} className={`flex items-center gap-3 rounded-xl border p-3 transition-colors ${done ? "border-emerald-100 bg-emerald-50/50" : "border-slate-100 bg-slate-50/70"}`}>
+                <button
+                  type="button"
+                  aria-label={done ? (isAr ? "إلغاء إكمال المهمة" : "Mark task incomplete") : (isAr ? "إكمال المهمة" : "Mark task complete")}
+                  aria-pressed={done}
+                  onClick={() => setCompletedDailyTasks((current) => done ? current.filter((taskId) => taskId !== id) : [...current, id])}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-transparent hover:border-indigo-400"}`}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </button>
+                <Icon className={`h-5 w-5 shrink-0 ${done ? "text-emerald-600" : "text-slate-400"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm font-bold ${done ? "text-emerald-800 line-through" : "text-slate-800"}`}>{title}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+                </div>
+                <Link to={href} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50">
+                  {isAr ? "افتح" : "Open"}
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Status row — 3 quiet cards */}
       <div className="grid grid-cols-3 gap-3 md:gap-5 mb-8">
