@@ -29,8 +29,7 @@ export function StoreDemo() {
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
-  const orderIdempotencyKeyRef = React.useRef<string | null>(null);
-  React.useEffect(() => { orderIdempotencyKeyRef.current = null; }, [cartItems]);
+  const orderIdempotencyKeyRef = React.useRef<{ key: string; fingerprint: string } | null>(null);
   const [trackingOrder, setTrackingOrder] = React.useState<string | null>(null); // order id being tracked
   const [trackingStatus, setTrackingStatus] = React.useState<string>('pending');
 
@@ -337,8 +336,20 @@ export function StoreDemo() {
         .trim()
         .slice(0, 24) || '1';
 
-      if (!orderIdempotencyKeyRef.current) {
-        orderIdempotencyKeyRef.current = crypto.randomUUID();
+      const orderItems = cartItems.map(item => ({
+        id: String(item.id),
+        quantity: Math.max(1, Math.round(Number(item.quantity) || 0)),
+      }));
+      const requestFingerprint = JSON.stringify({
+        ownerId: resolvedOwnerId,
+        tableNumber,
+        items: [...orderItems].sort((a, b) => a.id.localeCompare(b.id)),
+      });
+      if (!orderIdempotencyKeyRef.current || orderIdempotencyKeyRef.current.fingerprint !== requestFingerprint) {
+        orderIdempotencyKeyRef.current = {
+          key: crypto.randomUUID(),
+          fingerprint: requestFingerprint,
+        };
       }
       const response = await fetch('/api/store/orders', {
         method: 'POST',
@@ -346,11 +357,8 @@ export function StoreDemo() {
         body: JSON.stringify({
           ownerId: resolvedOwnerId,
           tableNumber,
-          idempotencyKey: orderIdempotencyKeyRef.current,
-          items: cartItems.map(item => ({
-            id: String(item.id),
-            quantity: Math.max(1, Math.round(Number(item.quantity) || 0)),
-          })),
+          idempotencyKey: orderIdempotencyKeyRef.current.key,
+          items: orderItems,
         }),
       });
       const result = await response.json().catch(() => null) as any;
