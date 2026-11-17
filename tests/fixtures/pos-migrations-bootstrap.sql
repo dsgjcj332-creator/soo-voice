@@ -20,14 +20,23 @@ create or replace function auth.role()
 returns text
 language sql
 stable
-as $$
+as $
   select nullif(current_setting('request.jwt.claim.role', true), '');
-$$;
+$;
+
+create or replace function auth.jwt()
+returns jsonb
+language sql
+stable
+as $
+  select coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb);
+$;
 
 grant usage on schema auth to anon, authenticated, service_role;
 grant select on auth.users to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 grant execute on function auth.role() to anon, authenticated, service_role;
+grant execute on function auth.jwt() to anon, authenticated, service_role;
 
 -- Minimal menu table matching the columns used by the production menu service
 -- and the POS apply RPC. This is isolated CI schema, not a production migration.
