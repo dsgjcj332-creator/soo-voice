@@ -19,7 +19,7 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { encryptPosCredentials } from './pos/credentials';
+import { decryptPosCredentials, encryptPosCredentials } from './pos/credentials';
 import { isUuid, parsePosLocationInput } from './pos/location-validation';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
@@ -278,6 +278,92 @@ export function createApiApp() {
       // Never log request bodies, provider credentials, or encryption output.
       console.error('[API] POS connection create error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'Could not save POS connection' });
+    }
+  });
+
+  // Generate/rotate a per-connection inbound webhook secret. The plaintext
+  // is returned once and is never stored or logged outside the encrypted envelope.
+  app.post('/api/pos/connections/:connectionId/webhook-secret', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const connectionId = req.params.connectionId;
+    if (!isUuid(connectionId)) {
+      res.status(400).json({ error: 'A valid POS connection ID is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,credentials_ciphertext,credentials_key_version',
+        id: `eq.${connectionId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        limit: '1',
+      });
+      const read = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const rows = await read.json().catch(() => null) as Array<{
+        id: string; credentials_ciphertext: string | null; credentials_key_version: string | null;
+      }> | null;
+      if (!read.ok) {
+        console.error('[API] POS webhook secret lookup failed:', read.status);
+        res.status(503).json({ error: 'Could not access POS connection' });
+        return;
+      }
+      if (!Array.isArray(rows) || rows.length !== 1 || !rows[0].credentials_ciphertext || !rows[0].credentials_key_version) {
+        res.status(404).json({ error: 'POS connection not found' });
+        return;
+      }
+
+      const current = rows[0];
+      const credentials = decryptPosCredentials(current.credentials_ciphertext, current.credentials_key_version);
+      const webhookSecret = crypto.randomBytes(32).toString('base64url');
+      const encrypted = encryptPosCredentials({ ...credentials, webhookSecret });
+      const updateQuery = new URLSearchParams({
+        id: `eq.${connectionId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        credentials_ciphertext: `eq.${current.credentials_ciphertext}`,
+        select: 'id',
+      });
+      const update = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${updateQuery}`, {
+        method: 'PATCH',
+        headers: {
+          ...posServiceHeaders(auth.backend.serviceKey),
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          credentials_ciphertext: encrypted.ciphertext,
+          credentials_key_version: encrypted.keyVersion,
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      const updated = await update.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!update.ok) {
+        console.error('[API] POS webhook secret update failed:', update.status);
+        res.status(503).json({ error: 'Could not rotate POS webhook secret' });
+        return;
+      }
+      if (!Array.isArray(updated) || updated.length !== 1) {
+        res.status(409).json({ error: 'POS connection changed; retry secret rotation' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store, max-age=0');
+      res.set('Pragma', 'no-cache');
+      res.status(200).json({
+        secret: webhookSecret,
+        signatureHeader: 'x-pos-signature',
+        timestampHeader: 'x-pos-timestamp',
+        eventIdHeader: 'x-pos-event-id',
+        eventTypeHeader: 'x-pos-event-type',
+        algorithm: 'HMAC-SHA256',
+        signingFormat: '<unix-seconds>.<raw-request-body>',
+      });
+    } catch (err) {
+      // Do not log credentials, webhook secrets, signatures or request payloads.
+      console.error('[API] POS webhook secret rotation error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not rotate POS webhook secret' });
     }
   });
 
