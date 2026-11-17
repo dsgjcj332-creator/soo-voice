@@ -85,3 +85,11 @@ If the POS is unavailable, do not silently claim the order reached the cashier. 
 ## Known unknowns / external dependencies
 
 Native POS integrations cannot be completed by code alone. Each provider may require a partner agreement, merchant authorization, approved scopes, sandbox credentials, certification and country-specific access. Do not store production credentials in GitHub or expose them to the browser. Configure secrets only in the deployment secret manager.
+
+
+## Latest safety checkpoint (2026-11-17)
+
+- Browser-side guest checkout is now disabled. The current UI does not create an order or show a success invoice until a trusted endpoint can re-price items from the canonical catalog and commit the order and outbox atomically.
+- Webhook URL persistence is now disabled in the browser. HTTPS syntax checks alone do not prevent SSRF; server-side DNS/IP validation, destination policy, signing, durable retries and delivery history are required before enabling it.
+- The POS registry is metadata/contracts only. No provider adapter is connected, and the presence of a provider ID is not evidence of a working integration.
+- These controls intentionally reduce functionality rather than accept untrusted prices, create unverifiable orders, or persist arbitrary outbound destinations.
