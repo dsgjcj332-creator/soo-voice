@@ -381,40 +381,43 @@ export function createApiApp() {
     }
   });
 
-  app.delete('/api/pos/locations/:locationId', posConnectionRateLimit, async (req, res) => {
+  app.patch('/api/pos/locations/:locationId', posConnectionRateLimit, async (req, res) => {
     const auth = await authenticatePosMerchant(req);
     if (!auth) {
       res.status(401).json({ error: 'A valid merchant session is required' });
       return;
     }
-    const locationId = typeof req.params.locationId === 'string' ? req.params.locationId : '';
-    if (!isUuid(locationId)) {
-      res.status(400).json({ error: 'Invalid POS location ID' });
+    const locationId = req.params.locationId;
+    if (!isUuid(locationId) || req.body?.active !== false) {
+      res.status(400).json({ error: 'A valid location ID and active=false are required' });
       return;
     }
     try {
       const query = new URLSearchParams({
         id: `eq.${locationId}`,
         owner_id: `eq.${auth.ownerId}`,
+        active: 'eq.true',
       });
       const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${query}`, {
-        method: 'DELETE',
+        method: 'PATCH',
         headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({ active: false }),
       });
       if (!response.ok) {
-        console.error('[API] POS location delete failed:', response.status);
-        res.status(503).json({ error: 'Could not remove POS location' });
+        console.error('[API] POS location deactivate failed:', response.status);
+        res.status(503).json({ error: 'Could not deactivate POS location' });
         return;
       }
       const rows = await response.json().catch(() => []);
       if (!Array.isArray(rows) || rows.length === 0) {
-        res.status(404).json({ error: 'POS location not found' });
+        res.status(404).json({ error: 'Active POS location not found' });
         return;
       }
-      res.status(204).end();
+      res.set('Cache-Control', 'no-store');
+      res.json({ id: rows[0].id, active: false });
     } catch (err) {
-      console.error('[API] POS location delete error:', err instanceof Error ? err.message : 'unknown');
-      res.status(503).json({ error: 'Could not remove POS location' });
+      console.error('[API] POS location deactivate error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not deactivate POS location' });
     }
   });
 
