@@ -184,3 +184,8 @@ Added `src/lib/pos/catalog-review-planner.ts` as a read-only proposal layer betw
 Added `tests/pos-catalog-review-planner.test.ts` for new products, protected fields, ordinary updates, partial/complete snapshot removal behavior, stale snapshots and duplicate links.
 
 This is not yet a connected review screen or import action. There is no API route fetching a real provider snapshot, no persisted merchant override schema, and no UI to approve/reject proposals. Until those pieces exist, the review planner is a tested pure foundation only; it must not be represented as live POS menu synchronization.
+
+
+## CI test repair checkpoint (2026-11-17)
+
+The first CI retry reached the test suite after dependencies installed successfully. It exposed two test-only defects: the POS credential test had an unmatched closing delimiter, and the catalog persistence test expected the wrong validator error code for a malformed catalog row. Both test files were corrected to match the actual implementation. The next CI run must confirm the full suite, TypeScript check and production build; no pass is claimed yet.
