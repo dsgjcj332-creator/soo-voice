@@ -107,6 +107,9 @@ npm run clean   # remove dist/
 
 ## Security Model
 
+- **Trusted guest checkout.** `/api/store/orders` accepts product IDs and quantities only; the database reloads each merchant-owned, non-AI-only catalog price and atomically writes the order plus an outbox event. Guest tracking requires a per-order capability token; only its SHA-256 hash is stored. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `ORDER_TOKEN_SECRET` server-side.
+- **Outbox is not POS delivery.** The transaction creates a durable `order.created` event, but a worker and provider adapter are still required before an order can be claimed as accepted by a cashier/POS.
+
 - **No API keys in the browser.** The widget requests a short-lived **ephemeral token** from `/api/gemini-session`; the real `GEMINI_API_KEY` lives only in serverless functions.
 - **Signed webhooks.** Every webhook route requires `x-soovoice-signature: sha256=<hex>` (HMAC-SHA256 over the raw body). Verification is constant-time and fails closed when `WEBHOOK_SECRET` is missing.
 - **Timing-safe API keys.** `x-api-key` comparisons use hashed constant-time equality.
