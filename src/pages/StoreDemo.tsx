@@ -318,139 +318,14 @@ export function StoreDemo() {
       : "Speak with the voice assistant below for ingredients, chef recommendations, and dish details.";
   };
 
-  // Submit the table order. Until the trusted server-side order endpoint
-  // validates catalog prices and creates the order, never report success
-  // when Supabase is unavailable. Browser-provided prices are not trusted.
-  const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
+  // Guest checkout stays fail-closed until a trusted server endpoint can
+  // re-price catalog items, validate availability, and atomically create the
+  // order plus its outbox event. Never write client-supplied prices directly.
+  const [submitErrorKind, setSubmitErrorKind] = React.useState<'not_ready' | null>(null);
   const handleSubmitOrder = async () => {
     if (cartItems.length === 0) return;
-    setCheckoutStatus('sending');
-    setSubmitErrorKind(null);
-    try {
-      const orderId = 'order_' + crypto.randomUUID();
-
-      // ---- Payload sanitization (why this matters) ----
-      // The guest phone can feed us data Postgres rejects, and most of
-      // those failures LOOK language-dependent: a QR link typed with
-      // Arabic-Indic digits (table=٥), menu items whose price arrived as
-      // a localized string ("١٢٠" → NaN), or Arabic names carrying
-      // invisible bidi marks (U+200E/U+200F/U+202A-202E) that garble the
-      // kitchen ticket. English-mode carts never contain these, which is
-      // exactly why "English works, Arabic fails". We normalize all of
-      // it here so the INSERT payload is always clean ASCII digits +
-      // plain text, in either UI language.
-      const normalizeDigits = (s: string) =>
-        s
-          .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660)) // Arabic-Indic ٠-٩
-          .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06F0)); // Persian ۰-۹
-      const stripBidiMarks = (s: string) =>
-        s.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
-
-      const safeItems = cartItems.map(i => ({
-        id: String(i.id ?? ''),
-        name: (stripBidiMarks(String(i.name ?? '')).trim() || 'عنصر').slice(0, 200),
-        price: Number(i.price) || 0,
-        quantity: Math.max(1, Math.round(Number(i.quantity) || 1)),
-      }));
-      const safeTotal = safeItems.reduce((sum, it) => sum + it.price * it.quantity, 0);
-
-      const newOrder = {
-        id: orderId,
-        ownerId: resolvedOwnerId,
-        tableNumber: normalizeDigits(String(effectiveTable || '1')) || '1',
-        items: safeItems,
-        total: safeTotal,
-        status: 'pending',
-        createdAt: Date.now(),
-      };
-
-      const supabase = getSupabase();
-      const { isConfigured } = getSupabaseConfig();
-      if (!isConfigured || !supabase) {
-        setSubmitErrorKind('schema');
-        throw new Error('Order storage is not configured. The order was not placed.');
-      }
-
-      {
-        const { error } = await supabase.from('orders').insert(newOrder);
-        if (error) {
-          // Log everything Supabase gives us — code/details/hint are what
-          // make a remote failure diagnosable from the phone's logcat or
-          // a copied console output, instead of a vague "it failed".
-          console.error('[Order submit] Supabase error:', {
-            code: (error as any).code,
-            message: error.message,
-            details: (error as any).details,
-            hint: (error as any).hint,
-            // Do not log customer/order payloads in the browser console.
-          });
-          const msg = (error.message || '').toLowerCase();
-          // Detect RLS rejection (anonymous guest cannot insert) — the most
-          // common cause of "order fails" after a successful cart build.
-          if (
-            msg.includes('row-level security') ||
-            msg.includes('policy') ||
-            msg.includes('rls') ||
-            msg.includes('permission') ||
-            msg.includes('not authenticated')
-          ) {
-            setSubmitErrorKind('rls');
-            throw error;
-          }
-          // Detect a missing orders table (fresh Supabase project where
-          // sql/orders_setup.sql was never run) — its PostgREST message
-          // mentions "Could not find the table" or a schema-cache miss.
-          if (
-            msg.includes('could not find the table') ||
-            msg.includes('does not exist') ||
-            msg.includes('schema cache') ||
-            (error as any).code === 'PGRST205' ||
-            (error as any).code === '42P01'
-          ) {
-            setSubmitErrorKind('schema');
-            throw error;
-          }
-          if (msg.includes('fetch') || msg.includes('network') || msg.includes('timeout')) {
-            setSubmitErrorKind('network');
-            throw error;
-          }
-          setSubmitErrorKind('generic');
-          throw error;
-        }
-        // Outbound merchant webhooks must be dispatched by the trusted
-        // server-side outbox, never by this public browser page. In particular,
-        // never read or expose webhookSecret in client code or request bodies.
-        // The durable outbox worker is a production-readiness dependency.
-      }
-
-      // Two-phase transition to avoid the removeChild crash:
-      //   Phase 1 (this commit): close the cart slide-over. React unmounts
-      //     the cart's DOM subtree cleanly while the invoice is NOT yet
-      //     on screen, so there is no mount/unmount overlap.
-      //   Phase 2 (next tick): mount the invoice modal + record lastOrder.
-      //     Two separate commits means React never simultaneously unmounts
-      //     one large overlay while mounting another — that overlap was
-      //     the second source of "removeChild: not a child" crashes
-      //     (the first being Google Translate; blocked at the html level).
-      setCartOpen(false);
-      requestAnimationFrame(() => {
-        setLastOrder({
-          id: orderId,
-          items: safeItems,
-          total: safeTotal,
-          tableNumber: newOrder.tableNumber,
-          createdAt: Date.now(),
-        });
-        setCheckoutStatus('success');
-        // Defer clearCart one more tick so the invoice's first paint
-        // is not interrupted by the cart-state change.
-        setTimeout(() => clearCart(), 120);
-      });
-    } catch (err) {
-      console.error('Order submit error:', err);
-      setCheckoutStatus('error');
-      setTimeout(() => setCheckoutStatus('idle'), 4500);
-    }
+    setSubmitErrorKind('not_ready');
+    setCheckoutStatus('error');
   };
 
   // Live tracking — subscribe to the order's status changes via Supabase
@@ -1339,17 +1214,11 @@ export function StoreDemo() {
                     <>{language === 'ar' ? '✓ تم إرسال الطلب للمطبخ' : '✓ Sent to kitchen'}</>
                   ) : checkoutStatus === 'error' ? (
                     <>
-                      {submitErrorKind === 'rls'
+                      {submitErrorKind === 'not_ready'
                         ? (language === 'ar'
-                            ? 'الطلب مرفوض — يحتاج المطعم لتفعيل صلاحية الإدخال (orders_setup.sql)'
-                            : 'Rejected — merchant must apply orders_setup.sql')
-                        : submitErrorKind === 'schema'
-                          ? (language === 'ar'
-                              ? 'جدول الطلبات غير موجود في قاعدة البيانات — شغّل sql/orders_setup.sql'
-                              : 'Orders table missing — run sql/orders_setup.sql in Supabase')
-                          : submitErrorKind === 'network'
-                            ? (language === 'ar' ? 'تعذّر الاتصال — تحقق من الإنترنت' : 'Network issue — check your connection')
-                            : (language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again')}
+                            ? 'الطلب متوقف مؤقتًا لحماية بياناتك — يجري تجهيز إرسال آمن من الخادم.'
+                            : 'Checkout is temporarily unavailable while secure server-side order validation is being implemented.')
+                        : (language === 'ar' ? 'تعذّر الإرسال — حاول مرة أخرى' : 'Failed — try again')}
                     </>
                   ) : (
                     <>
