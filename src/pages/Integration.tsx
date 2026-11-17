@@ -14,7 +14,6 @@ import {
   Server,
   Database,
 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { PosConnectionsPanel } from '../components/PosConnectionsPanel';
@@ -23,8 +22,6 @@ export function Integration() {
   const { language } = useLanguage();
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [searchParams] = useSearchParams();
-  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [activeTab, setActiveTab] = useState<'iframe' | 'sdk' | 'webhook'>('iframe');
 
   // Webhook settings states
@@ -40,13 +37,6 @@ export function Integration() {
 
   // Connection status
   const { isConfigured } = getSupabaseConfig();
-
-  useEffect(() => {
-    if (searchParams.get('success') === 'true') {
-      setShowSuccessToast(true);
-      setTimeout(() => setShowSuccessToast(false), 5000);
-    }
-  }, [searchParams]);
 
   // Load webhook settings
   useEffect(() => {
@@ -143,15 +133,6 @@ export function Integration() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans" id="integrations-page-root">
-      {showSuccessToast && (
-        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl flex items-center gap-3 shadow-sm animate-fade-in">
-          <CheckCircle2 className="w-5 h-5 text-green-600 animate-bounce" />
-          <p className="font-bold text-sm">
-            {language === 'ar' ? 'تم التثبيت بنجاح.' : 'Integration completed successfully.'}
-          </p>
-        </div>
-      )}
-
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight text-slate-800">
           {language === 'ar' ? 'الربط' : 'Connections'}
