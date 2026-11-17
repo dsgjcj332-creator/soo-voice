@@ -11,7 +11,7 @@ export interface OrderOutboxEvent {
 
 export interface OutboxStore {
   claim(workerId: string, limit: number, leaseSeconds: number): Promise<OrderOutboxEvent[]>;
-  complete(eventId: string, workerId: string): Promise<boolean>;
+  complete(eventId: string, workerId: string, target: PosDispatchTarget, providerOrderId: string): Promise<boolean>;
   retry(eventId: string, workerId: string, errorCode: string): Promise<'failed' | 'dead_letter'>;
 }
 
@@ -71,7 +71,7 @@ export async function processOrderOutboxBatch(
       if (providerResult.status !== 'accepted' || !providerResult.providerOrderId) {
         throw new Error(providerResult.status === 'rejected' ? 'POS_ORDER_REJECTED' : 'POS_ACCEPTANCE_PENDING');
       }
-      const completed = await store.complete(event.id, workerId);
+      const completed = await store.complete(event.id, workerId, target, providerResult.providerOrderId);
       if (completed) result.delivered += 1;
       else result.leaseLost += 1;
     } catch (error) {
