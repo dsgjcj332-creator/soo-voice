@@ -77,6 +77,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // already persisted immediately; authenticated merchants also get a
   // confirmed database write instead of relying only on the background debounce.
   const saveSettings = async (): Promise<boolean> => {
+    if (loadingSettings) return false;
     if (!user || user.provider === 'local') return true;
     const supabase = getSupabase();
     if (!isConfigured || !supabase) return false;
@@ -144,6 +145,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   // Sync state modifications to the database
   useEffect(() => {
+    if (loadingSettings) return; // Never overwrite the cloud copy before hydration finishes.
     if (!user) return;
     if (user.provider === 'local') return; // Skip DB sync for local demo users
 
@@ -175,7 +177,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [dialect, voiceTone, businessType, currency, user, isConfigured]);
+  }, [dialect, voiceTone, businessType, currency, user, isConfigured, loadingSettings]);
 
   return (
     <SettingsContext.Provider value={{ 
