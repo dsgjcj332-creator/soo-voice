@@ -236,7 +236,7 @@ export function Integration() {
                 {language === 'ar'
                   ? 'مفتاح توقيع الويب هوك يُدار على السيرفر فقط ولا يظهر في المتصفح.'
                   : 'Webhook signing credentials are managed server-side and are never exposed in the browser.'}
-              </p>/div>
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-3 pt-2">
