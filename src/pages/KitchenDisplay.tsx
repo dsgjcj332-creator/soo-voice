@@ -46,129 +46,181 @@ export function KitchenDisplay() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'preparing' | 'completed'>('all');
-
-  const ownerId = user?.uid || 'merchant_abc123';
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
-    if (!user) return;
-    if (user.provider === 'local') {
+    if (!user) {
+      setOrders([]);
       setLoadingOrders(false);
       return;
     }
     setLoadingOrders(true);
-    const supabase = getSupabase();
-    const { isConfigured } = getSupabaseConfig();
-    if (!isConfigured || !supabase) {
+    setLoadError("");
+    if (user.provider === 'local') {
+      setOrders([]);
       setLoadingOrders(false);
       return;
     }
 
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) {
+      setOrders([]);
+      setLoadError(isAr ? 'قاعدة البيانات غير متاحة؛ لم يتم تحميل الطلبات.' : 'Database is unavailable; orders could not be loaded.');
+      setLoadingOrders(false);
+      return;
+    }
+
+    let disposed = false;
+    let initialLoadComplete = false;
+    const pendingChanges: any[] = [];
+
+    const applyChange = (payload: any) => {
+      if (payload.eventType === 'DELETE') {
+        const deletedId = payload.old?.id;
+        if (deletedId) setOrders((current) => current.filter((order) => order.id !== deletedId));
+        return;
+      }
+      const incoming = payload.new;
+      if (!incoming?.id || incoming.ownerId !== user.uid) return;
+      setOrders((current) => {
+        const exists = current.some((order) => order.id === incoming.id);
+        const next = exists
+          ? current.map((order) => order.id === incoming.id ? { ...order, ...incoming } : order)
+          : [incoming, ...current];
+        return next.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+      });
+    };
+
     const channel = supabase
-      .channel('kitchen-orders-changes')
+      .channel(`kitchen-orders-${user.uid}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `ownerId=eq.${user.uid}`,
-        },
+        { event: '*', schema: 'public', table: 'orders', filter: `ownerId=eq.${user.uid}` },
         (payload) => {
-          if (payload.new) {
-            setOrders((prev) => {
-              const exists = prev.some((o) => o.id === (payload.new as any).id);
-              if (exists) {
-                return prev.map((o) =>
-                  o.id === (payload.new as any).id ? (payload.new as any) : o
-                );
-              }
-              return [(payload.new as any), ...prev];
-            });
+          if (!initialLoadComplete) {
+            pendingChanges.push(payload);
+            return;
           }
-        }
+          applyChange(payload);
+        },
       )
       .subscribe();
 
-    supabase
-      .from('orders')
-      .select('*')
-      .eq('ownerId', user.uid)
-      .order('createdAt', { ascending: false })
-      .then(({ data }) => {
-        setOrders(data || []);
-        setLoadingOrders(false);
-      });
+    const loadOrders = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('ownerId', user.uid)
+          .order('createdAt', { ascending: false })
+          .limit(200);
+        if (disposed) return;
+        if (error) throw error;
+        setOrders((data ?? []).filter((order) => order.ownerId === user.uid));
+        for (const payload of pendingChanges) applyChange(payload);
+        pendingChanges.length = 0;
+        initialLoadComplete = true;
+        setLoadError("");
+      } catch (error) {
+        if (disposed) return;
+        initialLoadComplete = true;
+        setLoadError(error instanceof Error ? error.message : (isAr ? 'تعذر تحميل الطلبات.' : 'Could not load orders.'));
+      } finally {
+        if (!disposed) setLoadingOrders(false);
+      }
+    };
 
-    // Polling safety net — realtime silently dies more often than people
-    // think (a freshly created table may not be in the supabase_realtime
-    // publication, the websocket drops when the tablet sleeps, etc.) and
-    // the only symptom is "the kitchen must refresh to see new orders".
-    //
-    // The poll is SILENT: we compare the fetched board with what is
-    // already on screen and only setOrders when something actually
-    // changed. Returning the previous array makes React bail out of the
-    // re-render entirely, so idle polls paint NOTHING — no flicker, no
-    // "it refreshed itself" moment. Only a real new ticket or a status
-    // move appears, exactly like realtime does.
-    // Skipped when the tab is hidden so an idle dashboard tab doesn't
-    // hammer the database.
-    const poll = setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      supabase
-        .from('orders')
-        .select('*')
-        .eq('ownerId', user.uid)
-        .order('createdAt', { ascending: false })
-        .then(({ data }) => {
-          if (!data) return;
-          setOrders((prev) =>
-            JSON.stringify(prev) === JSON.stringify(data) ? prev : data
-          );
+    void loadOrders();
+
+    const poll = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible' || disposed) return;
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('ownerId', user.uid)
+          .order('createdAt', { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        if (!data || disposed) return;
+        setOrders((current) => {
+          const next = data.filter((order) => order.ownerId === user.uid);
+          return JSON.stringify(current) === JSON.stringify(next) ? current : next;
         });
+        setLoadError("");
+      } catch (error) {
+        if (!disposed) setLoadError(error instanceof Error ? error.message : (isAr ? 'تعذر تحديث الطلبات.' : 'Could not refresh orders.'));
+      }
     }, 5000);
 
     return () => {
-      supabase.removeChannel(channel);
-      clearInterval(poll);
+      disposed = true;
+      pendingChanges.length = 0;
+      void supabase.removeChannel(channel);
+      window.clearInterval(poll);
     };
-  }, [user]);
+  }, [user?.uid, user?.provider, isAr]);
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
-    // Optimistic update — change the local state instantly so the
-    // kitchen sees the new status without waiting for the realtime
-    // round-trip. If the database write fails, we roll back.
-    const previous = orders.find((o) => o.id === orderId)?.status;
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-    );
+    if (!user || user.provider === 'local') {
+      setActionError(isAr ? 'تغيير حالة الطلبات غير متاح في وضع التجربة.' : 'Order updates are unavailable in demo mode.');
+      return;
+    }
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) {
+      setActionError(isAr ? 'قاعدة البيانات غير متاحة؛ لم تتغير حالة الطلب.' : 'Database is unavailable; order status was not changed.');
+      return;
+    }
+
+    const previous = orders.find((order) => order.id === orderId)?.status;
+    setActionError("");
+    setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status: newStatus } : order));
     try {
-      const supabase = getSupabase();
-      const { isConfigured } = getSupabaseConfig();
-      if (isConfigured && supabase) {
-        const { error } = await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
-        if (error) throw error;
-      }
-    } catch (err) {
-      console.error('Error updating order status:', err);
-      // Roll back to the previous status
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, status: previous || o.status } : o))
-      );
+      const { data, error } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', orderId)
+        .eq('ownerId', user.uid)
+        .select('id,status')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error(isAr ? 'الطلب غير موجود أو لا تملك صلاحية تعديله.' : 'Order not found or not allowed.');
+    } catch (error) {
+      setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status: previous || order.status } : order));
+      setActionError(error instanceof Error ? error.message : (isAr ? 'فشل تحديث حالة الطلب.' : 'Could not update order status.'));
     }
   };
 
   const handleArchiveOrder = async (orderId: string) => {
-    const msg = isAr ? 'هل تريد أرشفة هذا الطلب؟' : 'Archive this order?';
-    if (!confirm(msg)) return;
+    if (!user || user.provider === 'local') {
+      setActionError(isAr ? 'الأرشفة غير متاحة في وضع التجربة.' : 'Archiving is unavailable in demo mode.');
+      return;
+    }
+    const msg = isAr ? 'هل تريد حذف هذا الطلب نهائيًا؟' : 'Permanently delete this order?';
+    if (!window.confirm(msg)) return;
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) {
+      setActionError(isAr ? 'قاعدة البيانات غير متاحة؛ لم يتم حذف الطلب.' : 'Database is unavailable; the order was not deleted.');
+      return;
+    }
+    setActionError("");
     try {
-      const supabase = getSupabase();
-      const { isConfigured } = getSupabaseConfig();
-      if (isConfigured && supabase) {
-        await supabase.from('orders').delete().eq('id', orderId);
-        setOrders((prev) => prev.filter((o) => o.id !== orderId));
-      }
-    } catch (err) {
-      console.error('Error deleting order:', err);
+      const { data, error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId)
+        .eq('ownerId', user.uid)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error(isAr ? 'الطلب غير موجود أو لا تملك صلاحية حذفه.' : 'Order not found or not allowed.');
+      setOrders((current) => current.filter((order) => order.id !== orderId));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : (isAr ? 'فشل حذف الطلب.' : 'Could not delete order.'));
     }
   };
 
@@ -219,10 +271,12 @@ export function KitchenDisplay() {
         {isDemo && (
           <div className="mb-8 bg-amber-50 border border-amber-200 text-amber-800 px-5 py-3.5 rounded-lg text-sm">
             {isAr
-              ? 'وضع التجربة — الطلبات تبقى على هذا الجهاز ولا تصل إلى المطبخ.'
-              : 'Demo mode — orders stay on this device and do not reach the kitchen.'}
+              ? 'وضع التجربة — الطلبات الحقيقية لا تصل إلى شاشة المطبخ في هذا الوضع.'
+              : 'Demo mode — real guest orders are not connected to this kitchen screen.'}
           </div>
         )}
+        {loadError && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{loadError}</div>}
+        {actionError && <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{actionError}</div>}
 
         {/* Status filter — single horizontal text selector, not a pill row */}
         <div className="mb-10 flex items-center gap-6 border-b border-stone-200 pb-3 overflow-x-auto scrollbar-none">
