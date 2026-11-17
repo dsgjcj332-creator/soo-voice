@@ -136,6 +136,171 @@ export function createApiApp() {
     next();
   };
 
+  // ============ TRUSTED GUEST ORDER FLOW ============
+  // Browser clients submit catalog IDs and quantities only. The database
+  // function reloads prices and atomically writes the order + outbox event.
+  const orderRateLimit = rateLimit(60_000, 20);
+  const getOrderBackend = () => {
+    const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const tokenSecret = process.env.ORDER_TOKEN_SECRET || '';
+    if (!supabaseUrl || !serviceKey || tokenSecret.length < 32) return null;
+    try {
+      const parsed = new URL(supabaseUrl);
+      if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+    } catch {
+      return null;
+    }
+    return { supabaseUrl, serviceKey, tokenSecret };
+  };
+
+  const sha256Hex = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+  const orderHeaders = (serviceKey: string) => ({
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    'Content-Type': 'application/json',
+  });
+
+  app.post('/api/store/orders', orderRateLimit, async (req, res) => {
+    const backend = getOrderBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'Secure order service is not configured' });
+      return;
+    }
+
+    const body = req.body || {};
+    const ownerId = typeof body.ownerId === 'string' ? body.ownerId.trim() : '';
+    const tableNumberRaw = typeof body.tableNumber === 'string' ? body.tableNumber : '';
+    const tableNumber = tableNumberRaw.replace(/[٠-٩]/g, (d: string) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (d: string) => String(d.charCodeAt(0) - 0x06f0))
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 24);
+    const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+    const inputItems = body.items;
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(ownerId) ||
+        !/^[0-9a-f-]{36}$/i.test(idempotencyKey) ||
+        !tableNumber || !Array.isArray(inputItems) || inputItems.length < 1 || inputItems.length > 50) {
+      res.status(400).json({ error: 'Invalid order request' });
+      return;
+    }
+
+    const seen = new Set<string>();
+    const items: Array<{ id: string; quantity: number }> = [];
+    for (const line of inputItems) {
+      const id = typeof line?.id === 'string' ? line.id.trim() : '';
+      const quantity = Number(line?.quantity);
+      if (!id || id.length > 128 || !Number.isInteger(quantity) || quantity < 1 || quantity > 20 || seen.has(id)) {
+        res.status(400).json({ error: 'Invalid order item or quantity' });
+        return;
+      }
+      seen.add(id);
+      items.push({ id, quantity });
+    }
+    items.sort((a, b) => a.id.localeCompare(b.id));
+
+    // Deterministic per-order capability lets a safe retry reuse the same
+    // guest token without storing or returning a plaintext token from SQL.
+    const guestToken = crypto.createHmac('sha256', backend.tokenSecret)
+      .update(`soovoice-guest-order:v1:${ownerId}:${idempotencyKey}`)
+      .digest('base64url');
+    const guestTokenHash = sha256Hex(guestToken);
+    const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items }));
+
+    try {
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/rpc/create_guest_order`, {
+        method: 'POST',
+        headers: orderHeaders(backend.serviceKey),
+        body: JSON.stringify({
+          p_owner_id: ownerId,
+          p_table_number: tableNumber,
+          p_items: items,
+          p_idempotency_key: idempotencyKey,
+          p_guest_token_hash: guestTokenHash,
+          p_request_hash: requestHash,
+        }),
+      });
+      const result = await response.json().catch(() => null) as any;
+      if (!response.ok || !result?.orderId || !Array.isArray(result.items)) {
+        const dbMessage = String(result?.message || result?.details || result?.hint || '');
+        if (dbMessage.includes('ITEM_UNAVAILABLE')) {
+          res.status(409).json({ error: 'One or more items are no longer available' });
+          return;
+        }
+        if (dbMessage.includes('IDEMPOTENCY_CONFLICT')) {
+          res.status(409).json({ error: 'This checkout key was already used for a different cart' });
+          return;
+        }
+        if (dbMessage.includes('INVALID_')) {
+          res.status(400).json({ error: 'Order validation failed' });
+          return;
+        }
+        console.error('[API] Secure guest order RPC failed:', response.status, dbMessage.slice(0, 240));
+        res.status(response.status >= 500 ? 503 : 400).json({ error: 'Could not place this order' });
+        return;
+      }
+
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        orderId: result.orderId,
+        guestToken,
+        items: result.items,
+        total: Number(result.total),
+        tableNumber: result.tableNumber,
+        createdAt: Number(result.createdAt),
+        replayed: Boolean(result.replayed),
+      });
+    } catch (err) {
+      console.error('[API] Secure guest order error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Order service temporarily unavailable' });
+    }
+  });
+
+  app.get('/api/store/orders/:orderId', orderRateLimit, async (req, res) => {
+    const backend = getOrderBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'Secure order service is not configured' });
+      return;
+    }
+    const orderId = String(req.params.orderId || '');
+    const token = firstHeader(req.headers['x-order-token']) || '';
+    if (!/^order_[a-f0-9-]{16,64}$/i.test(orderId) || token.length < 32 || token.length > 256) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,status,items,total,tableNumber,createdAt',
+        id: `eq.${orderId}`,
+        guest_token_hash: `eq.${sha256Hex(token)}`,
+        limit: '1',
+      });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?${query.toString()}`, {
+        headers: orderHeaders(backend.serviceKey),
+      });
+      if (!response.ok) {
+        console.error('[API] Guest order tracking query failed:', response.status);
+        res.status(503).json({ error: 'Order tracking temporarily unavailable' });
+        return;
+      }
+      const rows = await response.json() as any[];
+      if (!Array.isArray(rows) || rows.length !== 1) {
+        res.status(404).json({ error: 'Order not found' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        orderId: rows[0].id,
+        status: rows[0].status,
+        items: rows[0].items,
+        total: Number(rows[0].total),
+        tableNumber: rows[0].tableNumber,
+        createdAt: Number(rows[0].createdAt),
+      });
+    } catch (err) {
+      console.error('[API] Guest order tracking error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Order tracking temporarily unavailable' });
+    }
+  });
+
   // ============ HEALTH ============
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
