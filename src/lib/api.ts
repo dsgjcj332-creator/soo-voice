@@ -22,6 +22,7 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { decryptPosCredentials, encryptPosCredentials } from './pos/credentials';
 import { normalizePosCatalog } from './pos/catalog-normalizer';
 import { verifyPosWebhookSignature } from './pos/webhook-security';
+import { rotatePosWebhookSecret } from './pos/webhook-secret';
 import { isUuid, parsePosLocationInput } from './pos/location-validation';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
