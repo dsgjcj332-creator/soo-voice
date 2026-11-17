@@ -189,6 +189,10 @@ commit;
 -- Durable worker leases and retry lifecycle. A worker claims rows with
 -- SKIP LOCKED so multiple server instances cannot process the same event.
 alter table public.order_outbox
+  add column if not exists provider_id text,
+  add column if not exists connection_id uuid,
+  add column if not exists location_id uuid,
+  add column if not exists provider_order_id text,
   add column if not exists locked_at timestamptz,
   add column if not exists locked_by text,
   add column if not exists max_attempts integer not null default 12
@@ -235,27 +239,79 @@ $$;
 
 create or replace function public.complete_order_outbox(
   p_event_id uuid,
-  p_worker_id text
+  p_worker_id text,
+  p_provider_id text,
+  p_connection_id uuid,
+  p_location_id uuid,
+  p_provider_order_id text
 ) returns boolean
 language plpgsql
 security definer
 set search_path = public
-as $$
-declare v_updated integer;
+as $
+declare
+  v_event public.order_outbox%rowtype;
+  v_provider text;
 begin
+  if p_provider_id is null or p_provider_order_id is null
+     or length(p_provider_order_id) < 1 or length(p_provider_order_id) > 200 then
+    raise exception 'INVALID_PROVIDER_ACCEPTANCE';
+  end if;
+
+  select * into v_event
+    from public.order_outbox
+   where id = p_event_id and status = 'processing' and locked_by = p_worker_id
+   for update;
+  if not found then return false; end if;
+
+  select provider into v_provider
+    from public.pos_connections
+   where id = p_connection_id
+     and owner_id::text = v_event.owner_id
+     and status = 'connected';
+  if not found or v_provider is distinct from p_provider_id then
+    raise exception 'POS_CONNECTION_NOT_AVAILABLE';
+  end if;
+
+  if p_location_id is not null and not exists (
+    select 1 from public.pos_locations
+     where id = p_location_id
+       and connection_id = p_connection_id
+       and owner_id::text = v_event.owner_id
+       and active = true
+  ) then
+    raise exception 'POS_LOCATION_NOT_AVAILABLE';
+  end if;
+
+  insert into public.pos_order_links(
+    owner_id, connection_id, location_id, local_order_id,
+    provider_order_id, idempotency_key, status, last_synced_at
+  ) values (
+    v_event.owner_id::uuid, p_connection_id, p_location_id,
+    v_event.payload->>'orderId', p_provider_order_id,
+    'soovoice:' || (v_event.payload->>'orderId'), 'accepted', now()
+  )
+  on conflict (connection_id, idempotency_key)
+  do update set
+    provider_order_id = excluded.provider_order_id,
+    status = 'accepted',
+    last_synced_at = now(),
+    updated_at = now();
+
   update public.order_outbox
      set status = 'delivered',
          delivered_at = now(),
          locked_at = null,
          locked_by = null,
+         provider_id = p_provider_id,
+         connection_id = p_connection_id,
+         location_id = p_location_id,
+         provider_order_id = p_provider_order_id,
          last_error_code = null
-   where id = p_event_id
-     and status = 'processing'
-     and locked_by = p_worker_id;
-  get diagnostics v_updated = row_count;
-  return v_updated = 1;
+   where id = p_event_id;
+  return true;
 end;
-$$;
+$;
 
 create or replace function public.retry_order_outbox(
   p_event_id uuid,
@@ -291,9 +347,9 @@ end;
 $$;
 
 revoke all on function public.claim_order_outbox(text,integer,integer) from public, anon, authenticated;
-revoke all on function public.complete_order_outbox(uuid,text) from public, anon, authenticated;
+revoke all on function public.complete_order_outbox(uuid,text,text,uuid,uuid,text) from public, anon, authenticated;
 revoke all on function public.retry_order_outbox(uuid,text,text) from public, anon, authenticated;
 grant execute on function public.claim_order_outbox(text,integer,integer) to service_role;
-grant execute on function public.complete_order_outbox(uuid,text) to service_role;
+grant execute on function public.complete_order_outbox(uuid,text,text,uuid,uuid,text) to service_role;
 grant execute on function public.retry_order_outbox(uuid,text,text) to service_role;
 
