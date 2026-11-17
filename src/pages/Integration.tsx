@@ -17,6 +17,7 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
+import { PosConnectionsPanel } from '../components/PosConnectionsPanel';
 
 export function Integration() {
   const { language } = useLanguage();
@@ -225,6 +226,8 @@ export function Integration() {
           </div>
         </div>
       </div>
+
+      <PosConnectionsPanel language={language} />
 
       {/* Webhooks section */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 mb-8">
