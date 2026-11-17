@@ -167,27 +167,42 @@ export function VoiceWidget() {
     const { isConfigured } = getSupabaseConfig();
     const supabase = getSupabase();
 
+    // Fail closed: a public widget must always be bound to one merchant.
+    // Never issue an unscoped menu query when ownerId/storeId is missing.
+    if (!urlOwnerId) {
+      setDbMenuItems([]);
+      return;
+    }
+
     if (isConfigured && supabase) {
+      let cancelled = false;
+      setDbMenuItems([]);
       const fetchSupabaseItems = async () => {
         try {
-          const queryBuilder = supabase
+          const { data, error } = await supabase
             .from('menu_items')
-            .select('*');
-          
-          if (urlOwnerId) {
-            queryBuilder.eq('ownerId', urlOwnerId);
+            .select('*')
+            .eq('ownerId', urlOwnerId)
+            .order('createdAt', { ascending: false });
+          if (cancelled) return;
+          if (error) {
+            console.error("Failed to fetch merchant menu:", error);
+            setDbMenuItems([]);
+            return;
           }
-          
-          const { data, error } = await queryBuilder.order('createdAt', { ascending: false });
-          if (!error && data) {
-            setDbMenuItems(data);
-          }
+          setDbMenuItems(data || []);
         } catch (err) {
-          console.error("Failed to fetch menu items:", err);
+          if (!cancelled) {
+            console.error("Failed to fetch merchant menu:", err);
+            setDbMenuItems([]);
+          }
         }
       };
-      
+
       fetchSupabaseItems();
+      return () => { cancelled = true; };
+    } else {
+      setDbMenuItems([]);
     }
   }, [urlOwnerId]);
 
