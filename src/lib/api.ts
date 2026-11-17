@@ -19,6 +19,8 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { encryptPosCredentials } from './pos/credentials';
+import { isUuid, parsePosLocationInput } from './pos/location-validation';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
@@ -135,6 +137,455 @@ export function createApiApp() {
     }
     next();
   };
+
+  // ============ AUTHENTICATED POS CONNECTION MANAGEMENT ============
+  // The merchant identity is derived exclusively from a verified Supabase
+  // access token. Never accept owner_id from the request body or x-api-key.
+  const posConnectionRateLimit = rateLimit(60_000, 20);
+  const posProviders = new Set([
+    'foodics', 'toast', 'square', 'clover', 'lightspeed',
+    'oracle_simphony', 'odoo', 'shopify_pos', 'salla', 'custom',
+  ]);
+  const getPosBackend = () => {
+    let supabaseUrl = process.env.SUPABASE_URL || '';
+    while (supabaseUrl.endsWith('/')) supabaseUrl = supabaseUrl.slice(0, -1);
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+    if (!supabaseUrl || !serviceKey || !anonKey || !process.env.POS_CREDENTIALS_ENCRYPTION_KEY) return null;
+    try {
+      const parsed = new URL(supabaseUrl);
+      if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+    } catch {
+      return null;
+    }
+    return { supabaseUrl, serviceKey, anonKey };
+  };
+
+  const authenticatePosMerchant = async (req: express.Request) => {
+    const backend = getPosBackend();
+    const authorization = firstHeader(req.headers.authorization) || '';
+    const match = /^Bearer\s+([A-Za-z0-9._~-]{30,4096})$/i.exec(authorization);
+    if (!backend || !match) return null;
+    try {
+      const response = await fetch(`${backend.supabaseUrl}/auth/v1/user`, {
+        headers: { apikey: backend.anonKey, Authorization: `Bearer ${match[1]}` },
+      });
+      if (!response.ok) return null;
+      const user = await response.json() as { id?: unknown };
+      if (typeof user?.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(user.id)) return null;
+      return { backend, ownerId: user.id };
+    } catch {
+      return null;
+    }
+  };
+
+  const posServiceHeaders = (serviceKey: string) => ({
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    'Content-Type': 'application/json',
+  });
+
+  app.get('/api/pos/connections', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,created_at,updated_at',
+        owner_id: `eq.${auth.ownerId}`,
+        order: 'created_at.desc',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) {
+        console.error('[API] POS connection list failed:', response.status);
+        res.status(503).json({ error: 'POS connections are temporarily unavailable' });
+        return;
+      }
+      const rows = await response.json();
+      // Explicit allowlist: credential ciphertext is never returned to clients.
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS connection list error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS connections are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/connections', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const body = req.body || {};
+    const provider = typeof body.provider === 'string' ? body.provider : '';
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim().slice(0, 100) : null;
+    const credentials = body.credentials;
+    if (!posProviders.has(provider) || !credentials || typeof credentials !== 'object' ||
+        Array.isArray(credentials) || Object.keys(credentials).length === 0) {
+      res.status(400).json({ error: 'Provider and non-empty credentials object are required' });
+      return;
+    }
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(credentials);
+      if (!serialized || Buffer.byteLength(serialized, 'utf8') > 16_384) {
+        res.status(400).json({ error: 'Credentials payload is invalid or too large' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'Credentials payload is invalid' });
+      return;
+    }
+
+    try {
+      const encrypted = encryptPosCredentials(credentials as Record<string, unknown>);
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections`, {
+        method: 'POST',
+        headers: {
+          ...posServiceHeaders(auth.backend.serviceKey),
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          owner_id: auth.ownerId,
+          provider,
+          display_name: displayName || provider,
+          status: 'pending',
+          credentials_ciphertext: encrypted.ciphertext,
+          credentials_key_version: encrypted.keyVersion,
+        }),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows) || rows.length !== 1) {
+        console.error('[API] POS connection create failed:', response.status);
+        res.status(503).json({ error: 'Could not save POS connection' });
+        return;
+      }
+      const row = rows[0];
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        id: row.id,
+        provider: row.provider,
+        display_name: row.display_name,
+        status: row.status,
+        created_at: row.created_at,
+      });
+    } catch (err) {
+      // Never log request bodies, provider credentials, or encryption output.
+      console.error('[API] POS connection create error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS connection' });
+    }
+  });
+
+  // ============ POS LOCATION / BRANCH MANAGEMENT ============
+  // Branch records are manually mapped until provider discovery adapters exist.
+  app.get('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,connection_id,provider_location_id,name,timezone,currency,active,created_at',
+        owner_id: `eq.${auth.ownerId}`,
+        order: 'created_at.desc',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      if (!response.ok) {
+        console.error('[API] POS location list failed:', response.status);
+        res.status(503).json({ error: 'POS locations are temporarily unavailable' });
+        return;
+      }
+      const rows = await response.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS location list error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS locations are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const parsedLocation = parsePosLocationInput(req.body);
+    if (!parsedLocation.ok) {
+      res.status(400).json({ error: parsedLocation.error });
+      return;
+    }
+    const { connectionId, providerLocationId, name, timezone, currency } = parsedLocation.value;
+    try {
+      const ownerQuery = new URLSearchParams({
+        select: 'id',
+        id: `eq.${connectionId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        limit: '1',
+      });
+      const ownerResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${ownerQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const ownedConnections = await ownerResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!ownerResponse.ok) {
+        res.status(503).json({ error: 'Could not verify POS connection ownership' });
+        return;
+      }
+      if (!Array.isArray(ownedConnections) || ownedConnections.length !== 1) {
+        res.status(404).json({ error: 'POS connection not found' });
+        return;
+      }
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations`, {
+        method: 'POST',
+        headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({
+          owner_id: auth.ownerId,
+          connection_id: connectionId,
+          provider_location_id: providerLocationId,
+          name,
+          timezone: timezone || null,
+          currency: currency || null,
+          active: true,
+        }),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows) || rows.length !== 1) {
+        // A duplicate provider location is a conflict; other DB failures remain unavailable.
+        if (response.status === 409) {
+          res.status(409).json({ error: 'This provider location is already mapped to this connection' });
+          return;
+        }
+        console.error('[API] POS location create failed:', response.status);
+        res.status(503).json({ error: 'Could not save POS location' });
+        return;
+      }
+      const row = rows[0];
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        id: row.id, connection_id: row.connection_id,
+        provider_location_id: row.provider_location_id, name: row.name,
+        timezone: row.timezone, currency: row.currency, active: row.active,
+        created_at: row.created_at,
+      });
+    } catch (err) {
+      console.error('[API] POS location create error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS location' });
+    }
+  });
+
+  app.patch('/api/pos/locations/:locationId', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const locationId = req.params.locationId;
+    if (!isUuid(locationId) || req.body?.active !== false) {
+      res.status(400).json({ error: 'A valid location ID and active=false are required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        id: `eq.${locationId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        active: 'eq.true',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${query}`, {
+        method: 'PATCH',
+        headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({ active: false }),
+      });
+      if (!response.ok) {
+        console.error('[API] POS location deactivate failed:', response.status);
+        res.status(503).json({ error: 'Could not deactivate POS location' });
+        return;
+      }
+      const rows = await response.json().catch(() => []);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        res.status(404).json({ error: 'Active POS location not found' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({ id: rows[0].id, active: false });
+    } catch (err) {
+      console.error('[API] POS location deactivate error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not deactivate POS location' });
+    }
+  });
+
+  // ============ TRUSTED GUEST ORDER FLOW ============
+  // Browser clients submit catalog IDs and quantities only. The database
+  // function reloads prices and atomically writes the order + outbox event.
+  const orderRateLimit = rateLimit(60_000, 20);
+  const getOrderBackend = () => {
+    const supabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const tokenSecret = process.env.ORDER_TOKEN_SECRET || '';
+    if (!supabaseUrl || !serviceKey || tokenSecret.length < 32) return null;
+    try {
+      const parsed = new URL(supabaseUrl);
+      if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+    } catch {
+      return null;
+    }
+    return { supabaseUrl, serviceKey, tokenSecret };
+  };
+
+  const sha256Hex = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
+  const orderHeaders = (serviceKey: string) => ({
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    'Content-Type': 'application/json',
+  });
+
+  app.post('/api/store/orders', orderRateLimit, async (req, res) => {
+    const backend = getOrderBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'Secure order service is not configured' });
+      return;
+    }
+
+    const body = req.body || {};
+    const ownerId = typeof body.ownerId === 'string' ? body.ownerId.trim() : '';
+    const tableNumberRaw = typeof body.tableNumber === 'string' ? body.tableNumber : '';
+    const tableNumber = tableNumberRaw.replace(/[٠-٩]/g, (d: string) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (d: string) => String(d.charCodeAt(0) - 0x06f0))
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 24);
+    const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+    const inputItems = body.items;
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(ownerId) ||
+        !/^[0-9a-f-]{36}$/i.test(idempotencyKey) ||
+        !tableNumber || !Array.isArray(inputItems) || inputItems.length < 1 || inputItems.length > 50) {
+      res.status(400).json({ error: 'Invalid order request' });
+      return;
+    }
+
+    const seen = new Set<string>();
+    const items: Array<{ id: string; quantity: number }> = [];
+    for (const line of inputItems) {
+      const id = typeof line?.id === 'string' ? line.id.trim() : '';
+      const quantity = Number(line?.quantity);
+      if (!id || id.length > 128 || !Number.isInteger(quantity) || quantity < 1 || quantity > 20 || seen.has(id)) {
+        res.status(400).json({ error: 'Invalid order item or quantity' });
+        return;
+      }
+      seen.add(id);
+      items.push({ id, quantity });
+    }
+    items.sort((a, b) => a.id.localeCompare(b.id));
+
+    // Deterministic per-order capability lets a safe retry reuse the same
+    // guest token without storing or returning a plaintext token from SQL.
+    const guestToken = crypto.createHmac('sha256', backend.tokenSecret)
+      .update(`soovoice-guest-order:v1:${ownerId}:${idempotencyKey}`)
+      .digest('base64url');
+    const guestTokenHash = sha256Hex(guestToken);
+    const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items }));
+
+    try {
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/rpc/create_guest_order`, {
+        method: 'POST',
+        headers: orderHeaders(backend.serviceKey),
+        body: JSON.stringify({
+          p_owner_id: ownerId,
+          p_table_number: tableNumber,
+          p_items: items,
+          p_idempotency_key: idempotencyKey,
+          p_guest_token_hash: guestTokenHash,
+          p_request_hash: requestHash,
+        }),
+      });
+      const result = await response.json().catch(() => null) as any;
+      if (!response.ok || !result?.orderId || !Array.isArray(result.items)) {
+        const dbMessage = String(result?.message || result?.details || result?.hint || '');
+        if (dbMessage.includes('ITEM_UNAVAILABLE')) {
+          res.status(409).json({ error: 'One or more items are no longer available' });
+          return;
+        }
+        if (dbMessage.includes('IDEMPOTENCY_CONFLICT')) {
+          res.status(409).json({ error: 'This checkout key was already used for a different cart' });
+          return;
+        }
+        if (dbMessage.includes('INVALID_')) {
+          res.status(400).json({ error: 'Order validation failed' });
+          return;
+        }
+        console.error('[API] Secure guest order RPC failed:', response.status, dbMessage.slice(0, 240));
+        res.status(response.status >= 500 ? 503 : 400).json({ error: 'Could not place this order' });
+        return;
+      }
+
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        orderId: result.orderId,
+        guestToken,
+        items: result.items,
+        total: Number(result.total),
+        tableNumber: result.tableNumber,
+        createdAt: Number(result.createdAt),
+        replayed: Boolean(result.replayed),
+      });
+    } catch (err) {
+      console.error('[API] Secure guest order error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Order service temporarily unavailable' });
+    }
+  });
+
+  app.get('/api/store/orders/:orderId', orderRateLimit, async (req, res) => {
+    const backend = getOrderBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'Secure order service is not configured' });
+      return;
+    }
+    const orderId = String(req.params.orderId || '');
+    const token = firstHeader(req.headers['x-order-token']) || '';
+    if (!/^order_[a-f0-9-]{16,64}$/i.test(orderId) || token.length < 32 || token.length > 256) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,status,items,total,tableNumber,createdAt',
+        id: `eq.${orderId}`,
+        guest_token_hash: `eq.${sha256Hex(token)}`,
+        guest_token_expires_at: `gt.${new Date().toISOString()}`,
+        limit: '1',
+      });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?${query.toString()}`, {
+        headers: orderHeaders(backend.serviceKey),
+      });
+      if (!response.ok) {
+        console.error('[API] Guest order tracking query failed:', response.status);
+        res.status(503).json({ error: 'Order tracking temporarily unavailable' });
+        return;
+      }
+      const rows = await response.json() as any[];
+      if (!Array.isArray(rows) || rows.length !== 1) {
+        res.status(404).json({ error: 'Order not found' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        orderId: rows[0].id,
+        status: rows[0].status,
+        items: rows[0].items,
+        total: Number(rows[0].total),
+        tableNumber: rows[0].tableNumber,
+        createdAt: Number(rows[0].createdAt),
+      });
+    } catch (err) {
+      console.error('[API] Guest order tracking error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Order tracking temporarily unavailable' });
+    }
+  });
 
   // ============ HEALTH ============
   app.get('/api/health', (_req, res) => {

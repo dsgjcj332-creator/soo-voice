@@ -28,7 +28,8 @@ export function StoreDemo() {
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-  const [lastOrder, setLastOrder] = React.useState<{ id: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
+  const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
+  const orderIdempotencyKeyRef = React.useRef<{ key: string; fingerprint: string } | null>(null);
   const [trackingOrder, setTrackingOrder] = React.useState<string | null>(null); // order id being tracked
   const [trackingStatus, setTrackingStatus] = React.useState<string>('pending');
 
@@ -318,115 +319,137 @@ export function StoreDemo() {
       : "Speak with the voice assistant below for ingredients, chef recommendations, and dish details.";
   };
 
-  // Guest checkout stays fail-closed until a trusted server endpoint can
-  // re-price catalog items, validate availability, and atomically create the
-  // order plus its outbox event. Never write client-supplied prices directly.
-  const [submitErrorKind, setSubmitErrorKind] = React.useState<'not_ready' | null>(null);
+  // Guest checkout sends identifiers and quantities only. The trusted API
+  // reloads catalog prices and commits the order + outbox in one transaction.
+  const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
   const handleSubmitOrder = async () => {
-    if (cartItems.length === 0) return;
-    setSubmitErrorKind('not_ready');
-    setCheckoutStatus('error');
+    if (cartItems.length === 0 || checkoutStatus === 'sending') return;
+    setCheckoutStatus('sending');
+    setSubmitErrorKind(null);
+    try {
+      const normalizeDigits = (value: string) =>
+        value
+          .replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
+          .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06f0));
+      const tableNumber = normalizeDigits(String(effectiveTable || '1'))
+        .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+        .trim()
+        .slice(0, 24) || '1';
+
+      const orderItems = cartItems.map(item => ({
+        id: String(item.id),
+        quantity: Math.max(1, Math.round(Number(item.quantity) || 0)),
+      }));
+      const requestFingerprint = JSON.stringify({
+        ownerId: resolvedOwnerId,
+        tableNumber,
+        items: [...orderItems].sort((a, b) => a.id.localeCompare(b.id)),
+      });
+      if (!orderIdempotencyKeyRef.current || orderIdempotencyKeyRef.current.fingerprint !== requestFingerprint) {
+        orderIdempotencyKeyRef.current = {
+          key: crypto.randomUUID(),
+          fingerprint: requestFingerprint,
+        };
+      }
+      const response = await fetch('/api/store/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ownerId: resolvedOwnerId,
+          tableNumber,
+          idempotencyKey: orderIdempotencyKeyRef.current.key,
+          items: orderItems,
+        }),
+      });
+      const result = await response.json().catch(() => null) as any;
+      if (!response.ok || !result?.orderId || !result?.guestToken || !Array.isArray(result.items)) {
+        setSubmitErrorKind(response.status === 503 ? 'schema' : 'generic');
+        throw new Error(result?.error || 'The secure order service rejected the request');
+      }
+
+      // Prices and line names in the invoice come exclusively from the server.
+      const placedOrder = {
+        id: result.orderId,
+        guestToken: result.guestToken,
+        items: result.items,
+        total: Number(result.total),
+        tableNumber: String(result.tableNumber),
+        createdAt: Number(result.createdAt),
+      };
+      orderIdempotencyKeyRef.current = null;
+
+      // Keep the two-phase overlay transition to avoid overlapping unmounts.
+      setCartOpen(false);
+      requestAnimationFrame(() => {
+        setLastOrder(placedOrder);
+        setCheckoutStatus('success');
+        setTimeout(() => clearCart(), 120);
+      });
+    } catch (err) {
+      console.error('Secure order submit error:', err instanceof Error ? err.message : err);
+      setCheckoutStatus('error');
+      setTimeout(() => setCheckoutStatus('idle'), 4500);
+    }
   };
 
-  // Live tracking — subscribe to the order's status changes via Supabase
-  // realtime + poll every 3 seconds as a fallback. Realtime is faster but
-  // requires the orders table to have an anon-read RLS policy. Polling
-  // guarantees the status updates even if realtime silently fails (which
-  // is the most common issue when tracking "doesn't sync with kitchen").
-  //
-  // On every real status transition we fire a chime + haptic so the guest
-  // hears the kitchen's progress without staring at the screen:
-  //   pending → preparing : 3-note ascending major triad (C-E-G)
-  //   → completed        : 4-note ascending fanfare (E-G-B-E)
-  // See src/lib/chime.ts for the chime shapes. iOS unlocks the AudioContext
-  // via the "Add to order" tap earlier in the flow, so these chimes work
-  // even though they're triggered by polling rather than a user gesture.
+  // Guest tracking uses a per-order capability token. The token is never
+  // placed in a URL and the browser never receives broad orders-table access.
   React.useEffect(() => {
     const orderId = lastOrder?.id || trackingOrder;
-    if (!orderId) {
+    const guestToken = lastOrder?.guestToken;
+    if (!orderId || !guestToken) {
       setTrackingStatus('pending');
       prevTrackingStatusRef.current = 'pending';
       trackingInitializedRef.current = false;
       return;
     }
-    const supabase = getSupabase();
-    const { isConfigured } = getSupabaseConfig();
-    if (!isConfigured || !supabase) return;
 
-    // Reset the chime bookkeeping for this tracking session — every
-    // time the order being tracked changes (new order placed, user
-    // re-opens the tracking modal), we start fresh and only chime on
-    // transitions observed AFTER this point.
     prevTrackingStatusRef.current = 'pending';
     trackingInitializedRef.current = false;
+    let cancelled = false;
 
-    // Apply a new status: diff against the previous one, fire the
-    // appropriate chime + haptic on real transitions, and update state.
     const applyTrackingStatus = (next: string) => {
-      if (!next) return;
-      // First time we see any data — just record it, don't chime.
-      // This handles the case where the user opens the tracking modal
-      // on an order that's already in 'preparing' or 'completed'.
+      if (!next || cancelled) return;
       if (!trackingInitializedRef.current) {
         prevTrackingStatusRef.current = next;
         setTrackingStatus(next);
         trackingInitializedRef.current = true;
         return;
       }
-      // No change — nothing to do.
       if (next === prevTrackingStatusRef.current) return;
-
       const prev = prevTrackingStatusRef.current;
-
-      // Real transition — fire chimes.
       if (prev === 'pending' && next === 'preparing') {
-        // Kitchen started cooking — bright 3-note ascending triad.
         playChime('preparing');
         haptic([20, 40, 20]);
       } else if (next === 'completed' && prev !== 'completed') {
-        // Order served — celebratory 4-note fanfare.
         playChime('served');
         haptic([30, 30, 30, 60]);
       }
-
       prevTrackingStatusRef.current = next;
       setTrackingStatus(next);
     };
 
-    // Polling fetch — runs every 3 seconds, updates status if changed.
-    // This is the safety net that works even without realtime/RLS.
-    const pollStatus = () => {
-      Promise.resolve(
-        supabase.from('orders').select('status').eq('id', orderId).maybeSingle()
-      ).then(({ data }: any) => {
-        if (data?.status) applyTrackingStatus(data.status);
-      }).catch(() => {});
+    const pollStatus = async () => {
+      try {
+        const response = await fetch(`/api/store/orders/${encodeURIComponent(orderId)}`, {
+          headers: { 'x-order-token': guestToken },
+          cache: 'no-store',
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data?.status) applyTrackingStatus(String(data.status));
+      } catch {
+        // A transient network failure must not erase the last known status.
+      }
     };
 
-    // Initial fetch immediately
-    pollStatus();
-
-    // Start polling every 3 seconds
-    const pollInterval = setInterval(pollStatus, 3000);
-
-    // Also try realtime (faster path if RLS allows it)
-    const channel = supabase
-      .channel(`track-${orderId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'orders',
-        filter: `id=eq.${orderId}`,
-      }, (payload) => {
-        if (payload.new) applyTrackingStatus((payload.new as any).status);
-      })
-      .subscribe();
-
+    void pollStatus();
+    const pollInterval = setInterval(() => { void pollStatus(); }, 3000);
     return () => {
+      cancelled = true;
       clearInterval(pollInterval);
-      supabase.removeChannel(channel);
     };
-  }, [lastOrder?.id, trackingOrder]);
+  }, [lastOrder?.id, lastOrder?.guestToken, trackingOrder]);
 
   // Download invoice as an image (canvas) — works offline, no server needed.
   // Includes the restaurant logo if available.
