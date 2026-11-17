@@ -19,7 +19,9 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { encryptPosCredentials } from './pos/credentials';
+import { decryptPosCredentials, encryptPosCredentials } from './pos/credentials';
+import { normalizePosCatalog } from './pos/catalog-normalizer';
+import { verifyPosWebhookSignature } from './pos/webhook-security';
 import { isUuid, parsePosLocationInput } from './pos/location-validation';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
@@ -183,6 +185,127 @@ export function createApiApp() {
     apikey: serviceKey,
     Authorization: `Bearer ${serviceKey}`,
     'Content-Type': 'application/json',
+  });
+
+  // Provider-neutral signed catalog webhook. The provider/owner/branch scope is
+  // resolved from persisted connection records, never from caller-supplied IDs.
+  app.post('/api/pos/webhooks/:connectionId', async (req, res) => {
+    const connectionId = req.params.connectionId;
+    const eventId = firstHeader(req.headers['x-pos-event-id']);
+    const eventType = firstHeader(req.headers['x-pos-event-type']);
+    const timestamp = firstHeader(req.headers['x-pos-timestamp']);
+    const signature = firstHeader(req.headers['x-pos-signature']);
+    const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
+    if (!isUuid(connectionId) || !eventId || eventId.length > 160 ||
+        !eventType || eventType !== 'catalog.snapshot' ||
+        !rawBody || rawBody.length === 0 || rawBody.length > 2 * 1024 * 1024) {
+      res.status(400).json({ error: 'Invalid POS webhook request' });
+      return;
+    }
+    const backend = getPosBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'POS webhook ingress is not configured' });
+      return;
+    }
+    try {
+      const connectionQuery = new URLSearchParams({
+        select: 'id,owner_id,provider,status,credentials_ciphertext,credentials_key_version',
+        id: `eq.${connectionId}`,
+        status: 'eq.connected',
+        limit: '1',
+      });
+      const connectionResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_connections?${connectionQuery}`, {
+        headers: posServiceHeaders(backend.serviceKey),
+      });
+      if (!connectionResponse.ok) {
+        res.status(503).json({ error: 'Could not verify POS webhook connection' });
+        return;
+      }
+      const connections = await connectionResponse.json() as Array<{
+        id: string; owner_id: string; provider: string; status: string;
+        credentials_ciphertext: string | null; credentials_key_version: string | null;
+      }>;
+      if (!Array.isArray(connections) || connections.length !== 1) {
+        res.status(404).json({ error: 'Active POS connection not found' });
+        return;
+      }
+      const connection = connections[0];
+      if (!connection.credentials_ciphertext || !connection.credentials_key_version) {
+        res.status(503).json({ error: 'POS webhook credentials are unavailable' });
+        return;
+      }
+      const credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
+      const webhookSecret = typeof credentials.webhookSecret === 'string' ? credentials.webhookSecret : '';
+      if (!verifyPosWebhookSignature({ timestamp, signature, rawBody, secret: webhookSecret })) {
+        res.status(401).json({ error: 'POS webhook signature verification failed' });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const providerLocationId = typeof body?.providerLocationId === 'string' ? body.providerLocationId.trim() : '';
+      if (!providerLocationId || providerLocationId.length > 160 ||
+          typeof body.completeSnapshot !== 'boolean' || !Array.isArray(body.items)) {
+        res.status(400).json({ error: 'Invalid POS catalog snapshot payload' });
+        return;
+      }
+      const locationQuery = new URLSearchParams({
+        select: 'id',
+        owner_id: `eq.${connection.owner_id}`,
+        connection_id: `eq.${connection.id}`,
+        provider_location_id: `eq.${providerLocationId}`,
+        active: 'eq.true',
+        limit: '1',
+      });
+      const locationResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!locationResponse.ok) {
+        res.status(503).json({ error: 'Could not resolve POS branch' });
+        return;
+      }
+      if (!Array.isArray(locations) || locations.length !== 1) {
+        res.status(404).json({ error: 'Mapped active POS branch not found' });
+        return;
+      }
+
+      const normalized = normalizePosCatalog(body.items);
+      const scopedItems = normalized.filter(item => item.locationIds.includes(providerLocationId));
+      if (scopedItems.length !== normalized.length) {
+        res.status(400).json({ error: 'Catalog payload contains products outside the mapped branch' });
+        return;
+      }
+      const rpcResponse = await fetch(`${backend.supabaseUrl}/rest/v1/rpc/ingest_pos_catalog_webhook`, {
+        method: 'POST',
+        headers: posServiceHeaders(backend.serviceKey),
+        body: JSON.stringify({
+          p_owner_id: connection.owner_id,
+          p_connection_id: connection.id,
+          p_location_id: locations[0].id,
+          p_provider_event_id: eventId,
+          p_event_type: eventType,
+          p_event_metadata: {
+            provider: connection.provider,
+            providerLocationId,
+            occurredAt: typeof body.occurredAt === 'string' ? body.occurredAt.slice(0, 40) : null,
+          },
+          p_items: scopedItems,
+          p_complete_snapshot: body.completeSnapshot,
+        }),
+      });
+      const result = await rpcResponse.json().catch(() => null) as Record<string, unknown> | null;
+      if (!rpcResponse.ok || !result || result.accepted !== true) {
+        console.error('[API] POS webhook ingestion failed:', rpcResponse.status);
+        res.status(503).json({ error: 'POS catalog webhook could not be processed; retry later' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.status(200).json({ accepted: true, duplicate: result.duplicate === true });
+    } catch (err) {
+      // Never log webhook bodies, signatures, or decrypted provider credentials.
+      console.error('[API] POS webhook ingestion error:', err instanceof Error ? err.message : 'unknown');
+      res.status(400).json({ error: 'POS webhook could not be validated or processed' });
+    }
   });
 
   app.get('/api/pos/connections', posConnectionRateLimit, async (req, res) => {
