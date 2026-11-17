@@ -36,8 +36,8 @@ create policy billing_promotions_platform_admin_manage on public.billing_promoti
   using (public.is_platform_admin())
   with check (public.is_platform_admin());
 
-grant insert, update, delete on public.billing_plans, public.billing_plan_prices,
-  public.billing_promotions to authenticated;
+grant insert, update, delete on public.billing_plans, public.billing_plan_prices to authenticated;
+grant select, insert, update, delete on public.billing_promotions to authenticated;
 
 -- Platform admins can inspect billing state, but subscription/payment mutations
 -- remain server-only and cannot be performed directly from the browser.
