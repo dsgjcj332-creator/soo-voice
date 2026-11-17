@@ -281,6 +281,33 @@ export function createApiApp() {
     }
   });
 
+  // ============ POS CATALOG REVIEW (READ-ONLY) ============
+  // Exposes only persisted snapshots owned by the authenticated merchant.
+  app.get('/api/pos/catalog', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const locationId = typeof req.query.locationId === 'string' ? req.query.locationId : '';
+    if (!isUuid(locationId)) { res.status(400).json({ error: 'A valid POS location ID is required' }); return; }
+    try {
+      const locationQuery = new URLSearchParams({ select: 'id', id: `eq.${locationId}`, owner_id: `eq.${auth.ownerId}`, active: 'eq.true', limit: '1' });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, { headers: posServiceHeaders(auth.backend.serviceKey) });
+      const ownedLocations = await locationResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      if (!Array.isArray(ownedLocations) || ownedLocations.length !== 1) { res.status(404).json({ error: 'Active POS location not found' }); return; }
+      const catalogQuery = new URLSearchParams({
+        select: 'id,provider_item_id,category_id,name,description,currency,unit_price,available,modifier_groups,source_version,source_updated_at,active,last_synced_at',
+        owner_id: `eq.${auth.ownerId}`, location_id: `eq.${locationId}`, order: 'name.asc', limit: '1000',
+      });
+      const catalogResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_catalog_items?${catalogQuery}`, { headers: posServiceHeaders(auth.backend.serviceKey) });
+      if (!catalogResponse.ok) { console.error('[API] POS catalog review read failed:', catalogResponse.status); res.status(503).json({ error: 'POS catalog review is temporarily unavailable' }); return; }
+      const rows = await catalogResponse.json();
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] POS catalog review read error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'POS catalog review is temporarily unavailable' });
+    }
+  });
   // ============ POS LOCATION / BRANCH MANAGEMENT ============
   // Branch records are manually mapped until provider discovery adapters exist.
   app.get('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
