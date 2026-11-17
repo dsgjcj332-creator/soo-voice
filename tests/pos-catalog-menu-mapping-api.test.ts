@@ -51,7 +51,7 @@ function json(data: unknown, status = 200) {
 function successfulSupabase(url: URL, init: RequestInit | undefined, options: MockOptions = {}) {
   if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
   if (url.pathname === '/rest/v1/pos_locations') return json([{ id: locationId, connection_id: connectionId }]);
-  if (url.pathname === '/rest/v1/pos_catalog_items') return json([{ provider_item_id: 'provider-tea-1' }]);
+  if (url.pathname === '/rest/v1/pos_catalog_items') return json([{ provider_item_id: 'provider-tea-1' }]);\n  if (url.pathname === '/rest/v1/pos_catalog_menu_link_events') return json([{ id: 'event-1', provider_item_id: 'provider-tea-1', event_type: 'created', actor_id: ownerId, created_at: '2026-11-17T12:00:00.000Z' }]);
   if (url.pathname === '/rest/v1/menu_items') return json(options.menuRows ?? [{ id: 'menu-tea-1' }]);
   if (url.pathname === '/rest/v1/pos_catalog_menu_links' && init?.method === 'POST') {
     if (options.mappingStatus && options.mappingStatus !== 201) return json({ message: 'mapping conflict' }, options.mappingStatus);
@@ -157,6 +157,24 @@ test('POS menu mapping returns conflict when a local menu item is already linked
         body: JSON.stringify({ locationId, providerItemId: 'provider-tea-1', menuItemId: 'menu-tea-1' }),
       });
       assert.equal(response.status, 409);
+    },
+  );
+});
+
+test('POS mapping history is restricted to the authenticated merchant and selected branch', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/mapping-events/${locationId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      assert.equal(response.status, 200);
+      const events = await response.json() as Array<Record<string, unknown>>;
+      assert.equal(events.length, 1);
+      assert.equal(events[0].event_type, 'created');
+      const historyRequest = requests.find(request => request.url.pathname === '/rest/v1/pos_catalog_menu_link_events');
+      assert.equal(historyRequest?.url.searchParams.get('owner_id'), `eq.${ownerId}`);
+      assert.equal(historyRequest?.url.searchParams.get('location_id'), `eq.${locationId}`);
     },
   );
 });
