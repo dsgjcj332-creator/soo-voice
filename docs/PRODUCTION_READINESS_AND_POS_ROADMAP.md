@@ -189,3 +189,10 @@ This is not yet a connected review screen or import action. There is no API rout
 ## CI test repair checkpoint (2026-11-17)
 
 The first CI retry reached the test suite after dependencies installed successfully. It exposed two test-only defects: the POS credential test had an unmatched closing delimiter, and the catalog persistence test expected the wrong validator error code for a malformed catalog row. Both test files were corrected to match the actual implementation. The next CI run must confirm the full suite, TypeScript check and production build; no pass is claimed yet.
+
+
+### POS catalog review UI checkpoint
+
+- Added an authenticated, tenant-scoped read-only endpoint for stored POS catalog snapshots.
+- Added a branch selector and product preview to the POS integrations panel.
+- No automatic menu mutation, product linking, or merchant approval persistence is implemented yet; live provider catalog fetching still requires a real vendor adapter.
