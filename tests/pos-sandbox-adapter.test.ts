@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPosSandboxAdapter } from '../src/lib/pos/testing/sandbox-adapter.ts';
+import { processOrderOutboxBatch, type OrderOutboxEvent, type OutboxStore } from '../src/lib/pos/outbox-worker.ts';
 import type { PosCreateOrderInput, PosConnectionContext } from '../src/lib/pos/types.ts';
 
 const context: PosConnectionContext = {
@@ -127,4 +128,56 @@ test('sandbox adapter validates catalog items, quantities and required modifiers
     }] })),
     /POS_SANDBOX_INVALID_MODIFIERS/,
   );
+});
+
+test('sandbox adapter completes the leased outbox flow with a provider order link', async () => {
+  const sandbox = createPosSandboxAdapter();
+  const event: OrderOutboxEvent = {
+    id: 'outbox-sandbox-1',
+    order_id: 'local-order-outbox-1',
+    owner_id: context.merchantId,
+    event_type: 'order.created',
+    payload: {},
+    attempts: 0,
+  };
+  let linkedProviderOrderId = '';
+  let retried = false;
+  const store: OutboxStore = {
+    async claim(workerId, limit, leaseSeconds) {
+      assert.equal(workerId, 'sandbox-worker-0001');
+      assert.equal(limit, 10);
+      assert.equal(leaseSeconds, 120);
+      return [event];
+    },
+    async complete(eventId, workerId, target, providerOrderId) {
+      assert.equal(eventId, event.id);
+      assert.equal(workerId, 'sandbox-worker-0001');
+      assert.equal(target.provider, 'custom');
+      linkedProviderOrderId = providerOrderId;
+      return true;
+    },
+    async retry() {
+      retried = true;
+      return 'failed';
+    },
+  };
+
+  const result = await processOrderOutboxBatch(
+    store,
+    'sandbox-worker-0001',
+    async () => ({
+      provider: 'custom',
+      context,
+      createOrder: input => sandbox.adapter.createOrder(context, input),
+    }),
+    row => order({
+      localOrderId: row.order_id,
+      idempotencyKey: `soovoice:${row.order_id}`,
+    }),
+  );
+
+  assert.deepEqual(result, { claimed: 1, delivered: 1, failed: 0, leaseLost: 0 });
+  assert.equal(linkedProviderOrderId, 'sandbox-order-000001');
+  assert.equal(sandbox.getAcceptedOrders().length, 1);
+  assert.equal(retried, false);
 });
