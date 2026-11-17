@@ -113,7 +113,9 @@ export function Settings() {
           {saveStatus === 'saved' && (
             <span role="status" className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              {isAr ? 'تم تأكيد حفظ الإعدادات' : 'Settings saved and confirmed'}
+              {user?.provider === 'local'
+                ? (isAr ? 'تم حفظ الإعدادات على هذا الجهاز' : 'Settings saved on this device')
+                : (isAr ? 'تم تأكيد حفظ الإعدادات في حسابك' : 'Settings saved to your account')}
             </span>
           )}
           {saveStatus === 'error' && (
@@ -534,7 +536,10 @@ export function Settings() {
                   name="currency"
                   value={cur.code}
                   checked={currency === cur.code}
-                  onChange={(e) => setCurrency(e.target.value as Currency)}
+                  onChange={(e) => {
+                    setCurrency(e.target.value as Currency);
+                    setSaveStatus('idle');
+                  }}
                   className="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500"
                 />
               </label>
