@@ -372,7 +372,7 @@ reset role;
 -- A different authenticated tenant cannot read the first tenant's apply history.
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
 set role authenticated;
-do $
+do $$
 begin
   if (select count(*) from public.pos_catalog_menu_apply_events) <> 0 then
     raise exception 'POS_TEST_MENU_APPLY_AUDIT_CROSSTENANT_READ';
