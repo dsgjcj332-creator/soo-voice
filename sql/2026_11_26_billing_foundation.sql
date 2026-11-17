@@ -231,7 +231,7 @@ language sql
 stable
 security invoker
 set search_path = public
-as $
+as $is_admin$
   select coalesce(
     (nullif(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,role}') = 'admin'
     or (
@@ -242,7 +242,7 @@ as $
     ),
     false
   );
-$;
+$is_admin$;
 
 revoke all on function public.is_soovoice_platform_admin() from public, anon;
 grant execute on function public.is_soovoice_platform_admin() to authenticated, service_role;
