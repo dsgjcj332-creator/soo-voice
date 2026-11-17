@@ -7,7 +7,8 @@ type PosLocation = { id: string; connection_id: string; provider_location_id: st
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
 type PosMenuItem = { id: string; name: string; price: number };
 type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
-type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string; field_overrides: Partial<Record<PosCatalogField, boolean>> };\ntype PosCatalogMappingEvent = { id: string; provider_item_id: string; event_type: 'created' | 'relinked' | 'protection_updated' | 'reapproved'; actor_id: string; created_at: string };
+type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string; field_overrides: Partial<Record<PosCatalogField, boolean>> };
+type PosCatalogMappingEvent = { id: string; provider_item_id: string; event_type: 'created' | 'relinked' | 'protection_updated' | 'reapproved'; actor_id: string; created_at: string };
 
 type PosConnection = {
   id: string;
@@ -34,7 +35,8 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState('');
   const [menuItems, setMenuItems] = useState<PosMenuItem[]>([]);
-  const [catalogMappings, setCatalogMappings] = useState<PosCatalogMapping[]>([]);\n  const [mappingEvents, setMappingEvents] = useState<PosCatalogMappingEvent[]>([]);
+  const [catalogMappings, setCatalogMappings] = useState<PosCatalogMapping[]>([]);
+  const [mappingEvents, setMappingEvents] = useState<PosCatalogMappingEvent[]>([]);
   const [mappingSelections, setMappingSelections] = useState<Record<string, string>>({});
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, Partial<Record<PosCatalogField, boolean>>>>({});
   const [savingMappingId, setSavingMappingId] = useState('');
