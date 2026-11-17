@@ -11,6 +11,7 @@ export function SuperAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [conversations24h, setConversations24h] = useState<number | null>(null);
   const [orders24h, setOrders24h] = useState<number | null>(null);
+  const [adminActionError, setAdminActionError] = useState("");
 
   useEffect(() => {
     const unsubscribe = subscribeToMerchants((data) => {
@@ -46,28 +47,31 @@ export function SuperAdminDashboard() {
   }, []);
 
   const handleApprove = async (id: string) => {
+    setAdminActionError("");
     try {
       await approveMerchant(id);
     } catch (e) {
-      console.error(e);
+      setAdminActionError(e instanceof Error ? e.message : "Could not approve merchant");
     }
   };
 
   const handleBlock = async (id: string) => {
+    setAdminActionError("");
     try {
       await blockMerchant(id);
     } catch (e) {
-      console.error(e);
+      setAdminActionError(e instanceof Error ? e.message : "Could not block merchant");
     }
   };
 
   const handleDelete = async (id: string) => {
+    setAdminActionError("");
     try {
-      if (window.confirm("Are you sure?")) {
+      if (window.confirm(language === "ar" ? "متأكد إنك عاوز تحذف سجل المتجر؟" : "Delete this merchant record?")) {
         await deleteMerchant(id);
       }
     } catch (e) {
-      console.error(e);
+      setAdminActionError(e instanceof Error ? e.message : "Could not delete merchant");
     }
   };
 
@@ -88,6 +92,8 @@ export function SuperAdminDashboard() {
           {language === 'ar' ? 'احصائيات مباشرة وخلاصة نشاط المتاجر.' : 'Live metrics and merchants activity feed.'}
         </p>
       </div>
+
+      {adminActionError && <div role="alert" className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{adminActionError}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {STATS.map((item, idx) => (

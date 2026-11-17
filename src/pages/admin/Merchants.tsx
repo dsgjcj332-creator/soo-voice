@@ -1,16 +1,22 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { Store, Search, Filter, Check, ShieldBan, X } from "lucide-react";
+import { Store, Search, Check, ShieldBan, X } from "lucide-react";
 import { subscribeToMerchants, approveMerchant, blockMerchant, deleteMerchant, Merchant } from "../../services/merchants";
 
 export function AdminMerchants() {
   const { language } = useLanguage();
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const unsubscribe = subscribeToMerchants((data) => {
       setMerchants(data);
+      setLoading(false);
+    }, (message) => {
+      setError(message);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -20,7 +26,7 @@ export function AdminMerchants() {
     try {
        await approveMerchant(id);
     } catch (e) {
-       console.error(e);
+       setError(e instanceof Error ? e.message : (language === 'ar' ? 'تعذر اعتماد المتجر' : 'Could not approve merchant'));
     }
   };
 
@@ -28,7 +34,7 @@ export function AdminMerchants() {
     try {
        await blockMerchant(id);
     } catch (e) {
-       console.error(e);
+       setError(e instanceof Error ? e.message : (language === 'ar' ? 'تعذر حظر المتجر' : 'Could not block merchant'));
     }
   };
 
@@ -38,9 +44,16 @@ export function AdminMerchants() {
         await deleteMerchant(id);
       }
     } catch (e) {
-       console.error(e);
+       setError(e instanceof Error ? e.message : (language === 'ar' ? 'تعذر حذف المتجر' : 'Could not delete merchant'));
     }
   };
+
+  const filteredMerchants = merchants.filter((merchant) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || [merchant.store, merchant.email, merchant.platform].some((value) => String(value || '').toLowerCase().includes(query));
+    const matchesStatus = statusFilter === 'all' || merchant.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="p-8 max-w-7xl mx-auto h-full flex flex-col">
@@ -58,35 +71,41 @@ export function AdminMerchants() {
             <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input 
-                   type="text" 
-                   placeholder={language === 'ar' ? 'ابحث باسم المتجر...' : 'Search store name...'} 
+                   type="search" 
+                   value={search}
+                   onChange={(event) => setSearch(event.target.value)}
+                   placeholder={language === 'ar' ? 'ابحث باسم المتجر أو البريد...' : 'Search store or email...'} 
                    className="pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-rose-500"
                 />
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                <Filter className="w-4 h-4" />
-                {language === 'ar' ? 'تصفية' : 'Filter'}
-            </button>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label={language === 'ar' ? 'تصفية حسب الحالة' : 'Filter by status'} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600">
+              <option value="all">{language === 'ar' ? 'كل الحالات' : 'All statuses'}</option>
+              <option value="Pending">{language === 'ar' ? 'قيد المراجعة' : 'Pending'}</option>
+              <option value="Active">{language === 'ar' ? 'نشط' : 'Active'}</option>
+              <option value="Blocked">{language === 'ar' ? 'محظور' : 'Blocked'}</option>
+            </select>
         </div>
       </div>
 
-      <div className={`flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm ${merchants.length === 0 ? 'flex flex-col items-center justify-center text-center p-12' : 'overflow-hidden'}`}>
+      {error && <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
+
+      <div className={`flex-1 bg-white border border-slate-200 rounded-2xl shadow-sm ${filteredMerchants.length === 0 ? 'flex flex-col items-center justify-center text-center p-12' : 'overflow-hidden'}`}>
         {loading ? (
              <div className="p-12 text-center text-slate-500">
                 {language === 'ar' ? 'جاري التحميل...' : 'Loading...'}
              </div>
-         ) : merchants.length === 0 ? (
+         ) : filteredMerchants.length === 0 ? (
            <>
              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                  <Store className="w-8 h-8 text-slate-400" />
              </div>
              <h3 className="text-lg font-bold text-slate-800 mb-2">
-                 {language === 'ar' ? 'لا توجد متاجر في قاعدة البيانات' : 'No Merchants in Database'}
+                 {merchants.length === 0 ? (language === 'ar' ? 'لا توجد متاجر في قاعدة البيانات' : 'No Merchants in Database') : (language === 'ar' ? 'لا توجد نتائج مطابقة' : 'No matching merchants')}
              </h3>
              <p className="text-sm text-slate-500 max-w-sm">
-                 {language === 'ar'
-                    ? 'عند تسجيل المطاعم من خلال الموقع أو التسجيل اليدوي، سيظهرون هنا.'
-                    : 'When restaurants register via the website or manually, they will appear here.'}
+                 {merchants.length === 0
+                    ? (language === 'ar' ? 'عند تسجيل المطاعم من خلال الموقع أو التسجيل اليدوي، سيظهرون هنا.' : 'When restaurants register via the website or manually, they will appear here.')
+                    : (language === 'ar' ? 'جرّب تغيير البحث أو فلتر الحالة.' : 'Try changing your search or status filter.')}
              </p>
            </>
          ) : (
@@ -102,7 +121,7 @@ export function AdminMerchants() {
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-100">
-                   {merchants.map((merchant) => (
+                   {filteredMerchants.map((merchant) => (
                       <tr key={merchant.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4">
                            <div className="font-bold text-slate-900">{merchant.store}</div>

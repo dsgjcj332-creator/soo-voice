@@ -70,7 +70,7 @@ function AppRoutes() {
         <Route path="/oauth/authorize" element={<OAuthInstall />} />
         
         {/* Independent Admin Layout */}
-        <Route path="/admin" element={user ? <SuperAdminLayout /> : <Navigate to="/auth" />}>
+        <Route path="/admin" element={user?.isAdmin ? <SuperAdminLayout /> : <Navigate to={user ? "/app" : "/auth"} replace />}>
           <Route index element={<SuperAdminDashboard />} />
           <Route path="merchants" element={<AdminMerchants />} />
           <Route path="voices" element={<AdminVoices />} />
