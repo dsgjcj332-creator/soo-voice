@@ -42,7 +42,7 @@ test('does not call RPC for invalid scope or malformed catalog', async () => {
     async rpc() { calls += 1; return { data: null, error: null }; },
   };
   await assert.rejects(persistPosCatalogSnapshot(client, { ...scope, ownerId: 'not-a-uuid', items: [] }), /INVALID_POS_CATALOG_SCOPE/);
-  await assert.rejects(persistPosCatalogSnapshot(client, { ...scope, items: [{ nope: true }] }), /INVALID_POS_CATALOG_ITEM/);
+  await assert.rejects(persistPosCatalogSnapshot(client, { ...scope, items: [{ nope: true }] }), /INVALID_POS_CATALOG_COLLECTION/);
   assert.equal(calls, 0);
 });
 
