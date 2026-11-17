@@ -15,8 +15,14 @@ alter table public.store_settings enable row level security;
 drop policy if exists "store_settings_public_read" on public.store_settings;
 create policy "store_settings_public_read"
   on public.store_settings for select
-  to anon, authenticated
+  to anon
   using (true);
+
+drop policy if exists "store_settings_owner_read" on public.store_settings;
+create policy "store_settings_owner_read"
+  on public.store_settings for select
+  to authenticated
+  using ("ownerId" = auth.uid());
 
 drop policy if exists "store_settings_owner_insert" on public.store_settings;
 create policy "store_settings_owner_insert"
