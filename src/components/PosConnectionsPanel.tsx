@@ -7,7 +7,7 @@ type PosLocation = { id: string; connection_id: string; provider_location_id: st
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
 type PosMenuItem = { id: string; name: string; price: number };
 type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
-type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string; field_overrides: Partial<Record<PosCatalogField, boolean>> };
+type PosCatalogMapping = { id: string; provider_item_id: string; menu_item_id: string; approved_at: string; field_overrides: Partial<Record<PosCatalogField, boolean>> };\ntype PosCatalogMappingEvent = { id: string; provider_item_id: string; event_type: 'created' | 'relinked' | 'protection_updated' | 'reapproved'; actor_id: string; created_at: string };
 
 type PosConnection = {
   id: string;
@@ -34,7 +34,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState('');
   const [menuItems, setMenuItems] = useState<PosMenuItem[]>([]);
-  const [catalogMappings, setCatalogMappings] = useState<PosCatalogMapping[]>([]);
+  const [catalogMappings, setCatalogMappings] = useState<PosCatalogMapping[]>([]);\n  const [mappingEvents, setMappingEvents] = useState<PosCatalogMappingEvent[]>([]);
   const [mappingSelections, setMappingSelections] = useState<Record<string, string>>({});
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, Partial<Record<PosCatalogField, boolean>>>>({});
   const [savingMappingId, setSavingMappingId] = useState('');
@@ -53,7 +53,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState(false);
 
-  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'menu-items', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
+  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'menu-items', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
     const supabase = getSupabase();
     if (!supabase || !user || user.provider !== 'supabase') {
       throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified Supabase session is required.');
@@ -124,7 +124,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   }, [reviewLocationId, user, isArabic]);
 
   useEffect(() => {
-    setMenuItems([]); setCatalogMappings([]); setMappingSelections({}); setMappingOverrides({});
+    setMenuItems([]); setCatalogMappings([]); setMappingEvents([]); setMappingSelections({}); setMappingOverrides({});
     if (!reviewLocationId) return;
     let cancelled = false;
     const loadMappingOptions = async () => {
@@ -343,6 +343,23 @@ export function PosConnectionsPanel({ language }: { language: string }) {
               </button>
               {catalogMappings.some(mapping => mapping.provider_item_id === item.provider_item_id) && <span className="text-[11px] font-semibold text-emerald-700">{isArabic ? 'تم الربط بموافقتك' : 'Merchant approved'}</span>}
             </div>
+            {mappingEvents.some(event => event.provider_item_id === item.provider_item_id) && <div className="mt-3 border-t border-slate-100 pt-2">
+              <p className="mb-1 text-[11px] font-bold text-slate-500">{isArabic ? 'سجل موافقات الربط' : 'Mapping approval history'}</p>
+              <ul className="space-y-1">
+                {mappingEvents.filter(event => event.provider_item_id === item.provider_item_id).slice(0, 3).map(event => {
+                  const labels: Record<PosCatalogMappingEvent['event_type'], [string, string]> = {
+                    created: ['اعتماد الربط لأول مرة', 'Mapping approved'],
+                    relinked: ['تغيير المنتج المرتبط', 'Menu item relinked'],
+                    protection_updated: ['تحديث الحقول المحمية', 'Protected fields updated'],
+                    reapproved: ['إعادة اعتماد الربط', 'Mapping re-approved'],
+                  };
+                  return <li key={event.id} className="flex flex-wrap justify-between gap-2 text-[11px] text-slate-500">
+                    <span>{isArabic ? labels[event.event_type][0] : labels[event.event_type][1]}</span>
+                    <time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</time>
+                  </li>;
+                })}
+              </ul>
+            </div>}
           </article>)}
         </div>}
       </div>}
