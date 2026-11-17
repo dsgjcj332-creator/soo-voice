@@ -20,7 +20,8 @@ create table if not exists public.pos_connections (
   last_sync_at timestamptz,
   last_error_code text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique(owner_id, id)
 );
 
 create index if not exists pos_connections_owner_idx
@@ -29,7 +30,7 @@ create index if not exists pos_connections_owner_idx
 create table if not exists public.pos_locations (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
-  connection_id uuid not null references public.pos_connections(id) on delete cascade,
+  connection_id uuid not null,
   provider_location_id text not null,
   name text not null,
   timezone text,
@@ -37,7 +38,9 @@ create table if not exists public.pos_locations (
   active boolean not null default true,
   created_at timestamptz not null default now(),
   unique(connection_id, provider_location_id),
-  unique(owner_id, id)
+  unique(owner_id, id),
+  foreign key(owner_id, connection_id)
+    references public.pos_connections(owner_id, id) on delete cascade
 );
 
 create index if not exists pos_locations_owner_idx
@@ -46,7 +49,7 @@ create index if not exists pos_locations_owner_idx
 create table if not exists public.pos_sync_events (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
-  connection_id uuid not null references public.pos_connections(id) on delete cascade,
+  connection_id uuid not null,
   provider_event_id text not null,
   event_type text not null,
   payload jsonb not null default '{}'::jsonb,
@@ -57,7 +60,9 @@ create table if not exists public.pos_sync_events (
   received_at timestamptz not null default now(),
   processed_at timestamptz,
   last_error_code text,
-  unique(connection_id, provider_event_id)
+  unique(connection_id, provider_event_id),
+  foreign key(owner_id, connection_id)
+    references public.pos_connections(owner_id, id) on delete cascade
 );
 
 create index if not exists pos_sync_events_worker_idx
@@ -67,8 +72,8 @@ create index if not exists pos_sync_events_worker_idx
 create table if not exists public.pos_order_links (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
-  connection_id uuid not null references public.pos_connections(id) on delete cascade,
-  location_id uuid references public.pos_locations(id) on delete set null,
+  connection_id uuid not null,
+  location_id uuid,
   local_order_id text not null,
   provider_order_id text,
   idempotency_key text not null,
@@ -78,7 +83,11 @@ create table if not exists public.pos_order_links (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(connection_id, idempotency_key),
-  unique(connection_id, provider_order_id)
+  unique(connection_id, provider_order_id),
+  foreign key(owner_id, connection_id)
+    references public.pos_connections(owner_id, id) on delete cascade,
+  foreign key(owner_id, location_id)
+    references public.pos_locations(owner_id, id) on delete set null
 );
 
 create index if not exists pos_order_links_owner_idx
