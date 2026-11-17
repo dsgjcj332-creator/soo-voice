@@ -409,7 +409,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
                <p className="mb-1 text-[11px] font-bold text-slate-500">{isArabic ? 'سجل تحديثات المنيو' : 'Menu apply history'}</p>
                <ul className="space-y-1">
                  {applyEvents.filter(event => event.provider_item_id === item.provider_item_id).slice(0, 3).map(event => <li key={event.id} className="text-[11px] text-slate-500">
-                   <span>{event.selected_fields.join(', ')} · </span><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</time>
+                   <span>{event.selected_fields.map(field => `${field}: ${String(event.before_state[field] ?? '—')} → ${String(event.after_state[field] ?? '—')}`).join(' · ')} · </span><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString(isArabic ? 'ar-EG' : 'en')}</time>
                  </li>)}
                </ul>
              </div>}
