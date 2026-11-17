@@ -221,3 +221,17 @@ Extended the mapping migration with append-only `pos_catalog_menu_link_events`. 
 A read-only post-migration schema check is available at `sql/verify_pos_catalog_staging.sql`. Apply the POS registry, catalog storage and menu-mapping migrations in chronological order in a dedicated Supabase Staging project, then run this verification script in the Supabase SQL editor. It checks required objects, RLS enablement and owner-read policies, authenticated read-only grants, absence of anonymous catalog reads, service-role-only catalog snapshot RPC execution, tenant foreign keys, and the enabled mapping audit trigger/security configuration.
 
 The verification script does not seed data or prove row-level behavior by itself. Follow it with staging tests using two separate merchant identities and seeded connections/locations/catalog/menu rows to verify cross-tenant denial, branch isolation, snapshot timestamp conflict behavior, partial versus complete snapshots, mapping approval/relink/protection audit events, and rollback behavior. Do not apply these migrations to production based on static CI or the read-only verification alone.
+
+
+## Provider-neutral POS webhook ingress checkpoint (2026-11-18)
+
+A first inbound catalog event path is implemented for connected POS connections that can send signed outbound webhooks, or for merchant-operated middleware that translates a vendor payload into the canonical SooVoice contract.
+
+- `POST /api/pos/webhooks/:connectionId` resolves the connection and mapped active branch from stored records; caller-supplied owner and internal branch IDs are never trusted.
+- The encrypted connection credential envelope supplies a `webhookSecret`. Signatures use HMAC-SHA256 over the exact raw request bytes prefixed by the Unix timestamp, timing-safe digest comparison, and a five-minute timestamp window.
+- The first supported event is `catalog.snapshot`. The route validates the canonical catalog shape and filters records to the selected provider branch.
+- `sql/2026_11_24_pos_webhook_ingress.sql` adds a service-role-only RPC that records the event and invokes catalog snapshot persistence in one database transaction. A unique connection/event ID prevents duplicate delivery from applying the snapshot twice.
+- Unit tests cover valid signatures, tampered bodies, malformed signatures, stale/future timestamps and weak/missing secrets. PostgreSQL integration tests cover atomic catalog ingestion, duplicate replay and service-role-only execution.
+- Contract and payload examples: `docs/POS_UNIVERSAL_WEBHOOK_CONTRACT.md`.
+
+This is a generic ingress contract, not automatic compatibility with every POS product. Each vendor still needs its own API/auth adapter or middleware capable of producing the canonical signed payload. Provider webhook subscription setup, secret provisioning/rotation UI, order events, polling/scheduled sync and actual POS order dispatch remain future work. CI PostgreSQL is isolated infrastructure; actual Supabase Staging migration and two-merchant acceptance testing remain required before release.
