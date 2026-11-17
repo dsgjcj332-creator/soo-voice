@@ -33,6 +33,8 @@ export function Integration() {
 
   // Webhook debugger states
   const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [testStatusCode, setTestStatusCode] = useState<number | null>(null);
+  const [testResponseBody, setTestResponseBody] = useState<string>('');
   const [showTerminal, setShowTerminal] = useState(false);
 
   // Connection status
@@ -230,26 +232,11 @@ export function Integration() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1.5">
-                  {language === 'ar' ? 'رمز المصادقة (Secret Token):' : 'Webhook Secret Token:'}
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    readOnly
-                    value={'Managed securely on server'}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none text-sm font-mono text-slate-600"
-                  />
-                  <button
-                    onClick={() => handleCopy('Webhook signing key is server-managed')}
-                    className="absolute right-2 top-2 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    {language === 'ar' ? 'نسخ' : 'Copy'}
-                  </button>
-                </div>
-              </div>
+              <p className="text-xs text-slate-500">
+                {language === 'ar'
+                  ? 'مفتاح توقيع الويب هوك يُدار على السيرفر فقط ولا يظهر في المتصفح.'
+                  : 'Webhook signing credentials are managed server-side and are never exposed in the browser.'}
+              </p>/div>
             </div>
 
             <div className="flex flex-wrap gap-3 pt-2">
