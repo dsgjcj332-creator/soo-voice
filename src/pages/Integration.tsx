@@ -124,57 +124,12 @@ export function Integration() {
   };
 
   const handleSaveWebhook = async () => {
-    if (!user || user.provider === 'local') {
-      setWebhookStatusMessage(language === 'ar'
-        ? 'سجّل الدخول بحساب موثّق لحفظ إعدادات الربط.'
-        : 'Sign in with a verified account to save integration settings.');
-      return;
-    }
-
-    const normalizedUrl = webhookUrl.trim();
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(normalizedUrl);
-    } catch {
-      setWebhookStatusMessage(language === 'ar'
-        ? 'أدخل رابط ويب هوك صحيحًا يبدأ بـ https://'
-        : 'Enter a valid webhook URL beginning with https://');
-      return;
-    }
-    if (parsedUrl.protocol !== 'https:' || parsedUrl.username || parsedUrl.password) {
-      setWebhookStatusMessage(language === 'ar'
-        ? 'يجب أن يستخدم الرابط HTTPS ولا يحتوي على بيانات دخول داخل الرابط.'
-        : 'Webhook URLs must use HTTPS and must not contain embedded credentials.');
-      return;
-    }
-
-    const supabase = getSupabase();
-    if (!isConfigured || !supabase) {
-      setWebhookStatusMessage(language === 'ar'
-        ? 'لم يتم الحفظ: قاعدة البيانات غير مُعدّة.'
-        : 'Not saved: the database is not configured.');
-      return;
-    }
-
-    setIsSavingWebhook(true);
-    setWebhookStatusMessage('');
-    try {
-      const { error } = await supabase
-        .from('webhook_settings')
-        .upsert({ ownerId: user.uid, webhookUrl: normalizedUrl, updatedAt: Date.now() });
-      if (error) throw error;
-      setWebhookUrl(normalizedUrl);
-      setWebhookStatusMessage(language === 'ar'
-        ? 'تم حفظ الرابط. إرسال الطلبات الفعلي غير مفعّل حتى اكتمال خدمة التسليم الآمنة.'
-        : 'URL saved. Live order delivery remains disabled until secure server-side dispatch is implemented.');
-    } catch (err) {
-      console.error('Error saving webhook settings:', err);
-      setWebhookStatusMessage(language === 'ar'
-        ? 'فشل الحفظ. راجع صلاحيات قاعدة البيانات وحاول مرة أخرى.'
-        : 'Save failed. Check database permissions and try again.');
-    } finally {
-      setIsSavingWebhook(false);
-    }
+    // URL persistence is intentionally disabled until a trusted backend
+    // validates destinations against SSRF (private, loopback and link-local
+    // address) attacks and owns signed, retryable delivery.
+    setWebhookStatusMessage(language === 'ar'
+      ? 'حفظ الويب هوك متوقف مؤقتًا. سيتم تفعيله بعد إضافة فحص أمني للرابط وخدمة تسليم موثوقة من الخادم.'
+      : 'Webhook URL saving is disabled until server-side destination validation and secure delivery are available.');
   };
 
   const handleTestWebhook = async () => {
@@ -238,8 +193,8 @@ export function Integration() {
             </h3>
             <p className="text-xs md:text-sm text-indigo-800/80 leading-relaxed">
               {language === 'ar'
-                ? 'كل طلب يصلك من الطاولات يُرسل فورًا كطلب HTTP POST يحتوي على رقم الطاولة والأطباق إلى نقطة الويب هوك التي تحددها.'
-                : 'Every order from your tables is dispatched immediately as an HTTP POST containing the table number and items to the endpoint you set.'}
+                ? 'إرسال الطلبات إلى أنظمة الكاشير غير مفعّل حاليًا. يلزم تجهيز خدمة تسليم آمنة تتحقق من الرابط وتوقّع الطلبات وتعيد المحاولة عند الفشل.'
+                : 'POS order delivery is not enabled yet. A secure delivery service with destination validation, request signing, and retries is required.'}
             </p>
           </div>
         </div>
@@ -304,8 +259,8 @@ export function Integration() {
             </h4>
             <p className="text-xs text-slate-500 leading-relaxed">
               {language === 'ar'
-                ? 'هذا ما يُرسل فور وصول طلب من الطاولة:'
-                : 'Dispatched synchronously when an order arrives from a table:'}
+                ? 'مثال توضيحي لشكل الحدث بعد تفعيل خدمة التسليم الآمنة:'
+                : 'Illustrative event shape only; live dispatch is not enabled:'}
             </p>
             <pre className="bg-slate-900 text-slate-300 p-4 rounded-xl text-[11px] font-mono leading-relaxed overflow-x-auto max-h-48 border border-slate-800">
               <code>{`{
@@ -348,7 +303,7 @@ export function Integration() {
                 <p className="text-amber-400 animate-pulse">&gt; WAITING FOR RESPONSE... (8000ms limit)</p>
               ) : (
                 <>
-                  <p className="text-slate-500">&gt; Transaction complete.</p>
+                  <p className="text-amber-400">&gt; Dispatch disabled by security policy.</p>
                   <p className={`font-bold ${testStatusCode === 200 || testStatusCode === 201 ? 'text-green-400' : 'text-rose-400'}`}>
                     &gt; RESPONSE STATUS: {testStatusCode} {testStatusCode === 200 || testStatusCode === 201 ? 'OK' : 'ERROR'}
                   </p>
