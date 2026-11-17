@@ -159,3 +159,10 @@ Added `src/lib/pos/catalog-normalizer.ts` as a strict boundary for vendor adapte
 Added `tests/pos-catalog-normalizer.test.ts` for valid normalization, signed modifier deltas, invalid currency/prices/timestamps, duplicate IDs, invalid modifier rules and malformed payloads.
 
 This is an adapter-facing validation layer only. It does not claim that any vendor adapter is registered, does not fetch a provider menu, and does not persist/synchronize the catalog. A real provider adapter and staging integration tests are still required.
+
+
+## POS catalog synchronization planner checkpoint (2026-11-17)
+
+Added a pure, deterministic catalog sync planner for one manually mapped provider location. It keys records by provider item ID within the caller's connection/location scope and emits create, update, unchanged, stale and deactivate operations. Older provider timestamps are rejected; equal timestamps with different content are treated as ambiguous/stale rather than overwriting data. Deactivation is emitted only when the caller explicitly declares the provider response to be a complete snapshot, so paginated or partial fetches cannot accidentally hide products.
+
+The planner's content fingerprint is a compact change detector, not a cryptographic integrity primitive. It only describes POS-owned catalog fields; persistence code must keep merchant-authored fields/overrides separate and must scope every database read/write by verified owner, connection and mapped location. No catalog table, database write path, provider fetcher, scheduled sync or live menu import is added by this checkpoint.
