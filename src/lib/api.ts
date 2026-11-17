@@ -271,6 +271,7 @@ export function createApiApp() {
         select: 'id,status,items,total,tableNumber,createdAt',
         id: `eq.${orderId}`,
         guest_token_hash: `eq.${sha256Hex(token)}`,
+        guest_token_expires_at: `gt.${new Date().toISOString()}`,
         limit: '1',
       });
       const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?${query.toString()}`, {
