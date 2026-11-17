@@ -19,7 +19,14 @@ function money(value: unknown, field: string): number {
   return Math.round(value * 100) / 100;
 }
 
-function signedMoney(value: unknown, field: string): number {\n  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_MONEY) {\n    throw new Error(`INVALID_POS_CATALOG_${field.toUpperCase()}`);\n  }\n  return Math.round(value * 100) / 100;\n}\n\nfunction normalizeOption(value: unknown): PosModifierOption {
+function signedMoney(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_MONEY) {
+    throw new Error(`INVALID_POS_CATALOG_${field.toUpperCase()}`);
+  }
+  return Math.round(value * 100) / 100;
+}
+
+function normalizeOption(value: unknown): PosModifierOption {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTION');
   }
@@ -28,7 +35,7 @@ function signedMoney(value: unknown, field: string): number {\n  if (typeof valu
     id: text(row.id, 'modifier_option_id', 160),
     ...(row.providerId === undefined ? {} : { providerId: text(row.providerId, 'modifier_option_provider_id', 160) }),
     name: text(row.name, 'modifier_option_name'),
-    priceDelta: money(row.priceDelta, 'modifier_option_price'),
+    priceDelta: signedMoney(row.priceDelta, 'modifier_option_price'),
     available: row.available === true,
   };
 }
@@ -47,7 +54,10 @@ function normalizeGroup(value: unknown): PosModifierGroup {
       (max as number) < (min as number) || (max as number) > row.options.length) {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_SELECTIONS');
   }
-  if (typeof row.required !== 'boolean') throw new Error('INVALID_POS_CATALOG_MODIFIER_REQUIRED');\n  if (row.required && (min as number) < 1) throw new Error('INVALID_POS_CATALOG_MODIFIER_REQUIRED');\n  const options = row.options.map(normalizeOption);
+  if (typeof row.required !== 'boolean' || row.required !== ((min as number) > 0)) {
+    throw new Error('INVALID_POS_CATALOG_MODIFIER_REQUIRED');
+  }
+  const options = row.options.map(normalizeOption);
   if (new Set(options.map(option => option.id)).size !== options.length) {
     throw new Error('DUPLICATE_POS_CATALOG_MODIFIER_OPTION');
   }
@@ -103,7 +113,12 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
       updatedAt: new Date(updatedAt).toISOString(),
     };
   });
-  for (const row of rows) {\n    if (new Set(row.locationIds).size !== row.locationIds.length) {\n      throw new Error('DUPLICATE_POS_CATALOG_LOCATION');\n    }\n  }\n  const providerIds = rows.map(row => row.providerId);
+  for (const row of rows) {
+    if (new Set(row.locationIds).size !== row.locationIds.length) {
+      throw new Error('DUPLICATE_POS_CATALOG_LOCATION');
+    }
+  }
+  const providerIds = rows.map(row => row.providerId);
   if (new Set(providerIds).size !== providerIds.length) {
     throw new Error('DUPLICATE_POS_CATALOG_PROVIDER_ITEM');
   }
