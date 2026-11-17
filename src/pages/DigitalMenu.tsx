@@ -257,45 +257,54 @@ export function DigitalMenu() {
     }
   };
 
-  // Submit the import with a progress indicator
+  // Import the complete validated batch into the same source used by normal menu edits.
   const handleImportSubmit = async () => {
-    if (!user || parsedItems.length === 0) return;
+    if (!user || parsedItems.length === 0 || importing) return;
     setImporting(true);
     setImportProgress(0);
+    setImportError("");
 
     try {
-      const totalCount = parsedItems.length;
-      for (let i = 0; i < totalCount; i++) {
-        const item = parsedItems[i];
-        const itemId = "item_imported_" + Math.random().toString(36).substring(2, 11);
-        
-        const newItem: MenuItem = {
-          id: itemId,
-          ownerId: user.uid,
-          name: item.name,
-          price: item.price,
-          description: item.description,
-          category: item.category,
-          isAiOnly: item.isAiOnly,
-          createdAt: Date.now() - (i * 1000) // Stagger slightly for ordering
-        };
+      const importedItems: MenuItem[] = parsedItems.map((item, index) => ({
+        id: "item_imported_" + crypto.randomUUID(),
+        ownerId: user.uid,
+        name: String(item.name).trim(),
+        price: Number(item.price),
+        description: String(item.description || ""),
+        category: String(item.category || categories[0]?.id || "Main Course"),
+        isAiOnly: Boolean(item.isAiOnly),
+        createdAt: Date.now() - (index * 1000),
+      }));
 
-        // Save to the local store
-        addLocalDoc('menu_items', newItem, user.uid);
-        setImportProgress(Math.round(((i + 1) / totalCount) * 100));
+      if (importedItems.some((item) => !item.name || !Number.isFinite(item.price) || item.price <= 0)) {
+        throw new Error(language === "ar" ? "يوجد منتج باسم أو سعر غير صالح." : "The import contains an invalid product name or price.");
       }
 
-      setImporting(false);
+      if (user.provider === "local") {
+        const existing = getLocalCollection("menu_items", user.uid);
+        setLocalCollection("menu_items", [...existing, ...importedItems], user.uid);
+      } else {
+        const supabase = getSupabase();
+        if (!isSupabaseMode || !supabase) {
+          throw new Error(language === "ar" ? "قاعدة البيانات غير متاحة؛ لم يتم حفظ أي منتج." : "Database is unavailable; no products were saved.");
+        }
+        const { error } = await supabase.from("menu_items").insert(importedItems);
+        if (error) throw error;
+      }
+
+      setItems((current) => [...importedItems, ...current].sort((a, b) => b.createdAt - a.createdAt));
+      setImportProgress(100);
       setShowImportModal(false);
       setParsedItems([]);
       triggerNotification(
-        language === "ar" 
-          ? `تم استيراد ${totalCount} منتج بنجاح إلى المنيو!` 
-          : `Successfully imported ${totalCount} items to your catalog!`
+        language === "ar"
+          ? `تم حفظ واستيراد ${importedItems.length} منتج بنجاح إلى المنيو!`
+          : `Successfully saved ${importedItems.length} products to your catalog!`
       );
     } catch (err) {
-      console.error("Error importing items:", err);
-      setImportError(language === "ar" ? "فشل استيراد المنتجات" : "Failed to import items");
+      console.error("Error importing menu items:", err);
+      setImportError(err instanceof Error ? err.message : (language === "ar" ? "فشل استيراد المنتجات. لم يتم تأكيد الحفظ." : "Import failed. Product persistence was not confirmed."));
+    } finally {
       setImporting(false);
     }
   };
