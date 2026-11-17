@@ -63,7 +63,7 @@ declare
   v_quantity integer;
   v_created_at bigint := floor(extract(epoch from clock_timestamp()) * 1000);
 begin
-  if p_owner_id is null or p_owner_id !~* '^[0-9a-f-]{36}$' then
+  if p_owner_id is null or p_owner_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     raise exception 'INVALID_STORE';
   end if;
   if p_table_number is null or length(p_table_number) > 24 then
@@ -114,7 +114,7 @@ begin
       into v_item_id, v_item_name, v_item_price
       from public.menu_items mi
      where mi.id::text = v_line.line->>'id'
-       and mi."ownerId" = p_owner_id
+       and mi."ownerId"::text = p_owner_id
        and coalesce(mi."isAiOnly", false) = false
      limit 1;
 
