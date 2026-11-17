@@ -59,16 +59,18 @@ function merchantHeaders() {
 }
 
 test('webhook secret rotation returns plaintext once and preserves encrypted provider credentials', async () => {
-  const initial = encryptPosCredentials({ accessToken: 'vendor-access-token', accountId: 'account-42', webhookSecret: 'old-secret-value' });
+  let initial: ReturnType<typeof encryptPosCredentials> | undefined;
   let saved: Record<string, unknown> | undefined;
   await withApi((url, init) => {
     if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
     if (url.pathname === '/rest/v1/pos_connections' && (!init?.method || init.method === 'GET')) {
       assert.equal(url.searchParams.get('owner_id'), `eq.${ownerId}`);
+      initial = encryptPosCredentials({ accessToken: 'vendor-access-token', accountId: 'account-42', webhookSecret: 'old-secret-value' });
       return json([{ id: connectionId, credentials_ciphertext: initial.ciphertext, credentials_key_version: initial.keyVersion }]);
     }
     if (url.pathname === '/rest/v1/pos_connections' && init?.method === 'PATCH') {
       assert.equal(url.searchParams.get('owner_id'), `eq.${ownerId}`);
+      assert.ok(initial);
       assert.equal(url.searchParams.get('credentials_ciphertext'), `eq.${initial.ciphertext}`);
       assert.equal(url.searchParams.get('credentials_key_version'), `eq.${initial.keyVersion}`);
       saved = JSON.parse(String(init.body));
@@ -94,10 +96,11 @@ test('webhook secret rotation returns plaintext once and preserves encrypted pro
 });
 
 test('webhook secret rotation refuses a concurrent credential update without returning a secret', async () => {
-  const initial = encryptPosCredentials({ apiKey: 'vendor-key' });
+  let initial: ReturnType<typeof encryptPosCredentials> | undefined;
   await withApi((url, init) => {
     if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
     if (url.pathname === '/rest/v1/pos_connections' && (!init?.method || init.method === 'GET')) {
+      initial = encryptPosCredentials({ apiKey: 'vendor-key' });
       return json([{ id: connectionId, credentials_ciphertext: initial.ciphertext, credentials_key_version: initial.keyVersion }]);
     }
     if (url.pathname === '/rest/v1/pos_connections' && init?.method === 'PATCH') return json([]);
