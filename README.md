@@ -107,6 +107,8 @@ npm run clean   # remove dist/
 | `SUPABASE_URL` | **server-only** | Supabase project URL used by trusted guest-order APIs. |
 | `SUPABASE_SERVICE_ROLE_KEY` | **server-only** | Service-role key used only by trusted order creation/tracking endpoints. Never expose it to Vite/browser code. |
 | `ORDER_TOKEN_SECRET` | **server-only** | At least 32 random characters; HMAC key for per-order guest capability tokens. |
+| `POS_CREDENTIALS_ENCRYPTION_KEY` | **server-only** | Base64-encoded 32-byte AES-256-GCM key for POS credentials. Generate with `openssl rand -base64 32`; never expose or commit it. |
+| `POS_CREDENTIALS_ENCRYPTION_KEY_VERSION` | server-only | Key version stored with encrypted POS credentials; defaults to `v1`. Keep the matching key available for every stored version. |
 
 ## Security Model
 
