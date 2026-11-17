@@ -19,7 +19,7 @@ function money(value: unknown, field: string): number {
   return Math.round(value * 100) / 100;
 }
 
-function normalizeOption(value: unknown): PosModifierOption {
+function signedMoney(value: unknown, field: string): number {\n  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_MONEY) {\n    throw new Error(`INVALID_POS_CATALOG_${field.toUpperCase()}`);\n  }\n  return Math.round(value * 100) / 100;\n}\n\nfunction normalizeOption(value: unknown): PosModifierOption {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_OPTION');
   }
@@ -47,7 +47,7 @@ function normalizeGroup(value: unknown): PosModifierGroup {
       (max as number) < (min as number) || (max as number) > row.options.length) {
     throw new Error('INVALID_POS_CATALOG_MODIFIER_SELECTIONS');
   }
-  const options = row.options.map(normalizeOption);
+  if (typeof row.required !== 'boolean') throw new Error('INVALID_POS_CATALOG_MODIFIER_REQUIRED');\n  if (row.required && (min as number) < 1) throw new Error('INVALID_POS_CATALOG_MODIFIER_REQUIRED');\n  const options = row.options.map(normalizeOption);
   if (new Set(options.map(option => option.id)).size !== options.length) {
     throw new Error('DUPLICATE_POS_CATALOG_MODIFIER_OPTION');
   }
@@ -76,7 +76,7 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
       throw new Error('INVALID_POS_CATALOG_ITEM');
     }
     const row = value as Record<string, unknown>;
-    if (!Array.isArray(row.locationIds) || row.locationIds.length > 500 ||
+    if (typeof row.available !== 'boolean' || !Array.isArray(row.locationIds) || row.locationIds.length > 500 ||
         !Array.isArray(row.modifierGroups) || row.modifierGroups.length > MAX_GROUPS) {
       throw new Error('INVALID_POS_CATALOG_COLLECTION');
     }
@@ -103,7 +103,7 @@ export function normalizePosCatalog(input: unknown): PosCatalogItem[] {
       updatedAt: new Date(updatedAt).toISOString(),
     };
   });
-  const providerIds = rows.map(row => row.providerId);
+  for (const row of rows) {\n    if (new Set(row.locationIds).size !== row.locationIds.length) {\n      throw new Error('DUPLICATE_POS_CATALOG_LOCATION');\n    }\n  }\n  const providerIds = rows.map(row => row.providerId);
   if (new Set(providerIds).size !== providerIds.length) {
     throw new Error('DUPLICATE_POS_CATALOG_PROVIDER_ITEM');
   }
