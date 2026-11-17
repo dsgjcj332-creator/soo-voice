@@ -224,6 +224,29 @@ create trigger billing_subscription_events_immutable
   before update or delete on public.billing_subscription_events
   for each row execute function public.prevent_billing_event_mutation();
 
+-- Admin claims must live in trusted app_metadata, never user-editable metadata.
+create or replace function public.is_soovoice_platform_admin()
+returns boolean
+language sql
+stable
+security invoker
+set search_path = public
+as $
+  select coalesce(
+    (nullif(current_setting('request.jwt.claims', true), '')::jsonb #>> '{app_metadata,role}') = 'admin'
+    or (
+      coalesce(
+        nullif(current_setting('request.jwt.claims', true), '')::jsonb #> '{app_metadata,roles}',
+        '[]'::jsonb
+      ) ? 'admin'
+    ),
+    false
+  );
+$;
+
+revoke all on function public.is_soovoice_platform_admin() from public, anon;
+grant execute on function public.is_soovoice_platform_admin() to authenticated, service_role;
+
 -- All billing data is private by default. Merchants can read only their own
 -- subscription, invoice, payment, usage, redemption and event rows.
 do $$
@@ -245,6 +268,42 @@ begin
   end loop;
 end;
 $$;
+
+drop policy if exists billing_plans_platform_admin_read on public.billing_plans;
+create policy billing_plans_platform_admin_read on public.billing_plans
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_plan_prices_platform_admin_read on public.billing_plan_prices;
+create policy billing_plan_prices_platform_admin_read on public.billing_plan_prices
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_promotions_platform_admin_read on public.billing_promotions;
+create policy billing_promotions_platform_admin_read on public.billing_promotions
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists merchant_subscriptions_platform_admin_read on public.merchant_subscriptions;
+create policy merchant_subscriptions_platform_admin_read on public.merchant_subscriptions
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_promotion_redemptions_platform_admin_read on public.billing_promotion_redemptions;
+create policy billing_promotion_redemptions_platform_admin_read on public.billing_promotion_redemptions
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_invoices_platform_admin_read on public.billing_invoices;
+create policy billing_invoices_platform_admin_read on public.billing_invoices
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_payments_platform_admin_read on public.billing_payments;
+create policy billing_payments_platform_admin_read on public.billing_payments
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_usage_records_platform_admin_read on public.billing_usage_records;
+create policy billing_usage_records_platform_admin_read on public.billing_usage_records
+  for select to authenticated using (public.is_soovoice_platform_admin());
+
+drop policy if exists billing_subscription_events_platform_admin_read on public.billing_subscription_events;
+create policy billing_subscription_events_platform_admin_read on public.billing_subscription_events
+  for select to authenticated using (public.is_soovoice_platform_admin());
 
 drop policy if exists billing_plans_public_active_read on public.billing_plans;
 create policy billing_plans_public_active_read on public.billing_plans
