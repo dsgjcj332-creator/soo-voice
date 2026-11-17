@@ -19,7 +19,8 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { decryptPosCredentials, encryptPosCredentials } from './pos/credentials';
+import { encryptPosCredentials } from './pos/credentials';
+import { rotatePosWebhookSecret } from './pos/webhook-secret';
 import { isUuid, parsePosLocationInput } from './pos/location-validation';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
@@ -255,8 +256,8 @@ export function createApiApp() {
           provider,
           display_name: displayName || provider,
           status: 'pending',
-          credentials_ciphertext: encrypted.ciphertext,
-          credentials_key_version: encrypted.keyVersion,
+          credentials_ciphertext: rotated.ciphertext,
+          credentials_key_version: rotated.keyVersion,
         }),
       });
       const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
@@ -318,9 +319,8 @@ export function createApiApp() {
       }
 
       const current = rows[0];
-      const credentials = decryptPosCredentials(current.credentials_ciphertext, current.credentials_key_version);
-      const webhookSecret = crypto.randomBytes(32).toString('base64url');
-      const encrypted = encryptPosCredentials({ ...credentials, webhookSecret });
+      const rotated = rotatePosWebhookSecret(current.credentials_ciphertext, current.credentials_key_version);
+      const webhookSecret = rotated.secret;
       const updateQuery = new URLSearchParams({
         id: `eq.${connectionId}`,
         owner_id: `eq.${auth.ownerId}`,
