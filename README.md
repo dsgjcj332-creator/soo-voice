@@ -170,3 +170,10 @@ Merchants control the customer menu from **Settings → Table Experience & Acces
 ## License
 
 Apache-2.0 (see source headers).
+
+
+### POS catalog sync planning (foundation only)
+
+The POS catalog foundation now includes a pure sync planner that compares a normalized provider snapshot with the last persisted source snapshot for one manually mapped location. It emits create/update/unchanged/stale/deactivate operations, keys items by provider item ID, rejects older or ambiguous same-timestamp changes, and only proposes deactivation when the caller explicitly confirms that the provider response is a complete snapshot. Partial or paginated fetches must never be treated as complete.
+
+The planner does not write to the database or fetch provider data. Its compact content fingerprint is a change detector, not a cryptographic integrity hash. Future persistence must keep merchant-authored overrides separate from POS-owned fields and scope writes by verified merchant, connection and location. No live catalog sync is available yet.
