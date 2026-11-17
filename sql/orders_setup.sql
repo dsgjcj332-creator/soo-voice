@@ -1,27 +1,12 @@
--- SooVoice — COMPLETE orders table setup (run ONCE in the Supabase SQL Editor)
+-- SooVoice orders table bootstrap.
 --
--- Dashboard → SQL → New query → paste this whole file → Run.
+-- Apply this only when the orders table does not exist. This script creates
+-- owner-only RLS policies. It intentionally does NOT enable anonymous guest
+-- inserts, reads, or status updates. Guest checkout/tracking is provided by
+-- the trusted server API + capability-token migration, not direct browser
+-- access to this table.
 --
--- This is the ONE script the dine-in QR flow needs. It covers every
--- guest-side failure mode we have seen:
---
---   1. Table missing        → guest sees "تعذّر الإرسال — حاول مرة أخرى"
---      (PostgREST code PGRST205 / "Could not find the table 'orders'").
---      → fixed by the create table below.
---
---   2. RLS blocks anon INSERT → guest sees
---      "الطلب مرفوض — يحتاج المطعم لتفعيل صلاحية الإدخال".
---      → fixed by the orders_public_insert policy.
---
---   3. Guest tracking stuck on "بانتظار المطبخ" forever because anon
---      cannot SELECT the status row.
---      → fixed by the orders_public_read policy.
---
---   4. Kitchen dashboard never refreshes → anon UPDATE blocked on some
---      edge flows. → fixed by the orders_public_update_status policy.
---
--- Safe to re-run: every statement is idempotent (IF NOT EXISTS /
--- DROP POLICY IF EXISTS first). It does NOT touch existing rows.
+-- For an existing table, apply the versioned migrations in order instead.
 
 -- ============================================================
 -- 1. Table (only created if it does not already exist)
