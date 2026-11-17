@@ -188,6 +188,10 @@ commit;
 
 -- Durable worker leases and retry lifecycle. A worker claims rows with
 -- SKIP LOCKED so multiple server instances cannot process the same event.
+update public.order_outbox
+   set status = 'pending', locked_at = null, locked_by = null
+ where status = 'processing' and locked_at is null;
+
 alter table public.order_outbox
   add column if not exists provider_id text,
   add column if not exists connection_id uuid,
