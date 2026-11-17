@@ -92,8 +92,9 @@ begin
        or coalesce(e.item->>'available', '') not in ('true','false')
        or jsonb_typeof(e.item->'modifierGroups') <> 'array'
        or coalesce(e.item->>'updatedAt', '') = ''
-       or coalesce(e.item->>'unitPrice', '') !~ '^[0-9]+(\\.[0-9]{1,2})?$'
-       or (e.item->>'unitPrice')::numeric > 1000000
+       or coalesce(e.item->>'unitPrice', '') !~ '^[0-9]+([.][0-9]{1,2})?$'
+       or case when coalesce(e.item->>'unitPrice', '') ~ '^[0-9]+([.][0-9]{1,2})?$'
+               then (e.item->>'unitPrice')::numeric > 1000000 else true end
   ) then
     raise exception 'INVALID_POS_CATALOG_ITEM' using errcode = '22023';
   end if;
