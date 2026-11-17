@@ -6,7 +6,7 @@ begin;
 -- The original hand-written SQL declared camelCase identifiers without
 -- quotes, which PostgreSQL silently folded to lowercase. Rename those legacy
 -- columns to the exact names used by the Supabase client before adding fields.
-do $
+do $migration$
 declare
   v_pair text[];
 begin
@@ -35,7 +35,7 @@ begin
     end if;
   end loop;
 end;
-$;
+$migration$;
 
 alter table public.store_settings
   add column if not exists "logoUrl" text not null default '',
