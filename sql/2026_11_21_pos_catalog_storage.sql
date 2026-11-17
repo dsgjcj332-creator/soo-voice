@@ -166,7 +166,17 @@ begin
   -- complete snapshot from deactivating a product merely because its payload
   -- carried an older timestamp than the last persisted version.
   update public.pos_catalog_items p
-  set last_seen_sync_id = v_sync_id, last_synced_at = now(), active = true
+  set last_seen_sync_id = v_sync_id,
+      last_synced_at = now(),
+      active = case
+        when exists (
+          select 1
+          from jsonb_array_elements(p_items) as e(item)
+          where e.item->>'providerId' = p.provider_item_id
+            and (e.item->>'updatedAt')::timestamptz >= p.source_updated_at
+        ) then true
+        else p.active
+      end
   where p.owner_id = p_owner_id and p.connection_id = p_connection_id
     and p.location_id = p_location_id
     and p.provider_item_id in (
