@@ -210,3 +210,8 @@ The POS integrations panel now lists eligible merchant menu rows, lets the merch
 ## POS mapping API security test checkpoint (2026-11-17)
 
 Added `tests/pos-catalog-menu-mapping-api.test.ts` using a local Express test server and a mocked Supabase HTTP boundary. The cases cover unauthenticated requests, invalid override fields, tenant-scoped branch/menu ownership checks, explicit approval metadata, the invariant that mapping never PATCHes `menu_items`, and duplicate-link conflict handling. These tests exercise the API contract and authorization decisions but are not a substitute for running the SQL migration and PostgREST constraints against a real staging Supabase project.
+
+
+## POS mapping audit history checkpoint (2026-11-17)
+
+Extended the mapping migration with append-only `pos_catalog_menu_link_events`. A database trigger records mapping creation, relinking, field-protection changes and re-approval, including the merchant actor and before/after state. Merchant sessions receive read-only RLS access; writes are reserved for the trusted service role and trigger. Added a tenant- and branch-scoped history API and displayed the latest events beside each POS catalog item in the review panel. API tests now cover history authorization and branch filtering. This audit log records mapping approvals only; it does not yet log or execute changes to the live menu because the explicit apply workflow is not implemented.
