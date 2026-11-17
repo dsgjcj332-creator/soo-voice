@@ -7,6 +7,7 @@ export interface UnifiedUser {
   displayName: string | null;
   photoURL?: string | null;
   provider: 'supabase' | 'local';
+  isAdmin: boolean;
 }
 
 interface AuthContextType {
@@ -44,7 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: sessionUser.email || null,
       displayName: sessionUser.user_metadata?.full_name || sessionUser.email?.split('@')[0] || 'User',
       photoURL: sessionUser.user_metadata?.avatar_url || null,
-      provider: 'supabase'
+      provider: 'supabase',
+      // Only trusted app_metadata can grant platform-admin UI access.
+      isAdmin: sessionUser.app_metadata?.role === 'admin' ||
+        (Array.isArray(sessionUser.app_metadata?.roles) && sessionUser.app_metadata.roles.includes('admin'))
     });
 
     // A real Supabase session is always the source of truth. The local demo
