@@ -22,7 +22,7 @@ import { playChime, haptic } from '../lib/chime';
 
 export function StoreDemo() {
   const { language, setLanguage } = useLanguage();
-  const { businessType } = useSettings();
+  const { businessType, currency } = useSettings();
   const { user } = useAuth();
   const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount } = useCart();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
@@ -169,10 +169,11 @@ export function StoreDemo() {
   // Design customizer state loaded dynamically
   const [menuPrimaryColor, setMenuPrimaryColor] = React.useState<string>("indigo");
   const [menuBgStyle, setMenuBgStyle] = React.useState<string>("light-clean");
-  const [menuLogoEmoji, setMenuLogoEmoji] = React.useState<string>("🍔");
+  const [menuLogoEmoji, setMenuLogoEmoji] = React.useState<string>("🍽️");
   const [menuBorderRadius, setMenuBorderRadius] = React.useState<string>("rounded-2xl");
   const [menuParticles, setMenuParticles] = React.useState<string>("none");
-  const [menuCurrency, setMenuCurrency] = React.useState<string>(normalizeCurrency(null));
+  const [menuCurrency, setMenuCurrency] = React.useState<string>(normalizeCurrency(currency));
+  React.useEffect(() => { setMenuCurrency(normalizeCurrency(currency)); }, [currency]);
   const [menuLayout, setMenuLayout] = React.useState<string>("grid");
 
   // Load design customizations on mount and when owner ID changes
@@ -188,7 +189,6 @@ export function StoreDemo() {
         if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
         if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
         if (config.particles) setMenuParticles(config.particles);
-        if (config.currency) setMenuCurrency(normalizeCurrency(config.currency));
         if (config.layout) setMenuLayout(config.layout);
       } catch (e) {
         console.error("Error reading cached store design:", e);
@@ -214,7 +214,6 @@ export function StoreDemo() {
             if (data.logoEmoji) setMenuLogoEmoji(data.logoEmoji);
             if (data.borderRadius) setMenuBorderRadius(data.borderRadius);
             if (data.particles) setMenuParticles(data.particles);
-            if (data.currency) setMenuCurrency(normalizeCurrency(data.currency));
             if (data.layout) setMenuLayout(data.layout);
             
             // Sync back to local storage
@@ -322,8 +321,8 @@ export function StoreDemo() {
   // Guest checkout sends identifiers and quantities only. The trusted API
   // reloads catalog prices and commits the order + outbox in one transaction.
   const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
-  const handleSubmitOrder = async () => {
-    if (cartItems.length === 0 || checkoutStatus === 'sending') return;
+  const handleSubmitOrder = async (): Promise<boolean> => {
+    if (cartItems.length === 0 || checkoutStatus === 'sending') return false;
     setCheckoutStatus('sending');
     setSubmitErrorKind(null);
     try {
@@ -364,7 +363,8 @@ export function StoreDemo() {
       const result = await response.json().catch(() => null) as any;
       if (!response.ok || !result?.orderId || !result?.guestToken || !Array.isArray(result.items)) {
         setSubmitErrorKind(response.status === 503 ? 'schema' : 'generic');
-        throw new Error(result?.error || 'The secure order service rejected the request');
+        const detail = typeof result?.detail === 'string' ? result.detail : '';
+        throw new Error([result?.error || 'The secure order service rejected the request', detail].filter(Boolean).join(': '));
       }
 
       // Prices and line names in the invoice come exclusively from the server.
@@ -385,10 +385,12 @@ export function StoreDemo() {
         setCheckoutStatus('success');
         setTimeout(() => clearCart(), 120);
       });
+      return true;
     } catch (err) {
       console.error('Secure order submit error:', err instanceof Error ? err.message : err);
       setCheckoutStatus('error');
-      setTimeout(() => setCheckoutStatus('idle'), 4500);
+      setTimeout(() => setCheckoutStatus('idle'), 7000);
+      return false;
     }
   };
 
@@ -590,34 +592,25 @@ export function StoreDemo() {
     // the mobile-native way to "download"; a plain a.click() download is
     // the fallback for desktop browsers.
     canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const fileName = `invoice-${lastOrder.id.replace('order_', '')}.png`;
-      try {
-        const file = new File([blob], fileName, { type: 'image/png' });
-        // navigator.canShare with files is supported on iOS Safari 15+
-        // and Android Chrome — check before using, fall back silently.
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: language === 'ar' ? `فاتورة الطلب ${lastOrder.id.replace('order_', '')}` : `Invoice ${lastOrder.id.replace('order_', '')}`,
-          });
-          return;
-        }
-      } catch (shareErr: any) {
-        // User cancelled the share sheet — not an error, just stop here.
-        if (shareErr?.name === 'AbortError') return;
-        // Any other share failure falls through to the download path.
+      if (!blob) {
+        setSubmitErrorKind('generic');
+        console.error('[Invoice] Browser could not create the invoice image.');
+        return;
       }
-      // Fallback: classic download (desktop, older mobile browsers)
+      const fileName = `invoice-${lastOrder.id.replace('order_', '')}.png`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
+      a.setAttribute('aria-label', language === 'ar' ? 'تنزيل الفاتورة' : 'Download invoice');
+      a.style.position = 'fixed';
+      a.style.left = '-9999px';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
+      a.remove();
+      // Safari/iOS may resolve the download after the click handler returns.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }, 'image/png');
   };
 
   const primaryColorStyles = {
@@ -923,9 +916,11 @@ export function StoreDemo() {
 
             <div className="flex justify-between items-start flex-wrap gap-3 md:gap-4 mb-4">
               <div className="flex items-start gap-3 min-w-0 flex-1">
-                {menuLogoEmoji && (
-                  <span className="text-3xl md:text-4xl filter drop-shadow-md select-none shrink-0">
-                    {menuLogoEmoji}
+                {storeSettings.logoUrl ? (
+                  <img src={storeSettings.logoUrl} alt={getRestaurantName()} className="h-12 w-12 md:h-14 md:w-14 rounded-2xl object-contain bg-white/80 p-1 shrink-0" />
+                ) : (
+                  <span className="text-3xl md:text-4xl filter drop-shadow-md select-none shrink-0" aria-hidden="true">
+                    {menuLogoEmoji || '🍽️'}
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
