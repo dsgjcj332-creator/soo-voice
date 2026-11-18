@@ -43,7 +43,7 @@ export function ModifierManager({ itemId, ownerId, language, localMode = false }
     }
     setBusy(true); setNotice('');
     try {
-      const group: any = { id: crypto.randomUUID(), owner_id: ownerId, menu_item_id: itemId, name: clean, is_required: required, min_select: minValue, max_select: maxValue, sort_order: groups.length, is_active: true };
+      const group: any = { id: crypto.randomUUID(), owner_id: ownerId, menu_item_id: itemId, name: clean, is_required: required, min_select: minValue, max_select: maxValue, sort_order: groups.length, is_active: false };
       if (localMode) {
         const all = JSON.parse(localStorage.getItem('local_menu_modifier_groups_' + ownerId) || '[]'); all.push(group); localStorage.setItem('local_menu_modifier_groups_' + ownerId, JSON.stringify(all));
       } else {
@@ -74,6 +74,13 @@ export function ModifierManager({ itemId, ownerId, language, localMode = false }
   };
 
   const toggleActive = async (kind: 'group' | 'option', id: string, active: boolean) => {
+    if (kind === 'group' && active) {
+      const group = groups.find(row => row.id === id);
+      if (!group || !group.options.some(option => option.is_active)) {
+        setNotice(ar ? 'أضف اختياراً واحداً مفعّلاً على الأقل قبل تفعيل المجموعة.' : 'Add at least one active option before enabling this group.');
+        return;
+      }
+    }
     setBusy(true); setNotice('');
     try {
       if (localMode) {
@@ -126,6 +133,7 @@ export function ModifierManager({ itemId, ownerId, language, localMode = false }
         <div><p className="text-sm font-bold text-slate-800">{group.name}</p><p className="text-[10px] text-slate-500">{group.is_required ? (ar ? 'إجباري' : 'Required') : (ar ? 'اختياري' : 'Optional')} · {ar ? 'من' : 'Min'} {group.min_select} / {ar ? 'إلى' : 'Max'} {group.max_select}</p></div>
         <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => void toggleActive('group', group.id, !group.is_active)} className="text-xs font-bold text-indigo-600">{group.is_active ? (ar ? 'تعطيل' : 'Disable') : (ar ? 'تفعيل' : 'Enable')}</button><button type="button" disabled={busy} onClick={() => void removeGroup(group.id)} className="text-xs font-bold text-rose-600">{ar ? 'حذف' : 'Delete'}</button></div>
       </div>
+      {(!group.is_active || !group.options.some(option => option.is_active)) && <p className="mt-2 rounded-lg bg-amber-50 px-2 py-2 text-[11px] text-amber-800">{ar ? (group.options.some(option => option.is_active) ? 'المجموعة غير ظاهرة للعملاء بعد: اضغط تفعيل لإظهارها.' : 'المجموعة غير جاهزة: أضف اختياراً وفعّله، ثم فعّل المجموعة.') : (group.options.some(option => option.is_active) ? 'Not visible to guests yet: enable this group to publish it.' : 'Not ready yet: add and activate an option, then enable this group.')}</p>}
       <div className="mt-2 space-y-1">{group.options.map(option => <div key={option.id} className="flex items-center justify-between gap-2 text-xs"><span className={option.is_active ? 'text-slate-700' : 'text-slate-400 line-through'}>{option.name} · +{Number(option.price_delta).toFixed(2)}</span><button type="button" disabled={busy} onClick={() => void toggleActive('option', option.id, !option.is_active)} className="font-semibold text-indigo-600">{option.is_active ? (ar ? 'تعطيل' : 'Disable') : (ar ? 'تفعيل' : 'Enable')}</button></div>)}</div>
       <div className="mt-2 flex gap-2"><input value={(optionDrafts[group.id] || {name:'',price:'0'}).name} onChange={e => setOptionDrafts(p => ({...p,[group.id]:{...(p[group.id]||{name:'',price:'0'}),name:e.target.value}}))} placeholder={ar ? 'اسم الاختيار' : 'Option name'} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-2 text-xs" maxLength={120}/><input type="number" min="0" step="0.01" value={(optionDrafts[group.id] || {name:'',price:'0'}).price} onChange={e => setOptionDrafts(p => ({...p,[group.id]:{...(p[group.id]||{name:'',price:'0'}),price:e.target.value}}))} aria-label={ar ? 'السعر الإضافي' : 'Price delta'} className="w-24 rounded-lg border border-slate-200 px-2 py-2 text-xs"/><button type="button" disabled={busy} onClick={() => void addOption(group)} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">{ar ? 'إضافة' : 'Add'}</button></div>
     </div>)}
