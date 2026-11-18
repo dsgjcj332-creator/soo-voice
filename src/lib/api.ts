@@ -373,7 +373,7 @@ export function createApiApp() {
     }
     try {
       const query = new URLSearchParams({
-        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,credentials_ciphertext,credentials_key_version,created_at,updated_at',
+        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,credentials_ciphertext,credentials_key_version,inbound_webhooks_enabled,outbound_orders_enabled,created_at,updated_at',
         owner_id: `eq.${auth.ownerId}`,
         order: 'created_at.desc',
       });
@@ -401,8 +401,8 @@ export function createApiApp() {
           ...metadata,
           inbound_webhooks_configured: inboundConfigured,
           outbound_orders_configured: outboundConfigured,
-          inbound_webhooks_active: connected && inboundConfigured,
-          outbound_orders_active: connected && outboundConfigured,
+          inbound_webhooks_active: connected && row.inbound_webhooks_enabled === true && inboundConfigured,
+          outbound_orders_active: connected && row.outbound_orders_enabled === true && outboundConfigured,
         };
       }) : [];
       res.set('Cache-Control', 'no-store');
@@ -574,7 +574,7 @@ export function createApiApp() {
     }
     try {
       const query = new URLSearchParams({
-        select: 'id,status,credentials_ciphertext,credentials_key_version',
+        select: 'id,status,credentials_ciphertext,credentials_key_version,inbound_webhooks_enabled,outbound_orders_enabled',
         id: `eq.${connectionId}`,
         owner_id: `eq.${auth.ownerId}`,
         limit: '1',
@@ -584,7 +584,7 @@ export function createApiApp() {
       });
       const rows = await read.json().catch(() => null) as Array<{
         id: string; status: string; credentials_ciphertext: string | null;
-        credentials_key_version: string | null;
+        credentials_key_version: string | null; inbound_webhooks_enabled: boolean; outbound_orders_enabled: boolean;
       }> | null;
       if (!read.ok) {
         res.status(503).json({ error: 'Could not verify POS connection' });
@@ -632,16 +632,21 @@ export function createApiApp() {
         res.status(409).json({ error: 'Add at least one active POS branch before activation' });
         return;
       }
-      if (connection.status === 'connected') {
+      if (!['pending', 'degraded', 'connected'].includes(connection.status)) {
+        res.status(409).json({ error: 'This POS connection cannot be activated from its current state' });
+        return;
+      }
+      const nextInboundEnabled = connection.inbound_webhooks_enabled || confirmInbound;
+      const nextOutboundEnabled = connection.outbound_orders_enabled || confirmOutbound;
+      if (connection.status === 'connected' &&
+          nextInboundEnabled === connection.inbound_webhooks_enabled &&
+          nextOutboundEnabled === connection.outbound_orders_enabled) {
         res.set('Cache-Control', 'no-store');
         res.json({
           activated: true, alreadyActive: true,
-          inboundWebhooks: inboundConfigured, outboundOrderCreation: outboundConfigured,
+          inboundWebhooks: connection.inbound_webhooks_enabled,
+          outboundOrderCreation: connection.outbound_orders_enabled,
         });
-        return;
-      }
-      if (!['pending', 'degraded'].includes(connection.status)) {
-        res.status(409).json({ error: 'This POS connection cannot be activated from its current state' });
         return;
       }
       const updateQuery = new URLSearchParams({
@@ -653,7 +658,13 @@ export function createApiApp() {
       const update = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${updateQuery}`, {
         method: 'PATCH',
         headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
-        body: JSON.stringify({ status: 'connected', last_error_code: null, updated_at: new Date().toISOString() }),
+        body: JSON.stringify({
+          status: 'connected',
+          inbound_webhooks_enabled: nextInboundEnabled,
+          outbound_orders_enabled: nextOutboundEnabled,
+          last_error_code: null,
+          updated_at: new Date().toISOString(),
+        }),
       });
       const updated = await update.json().catch(() => null) as Array<{ id: string; status: string }> | null;
       if (!update.ok) {
@@ -668,7 +679,7 @@ export function createApiApp() {
       res.set('Cache-Control', 'no-store');
       res.json({
         activated: true, alreadyActive: false,
-        inboundWebhooks: inboundConfigured, outboundOrderCreation: outboundConfigured,
+        inboundWebhooks: nextInboundEnabled, outboundOrderCreation: nextOutboundEnabled,
       });
     } catch (err) {
       console.error('[API] POS webhook activation error:', err instanceof Error ? err.message : 'unknown');
