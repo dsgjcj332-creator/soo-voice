@@ -427,7 +427,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const statusLabel = (status: string) => {
     const labels: Record<string, [string, string]> = {
       pending: ['قيد الإعداد', 'Pending setup'],
-      connected: ['استقبال Webhook مفعّل', 'Inbound webhooks active'],
+      connected: ['متصل', 'Connected'],
       degraded: ['يحتاج مراجعة', 'Degraded'],
       reauthorization_required: ['يحتاج إعادة تفويض', 'Reauthorization required'],
       disconnected: ['غير متصل', 'Disconnected'],
