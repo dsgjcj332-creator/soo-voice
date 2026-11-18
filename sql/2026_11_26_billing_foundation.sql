@@ -354,8 +354,9 @@ revoke all on public.billing_plans, public.billing_plan_prices,
   public.billing_subscription_events from public, anon, authenticated;
 
 grant select on public.billing_plans, public.billing_plan_prices to anon, authenticated;
-grant select on public.merchant_subscriptions, public.billing_promotion_redemptions,
-  public.billing_invoices, public.billing_payments, public.billing_usage_records,
+grant select on public.merchant_subscriptions, public.billing_promotions,
+  public.billing_promotion_redemptions, public.billing_invoices,
+  public.billing_payments, public.billing_usage_records,
   public.billing_subscription_events to authenticated;
 
 grant all on public.billing_plans, public.billing_plan_prices,
