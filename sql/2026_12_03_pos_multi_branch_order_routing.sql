@@ -1,6 +1,10 @@
 -- Merchant-managed POS order routing: one default destination plus exact table overrides.
 begin;
 
+alter table public.pos_connections
+  add column if not exists inbound_webhooks_enabled boolean not null default false,
+  add column if not exists outbound_orders_enabled boolean not null default false;
+
 create table if not exists public.pos_order_routes (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
