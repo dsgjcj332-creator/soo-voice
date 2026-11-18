@@ -73,6 +73,7 @@ interface Order {
   total: number;
   status: string;
   createdAt: number;
+  completedAt?: number | null;
 }
 
 export function DashboardOverview() {
@@ -346,8 +347,8 @@ export function DashboardOverview() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const servedToday = orders.filter((o) => {
-    const createdAt = Number(o.createdAt);
-    return o.status === "completed" && Number.isFinite(createdAt) && createdAt >= todayStart.getTime();
+    const completedAt = Number(o.completedAt ?? o.createdAt);
+    return o.status === "completed" && Number.isFinite(completedAt) && completedAt >= todayStart.getTime();
   }).length;
 
   // Active orders (pending + preparing)
