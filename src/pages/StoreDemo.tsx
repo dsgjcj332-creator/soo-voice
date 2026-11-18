@@ -28,7 +28,7 @@ export function StoreDemo() {
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-  const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
+  const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number; notes?: string } | null>(null);
   const orderIdempotencyKeyRef = React.useRef<{ key: string; fingerprint: string } | null>(null);
   const [trackingOrder, setTrackingOrder] = React.useState<string | null>(null); // order id being tracked
   const [trackingStatus, setTrackingStatus] = React.useState<string>('pending');
