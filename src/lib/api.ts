@@ -556,9 +556,9 @@ export function createApiApp() {
     }
   });
 
-  // Explicitly activate inbound canonical webhooks after the merchant has
-  // configured the provider endpoint, saved a per-connection secret, and mapped
-  // at least one active branch. This is not an outbound order-create adapter.
+  // Activate the selected connection for one or both supported directions.
+  // Inbound webhook and outbound bridge credentials are validated separately;
+  // an outbound-only middleware connection does not need an inbound secret.
   app.post('/api/pos/connections/:connectionId/activate-webhooks', posConnectionRateLimit, async (req, res) => {
     const auth = await authenticatePosMerchant(req);
     if (!auth) {
