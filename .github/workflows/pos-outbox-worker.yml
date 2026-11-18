@@ -34,4 +34,4 @@ jobs:
           esac
           curl --silent --show-error --fail-with-body --max-time 45 \
             -H "Authorization: Bearer $WORKER_SECRET" \
-            "$${WORKER_URL%/}/api/pos/outbox/dispatch"
+            "${WORKER_URL%/}/api/pos/outbox/dispatch"
