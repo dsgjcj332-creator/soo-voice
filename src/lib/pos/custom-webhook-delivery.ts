@@ -59,12 +59,9 @@ async function secureHttpsPost(request: SignedWebhookRequest): Promise<{ statusC
     throw new Error('POS_WEBHOOK_URL_NOT_ALLOWED');
   }
 
-  let addresses;
-  try {
-    addresses = await lookup(url.hostname, { all: true, verbatim: true });
-  } catch {
+  const addresses = await lookup(url.hostname, { all: true, verbatim: true }).catch(() => {
     throw new Error('POS_WEBHOOK_DNS_FAILED');
-  }
+  });
   if (!addresses.length || addresses.some(entry => !isPublicAddress(entry.address))) {
     throw new Error('POS_WEBHOOK_DESTINATION_NOT_PUBLIC');
   }
