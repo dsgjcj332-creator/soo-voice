@@ -27,13 +27,9 @@ do $$ declare v_count integer; begin
  if v_count <> 0 then raise exception 'MERCHANT_SETTINGS_CROSS_TENANT_READ_LEAK'; end if;
 end; $$;
 reset role;
-set role anon;
-do $$ declare v_count integer; begin
- select count(*) into v_count from public.merchant_settings;
- if v_count <> 0 then raise exception 'MERCHANT_SETTINGS_ANON_READ_ALLOWED'; end if;
-end; $$;
-reset role;
-do $$
+-- Anonymous access is denied at the SQL privilege layer; assert this as
+-- the migration owner rather than issuing a query that is expected to error.
+do $
 begin
  if has_table_privilege('anon','public.merchant_settings','SELECT')
     or has_table_privilege('anon','public.merchant_settings','INSERT')
