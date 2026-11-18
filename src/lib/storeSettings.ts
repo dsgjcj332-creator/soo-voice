@@ -180,8 +180,8 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
 
 /**
  * Load + update store settings for one owner. Reads are cached locally for
- * instant paint, then the cloud copy wins when reachable. `remote` controls
- * whether updates are written to Supabase (real merchants only).
+ * instant paint, then the cloud copy wins when reachable. Changes are staged
+ * locally and written to Supabase only after the owner explicitly presses Save.
  */
 export function useStoreSettings(ownerId?: string | null, remote = false) {
   const { isConfigured } = getSupabaseConfig();
@@ -238,16 +238,13 @@ export function useStoreSettings(ownerId?: string | null, remote = false) {
       const next = mergeDefaults({
         ...settingsRef.current,
         ...patch,
-        updatedAt: Date.now(),
+        updatedAt: Math.max(Date.now(), settingsRef.current.updatedAt + 1),
       });
       settingsRef.current = next;
       setSettings(next);
       saveLocalStoreSettings(ownerId, next);
-      if (remote && isConfigured) {
-        void saveStoreSettingsRemote(ownerId, next);
-      }
-    },
-    [ownerId, remote, isConfigured]
+      },
+    [ownerId]
   );
 
   return { settings, update, save, loading };

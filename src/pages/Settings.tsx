@@ -30,7 +30,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
 export function Settings() {
   const { language } = useLanguage();
   const { user } = useAuth();
-  const { currency, setCurrency, saveSettings: savePreferences } = useSettings();
+  const { currency, setCurrency, saveSettings: savePreferences, loadingSettings } = useSettings();
   const {
     settings: storeSettings,
     update: updateStoreSettings,
@@ -102,14 +102,21 @@ export function Settings() {
           <button
             type="button"
             onClick={handleSaveSettings}
-            disabled={saveStatus === 'saving'}
+            disabled={saveStatus === 'saving' || loadingSettings}
             className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saveStatus === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saveStatus === 'saving'
-              ? (isAr ? 'جاري الحفظ...' : 'Saving...')
-              : (isAr ? 'حفظ الإعدادات' : 'Save settings')}
+            {loadingSettings
+              ? (isAr ? 'جاري تحميل الإعدادات...' : 'Loading settings...')
+              : saveStatus === 'saving'
+                ? (isAr ? 'جاري الحفظ...' : 'Saving...')
+                : (isAr ? 'حفظ الإعدادات' : 'Save settings')}
           </button>
+          {saveStatus === 'idle' && !loadingSettings && (
+            <span className="text-xs text-slate-500">
+              {isAr ? 'أي تعديل جديد يحتاج الضغط على حفظ الإعدادات لتأكيد حفظه.' : 'Press Save settings to confirm any new changes.'}
+            </span>
+          )}
           {saveStatus === 'saved' && (
             <span role="status" className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
               <CheckCircle2 className="h-3.5 w-3.5" />

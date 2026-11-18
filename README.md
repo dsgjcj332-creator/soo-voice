@@ -142,7 +142,7 @@ Apply `sql/2026_11_18_multi_pos_registry.sql` before using these endpoints. Appl
 1. Push to GitHub and import the repo in Vercel.
 2. Set the server-side env vars from the table above in Project Settings.
 3. Build command: `npm run build` — API routes are picked up automatically from `api/`.
-4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, `sql/2026_11_20_enforce_outbox_lease_expiry.sql`, `sql/2026_11_21_pos_catalog_storage.sql`, and `sql/2026_11_25_guest_order_rate_limits.sql`, and `sql/2026_11_26_billing_foundation.sql`. Verify them in staging before production.
+4. Run the required Supabase SQL migrations in order: `sql/orders_setup.sql` (if the orders table does not exist), `sql/2026_11_17_harden_orders_rls.sql`, `sql/2026_11_18_multi_pos_registry.sql`, `sql/2026_11_19_secure_guest_checkout.sql`, `sql/2026_11_20_enforce_outbox_lease_expiry.sql`, `sql/2026_11_21_pos_catalog_storage.sql`, and `sql/2026_11_25_guest_order_rate_limits.sql`, `sql/2026_11_26_billing_foundation.sql`, `sql/2026_11_27_merchant_daily_tasks.sql`, `sql/2026_11_28_store_settings_profile_fields.sql`, and `sql/2026_11_29_platform_admin_audit.sql`. Verify them in staging before production.
 5. Run `sql/store_settings.sql` in the Supabase SQL Editor (one-time). It creates the
    `store_settings` table that powers the merchant store profile, voice-widget
    visibility toggle, geo-fence and menu session duration. Until it is applied the
