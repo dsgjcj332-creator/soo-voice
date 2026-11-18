@@ -325,3 +325,25 @@ test('billing routes reject unauthenticated callers', async () => {
     assert.equal(subscription.status, 401);
   });
 });
+
+test('billing health probe reports configuration flags without leaking secrets', async () => {
+  await withApi(async () => json({}), async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/health/billing`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as {
+      status: string;
+      billing: Record<string, unknown>;
+    };
+    assert.equal(body.status, 'ok');
+    assert.equal(body.billing.stripeConfigured, true);
+    assert.equal(body.billing.stripeWebhookConfigured, true);
+    assert.equal(body.billing.posBackendConfigured, true);
+    assert.equal(body.billing.posCredentialsEncryptionConfigured, true);
+    assert.equal(body.billing.foodicsOAuthConfigured, false);
+    assert.equal(body.billing.stripeCheckoutRedirectsConfigured, false);
+    // Probe responses must never carry secret material.
+    const serialized = JSON.stringify(body);
+    assert.ok(!serialized.includes('sk_test_secret_key_value_0123456789'));
+    assert.ok(!serialized.includes(webhookSecret));
+  });
+});
