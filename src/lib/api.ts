@@ -1225,6 +1225,7 @@ export function createApiApp() {
         context,
         orderCurrency,
         menuMappings: mappings,
+        providerLocationId: location.provider_location_id,
         async createOrder(input: PosCreateOrderInput) {
           return sendCustomPosOrderWebhook({
             orderWebhookUrl: selected.credentials.orderWebhookUrl as string,
@@ -1241,7 +1242,7 @@ export function createApiApp() {
         resolveTarget,
         (event, target) => {
           const runtimeTarget = target as PosDispatchTarget & {
-            orderCurrency: string; menuMappings: Map<string, string>;
+            orderCurrency: string; menuMappings: Map<string, string>; providerLocationId: string;
           };
           const rawItems = event.payload.items as Array<Record<string, unknown>>;
           const lines = rawItems.map(line => {
@@ -1262,7 +1263,7 @@ export function createApiApp() {
             ? event.payload.tableNumber.slice(0, 24) : '';
           return {
             merchantId: event.owner_id,
-            locationId: target.context.locationId || '',
+            locationId: runtimeTarget.providerLocationId,
             localOrderId: event.order_id,
             idempotencyKey: `soovoice:${event.order_id}`,
             currency: runtimeTarget.orderCurrency,
