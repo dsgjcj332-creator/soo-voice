@@ -149,7 +149,7 @@ export function DigitalMenu() {
       else if (itemCat.toLowerCase().includes("drink") || itemCat.includes("مشروب")) itemCat = "Drinks";
       else if (itemCat.toLowerCase().includes("dessert") || itemCat.includes("حلو")) itemCat = "Desserts";
       else if (itemCat.toLowerCase().includes("appetiz") || itemCat.includes("مقبل")) itemCat = "Appetizers";
-      else itemCat = "Main Course";
+      else itemCat = itemCat.trim();
       
       let itemAiOnly = false;
       if (aiOnlyIdx !== -1 && cleanValues[aiOnlyIdx]) {
@@ -182,7 +182,7 @@ export function DigitalMenu() {
         else if (cat.toLowerCase().includes("drink") || cat.includes("مشروب")) cat = "Drinks";
         else if (cat.toLowerCase().includes("dessert") || cat.includes("حلو")) cat = "Desserts";
         else if (cat.toLowerCase().includes("appetiz") || cat.includes("مقبل")) cat = "Appetizers";
-        else cat = "Main Course";
+        else cat = String(cat).trim();
 
         return {
           name: item.name || item.title || item.nameAr || item.الاسم || "",
@@ -265,13 +265,35 @@ export function DigitalMenu() {
     setImportError("");
 
     try {
+      const importedCategoryMap = new Map<string, string>();
+      const newCategories: MenuCategory[] = [];
+      for (const item of parsedItems) {
+        const raw = String(item.category || categories[0]?.id || "Main Course").trim();
+        const key = raw.toLowerCase();
+        if (importedCategoryMap.has(key)) continue;
+        const match = categories.find((c) =>
+          c.id.toLowerCase() === key ||
+          c.labelAr.trim().toLowerCase() === key ||
+          c.labelEn.trim().toLowerCase() === key
+        );
+        if (match) {
+          importedCategoryMap.set(key, match.id);
+        } else {
+          const id = makeCategoryId(raw, raw);
+          importedCategoryMap.set(key, id);
+          if (!categories.some((c) => c.id === id) && !newCategories.some((c) => c.id === id)) {
+            newCategories.push({ id, labelAr: raw, labelEn: raw, emoji: "", order: categories.length + newCategories.length });
+          }
+        }
+      }
+
       const importedItems: MenuItem[] = parsedItems.map((item, index) => ({
         id: "item_imported_" + crypto.randomUUID(),
         ownerId: user.uid,
         name: String(item.name).trim(),
         price: Number(item.price),
         description: String(item.description || ""),
-        category: String(item.category || categories[0]?.id || "Main Course"),
+        category: importedCategoryMap.get(String(item.category || categories[0]?.id || "Main Course").trim().toLowerCase()) || categories[0]?.id || "Main Course",
         isAiOnly: Boolean(item.isAiOnly),
         createdAt: Date.now() - (index * 1000),
       }));
@@ -292,6 +314,9 @@ export function DigitalMenu() {
         if (error) throw error;
       }
 
+      if (newCategories.length) {
+        setCategories((current) => [...current, ...newCategories].map((cat, index) => ({ ...cat, order: index })));
+      }
       setItems((current) => [...importedItems, ...current].sort((a, b) => b.createdAt - a.createdAt));
       setImportProgress(100);
       setShowImportModal(false);
@@ -361,6 +386,13 @@ export function DigitalMenu() {
     loadLocalCategories(user?.uid)
   );
 
+  // Keep the add-product form aligned with the merchant's first real category.
+  useEffect(() => {
+    if (!categories.some((c) => c.id === category)) {
+      setCategory(categories[0]?.id || "Main Course");
+    }
+  }, [categories, category]);
+
   // Load on mount + when user changes
   useEffect(() => {
     if (!user) return;
@@ -411,14 +443,34 @@ export function DigitalMenu() {
     );
   };
 
-  // Delete a category — items using it fall back to the raw id string
-  const deleteCategory = (id: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-    // If the merchant is currently adding an item with this category,
-    // reset to the first remaining category (or 'Main Course' as last resort)
-    if (category === id) {
-      const remaining = categories.filter((c) => c.id !== id);
-      setCategory(remaining[0]?.id || 'Main Course');
+  // Reassign products before deleting a category so no item is left with an orphan category id.
+  const deleteCategory = async (id: string) => {
+    if (categories.length <= 1) {
+      triggerNotification(language === "ar" ? "يجب الاحتفاظ بقسم واحد على الأقل." : "Keep at least one category.");
+      return;
+    }
+    const remaining = categories.filter((c) => c.id !== id);
+    const replacement = remaining[0];
+    const affected = items.filter((item) => item.category === id);
+    try {
+      if (affected.length && user?.provider === "local") {
+        const nextItems = items.map((item) => item.category === id ? { ...item, category: replacement.id } : item);
+        setLocalCollection("menu_items", nextItems, user.uid);
+        setItems(nextItems);
+      } else if (affected.length) {
+        const supabase = getSupabase();
+        if (!isSupabaseMode || !supabase || !user) throw new Error(language === "ar" ? "قاعدة البيانات غير متاحة؛ لم يتم حذف القسم." : "Database unavailable; category was not deleted.");
+        const { error } = await supabase.from("menu_items")
+          .update({ category: replacement.id })
+          .eq("ownerId", user.uid)
+          .eq("category", id);
+        if (error) throw error;
+        setItems((current) => current.map((item) => item.category === id ? { ...item, category: replacement.id } : item));
+      }
+      setCategories(remaining.map((cat, index) => ({ ...cat, order: index })));
+      if (category === id) setCategory(replacement.id);
+    } catch (error) {
+      triggerNotification(error instanceof Error ? error.message : (language === "ar" ? "تعذر حذف القسم." : "Could not delete category."));
     }
   };
 
@@ -735,14 +787,14 @@ export function DigitalMenu() {
           {categories.map((cat, idx) => (
             <li
               key={cat.id}
-              className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-100 bg-slate-50/40"
+              className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl border border-slate-100 bg-slate-50/40"
             >
               {/* Reorder arrows */}
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-row sm:flex-col gap-1">
                 <button
                   onClick={() => moveCategory(cat.id, -1)}
                   disabled={idx === 0}
-                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="min-h-9 min-w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   title={language === "ar" ? "أعلى" : "Move up"}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -752,7 +804,7 @@ export function DigitalMenu() {
                 <button
                   onClick={() => moveCategory(cat.id, 1)}
                   disabled={idx === categories.length - 1}
-                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="min-h-9 min-w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   title={language === "ar" ? "أسفل" : "Move down"}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -776,7 +828,7 @@ export function DigitalMenu() {
                 value={cat.labelAr}
                 onChange={(e) => updateCategory(cat.id, { labelAr: e.target.value })}
                 placeholder={language === "ar" ? "الاسم بالعربي" : "Arabic label"}
-                className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full sm:flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
 
               {/* English label */}
@@ -786,7 +838,7 @@ export function DigitalMenu() {
                 onChange={(e) => updateCategory(cat.id, { labelEn: e.target.value })}
                 placeholder={language === "ar" ? "الاسم بالإنجليزي" : "English label"}
                 dir="ltr"
-                className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full sm:flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
 
               {/* ID (read-only, shows what items store) */}
@@ -890,7 +942,30 @@ export function DigitalMenu() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="md:hidden divide-y divide-slate-100">
+                {items.map((item) => (
+                  <article key={item.id} className="p-4 flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-800 text-sm break-words">{item.name}</p>
+                      {item.description && <p className="mt-1 text-xs text-slate-400 line-clamp-2">{item.description}</p>}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                          {categories.find((c) => c.id === item.category)?.[language === "ar" ? "labelAr" : "labelEn"] || item.category}
+                        </span>
+                        <span className="font-bold text-indigo-600 text-xs" dir="ltr">{formatPrice(item.price, currency)}</span>
+                        {item.isAiOnly
+                          ? <span className="rounded-full bg-purple-50 px-2 py-1 text-[10px] font-bold text-purple-600">{language === "ar" ? "للذكاء فقط" : "AI only"}</span>
+                          : <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-600">{language === "ar" ? "ظاهر بالمنيو" : "Visible"}</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => handleDeleteItem(item.id)} aria-label={language === "ar" ? "حذف المنتج" : "Delete product"} className="min-h-11 min-w-11 shrink-0 rounded-xl text-rose-500 hover:bg-rose-50 flex items-center justify-center">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-slate-400 uppercase text-[10px] font-bold tracking-wider border-b border-slate-100">
@@ -948,6 +1023,7 @@ export function DigitalMenu() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -955,8 +1031,8 @@ export function DigitalMenu() {
 
       {/* Add Item Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full max-h-[94dvh] shadow-2xl overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
             <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="text-lg font-bold text-slate-800">
                 {language === "ar" ? "إضافة وجبة أو صنف جديد للمنيو" : "Add New Dish or Drink to Menu"}
@@ -986,7 +1062,7 @@ export function DigitalMenu() {
               </div>
 
               {/* Price & Category */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-400 mb-1.5">
                     {language === "ar" ? "السعر" : "Price"} *
@@ -1332,7 +1408,7 @@ function AddCategoryForm({
   };
 
   return (
-    <div className="flex flex-wrap items-end gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1fr_auto] items-stretch sm:items-end gap-2">
       <input
         type="text"
         value={emoji}
@@ -1346,7 +1422,7 @@ function AddCategoryForm({
         value={labelAr}
         onChange={(e) => setLabelAr(e.target.value)}
         placeholder={isAr ? "الاسم بالعربي" : "Arabic label"}
-        className="flex-1 min-w-[140px] bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+        className="w-full min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
       />
       <input
         type="text"
@@ -1354,7 +1430,7 @@ function AddCategoryForm({
         onChange={(e) => setLabelEn(e.target.value)}
         placeholder={isAr ? "الاسم بالإنجليزي" : "English label"}
         dir="ltr"
-        className="flex-1 min-w-[140px] bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+        className="w-full min-w-0 bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
       />
       <button
         onClick={handleSubmit}

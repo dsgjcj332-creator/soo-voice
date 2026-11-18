@@ -13,6 +13,8 @@
  * catch-all function. See api/gemini-session.ts for the same pattern.
  */
 
+import { createHash, createHmac } from 'node:crypto';
+
 export const config = {
   maxDuration: 25,
 };
@@ -33,13 +35,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const IDEMPOTENCY_RE = /^[0-9a-f-]{36}$/i;
 
 function sha256Hex(value: string): string {
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(value).digest('hex');
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function hmacBase64Url(secret: string, value: string): string {
-  const crypto = require('crypto');
-  return crypto.createHmac('sha256', secret).update(value).digest('base64url');
+  return createHmac('sha256', secret).update(value).digest('base64url');
 }
 
 export default async function handler(req: any, res: any) {
@@ -121,10 +121,9 @@ export default async function handler(req: any, res: any) {
   const forwardedFor = req.headers?.['x-forwarded-for'];
   const clientIp = (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor)
     ?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
-  const crypto = require('crypto');
-  const ownerBucket = 'owner:' + crypto.createHmac('sha256', tokenSecret)
+  const ownerBucket = 'owner:' + createHmac('sha256', tokenSecret)
     .update('guest-order-owner:v1:' + ownerId).digest('hex');
-  const clientBucket = 'client:' + crypto.createHmac('sha256', tokenSecret)
+  const clientBucket = 'client:' + createHmac('sha256', tokenSecret)
     .update('guest-order-client:v1:' + ownerId + ':' + clientIp).digest('hex');
 
   try {

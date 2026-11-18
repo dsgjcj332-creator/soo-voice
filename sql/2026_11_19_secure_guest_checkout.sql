@@ -123,7 +123,8 @@ begin
       from public.menu_items mi
      where mi.id::text = v_line.line->>'id'
        and mi."ownerId"::text = p_owner_id
-       and coalesce(mi."isAiOnly", false) = false
+     -- Assistant-only items are intentionally orderable when the voice agent
+     -- offers them; they remain hidden from the visual public catalog.
      limit 1;
 
     if not found or v_item_price is null or v_item_price <= 0 then
@@ -188,10 +189,7 @@ commit;
 
 -- Durable worker leases and retry lifecycle. A worker claims rows with
 -- SKIP LOCKED so multiple server instances cannot process the same event.
-update public.order_outbox
-   set status = 'pending', locked_at = null, locked_by = null
- where status = 'processing' and locked_at is null;
-
+-- Add lease columns before referencing them so a fresh installation works.
 alter table public.order_outbox
   add column if not exists provider_id text,
   add column if not exists connection_id uuid,
@@ -201,6 +199,10 @@ alter table public.order_outbox
   add column if not exists locked_by text,
   add column if not exists max_attempts integer not null default 12
     check (max_attempts between 1 and 100);
+
+update public.order_outbox
+   set status = 'pending', locked_at = null, locked_by = null
+ where status = 'processing' and locked_at is null;
 
 create or replace function public.claim_order_outbox(
   p_worker_id text,

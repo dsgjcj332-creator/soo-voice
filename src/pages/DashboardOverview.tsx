@@ -73,6 +73,7 @@ interface Order {
   total: number;
   status: string;
   createdAt: number;
+  completedAt?: number | null;
 }
 
 export function DashboardOverview() {
@@ -269,8 +270,27 @@ export function DashboardOverview() {
       return;
     }
 
+    let cancelled = false;
+    let initialLoadComplete = false;
+    const queuedChanges: any[] = [];
+    const applyOrderChange = (payload: any) => {
+      if (payload.eventType === "DELETE" && payload.old?.id) {
+        setOrders((prev) => prev.filter((o) => o.id !== payload.old.id));
+        return;
+      }
+      if (!payload.new?.id || payload.new.ownerId !== user.uid) return;
+      const nextOrder = payload.new as Order;
+      setOrders((prev) => {
+        const exists = prev.some((o) => o.id === nextOrder.id);
+        const next = exists
+          ? prev.map((o) => (o.id === nextOrder.id ? { ...o, ...nextOrder } : o))
+          : [nextOrder, ...prev];
+        return next.sort((a, b) => Number(b.createdAt) - Number(a.createdAt)).slice(0, 200);
+      });
+    };
+
     const channel = supabase
-      .channel("dashboard-orders")
+      .channel(`dashboard-orders-${user.uid}`)
       .on(
         "postgres_changes",
         {
@@ -280,35 +300,40 @@ export function DashboardOverview() {
           filter: `ownerId=eq.${user.uid}`,
         },
         (payload) => {
-          if (payload.eventType === "DELETE" && payload.old) {
-            setOrders((prev) => prev.filter((o) => o.id !== (payload.old as any).id));
-          } else if (payload.new) {
-            const newOrder = payload.new as Order;
-            setOrders((prev) => {
-              const exists = prev.some((o) => o.id === newOrder.id);
-              if (exists) {
-                return prev.map((o) => (o.id === newOrder.id ? newOrder : o));
-              }
-              return [newOrder, ...prev];
-            });
-          }
+          // Queue changes during the initial query so a slow SELECT cannot
+          // overwrite a kitchen status transition that arrived in realtime.
+          if (!initialLoadComplete) queuedChanges.push(payload);
+          else applyOrderChange(payload);
         }
       )
       .subscribe();
 
-    supabase
-      .from("orders")
-      .select("*")
-      .eq("ownerId", user.uid)
-      .order("createdAt", { ascending: false })
-      .limit(50)
-      .then(({ data }: any) => {
-        setOrders(data || []);
-        setLoading(false);
-      });
+    const loadOrders = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("ownerId", user.uid)
+          .order("createdAt", { ascending: false })
+          .limit(200);
+        if (cancelled) return;
+        if (error) throw error;
+        setOrders((data || []).filter((o: any) => o.ownerId === user.uid));
+        initialLoadComplete = true;
+        queuedChanges.forEach(applyOrderChange);
+        queuedChanges.length = 0;
+      } catch (error) {
+        console.error("[Dashboard] Could not load orders:", error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void loadOrders();
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      queuedChanges.length = 0;
+      void supabase.removeChannel(channel);
     };
   }, [user]);
 
@@ -316,12 +341,15 @@ export function DashboardOverview() {
   const pendingCount = orders.filter((o) => o.status === "pending").length;
   const preparingCount = orders.filter((o) => o.status === "preparing").length;
 
-  // Today's served (createdAt within last 24h and status completed)
-  const now = Date.now();
-  const DAY = 24 * 60 * 60 * 1000;
-  const servedToday = orders.filter(
-    (o) => o.status === "completed" && now - o.createdAt < DAY
-  ).length;
+  // Count completed orders created during the merchant's current local day.
+  // The status is updated by the kitchen; realtime changes move the order
+  // into this third tile without requiring a page refresh.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const servedToday = orders.filter((o) => {
+    const completedAt = Number(o.completedAt ?? o.createdAt);
+    return o.status === "completed" && Number.isFinite(completedAt) && completedAt >= todayStart.getTime();
+  }).length;
 
   // Active orders (pending + preparing)
   const activeOrders = orders
@@ -476,7 +504,7 @@ export function DashboardOverview() {
       </section>
 
       {/* Status row — 3 quiet cards */}
-      <div className="grid grid-cols-3 gap-3 md:gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-5 mb-8">
         <Link
           to="/app/kitchen"
           className="bg-white border border-amber-200/80 rounded-2xl p-4 md:p-5 shadow-xs hover:shadow-md transition-all flex flex-col gap-2"

@@ -36,7 +36,7 @@ const RESTAURANT_PROMPTS_EN = [
   { label: "🧑‍🍳 Chef's Secret Special", text: "Do you have any secret off-menu specials available today?" }
 ];
 
-export function VoiceWidget() {
+export function VoiceWidget({ onPlaceOrder }: { onPlaceOrder?: () => Promise<boolean> }) {
   const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
   const urlOwnerId = searchParams.get("ownerId") || searchParams.get("storeId") || undefined;
@@ -64,6 +64,8 @@ export function VoiceWidget() {
   // captures the initial closure) always reads fresh values.
   const cartApiRef = useRef(cartApi);
   cartApiRef.current = cartApi;
+  const onPlaceOrderRef = useRef(onPlaceOrder);
+  onPlaceOrderRef.current = onPlaceOrder;
   const menuItemsRef = useRef<any[]>([]);
   // menuItemsRef.current is updated below, after dbMenuItems is declared.
   
@@ -473,15 +475,19 @@ ${strictGuardrailsAr}
 أنت تملك دالة تُدعى add_to_cart يمكنك من خلالها إضافة أي طبق من القائمة إلى طلب الطاولة مباشرة. كل طبق في القائمة بالأعلى له حقل "id" — استخدمه لتحديد الطبق بدقة.
 
 قواعد إلزامية لاستخدام الدالة:
-1. عندما يقول العميل: "أضف" أو "أريد" أو "عاوز" أو "ضيف" أو "اطلب" أو "اطبخ لي" أو أي عبارة تعني الرغبة في الطلب — استدعِ add_to_cart فورًا بالـ id الصحيح للطبق. لا تكتفي بالوصف أو الاقتراح فقط.
-2. لو قال أكثر من طبق في نفس الجملة (مثال: "أريد برجر ودانت")، استدعِ add_to_cart مرة لكل طبق على حدة.
-3. لو حدد كمية (مثال: "ضيف ٢ بيتزا")، مرّر quantity=2.
-4. لا تخترع id غير موجود في القائمة. لو لم تجد ما يطلبه، اعتذر بلباقة وأخبره أن هذا الطبق غير متوفر حاليًا.
-5. بعد كل استدعاء ناجح للدالة، أخبر العميل بصوت واضح: "أضفت [اسم الطبق] لطلبك" أو ما يشابه — حتى يطمئن أنه وصل.
+1. اختصر ردودك: جملة واحدة قصيرة في كل مرة، ولا تعِد قراءة تفاصيل الطلب كاملة.
+2. طابق اسم الصنف وسعره مع القائمة حرفيًا؛ لا تخترع صنفًا أو سعرًا. إذا قال العميل "برجر بسعر 50" فاختر فقط صنفًا سعره 50 فعلًا، وإلا اسأله عن الاسم أو وضّح عدم وجود تطابق.
+3. عند رغبة العميل في صنف، استدعِ add_to_cart فورًا بالمعرّف الصحيح والكمية المطلوبة. هذه الأداة تضيف إلى السلة فقط ولا ترسل الطلب للمطبخ.
+4. بعد الإضافة قل عبارة مصرية قصيرة وودودة مثل "أمرك، ضفتهولك. تحب تزود حاجة تانية؟" أو ما يناسب اللهجة المضبوطة في إعدادات المطعم.
+5. اسأل "تحب تضيف حاجة تانية؟" بعد الإضافة. لا ترسل الطلب للمطبخ إلا عندما يقول العميل بوضوح إنه انتهى أو يؤكد الإرسال مثل "بس كده" أو "ابعت الطلب".
+6. عند تأكيد العميل، استدعِ place_order مرة واحدة. أخبره أن الطلب أُرسل فقط إذا رجعت الأداة ok=true. إذا فشلت، اعتذر باختصار واطلب منه إعادة المحاولة أو استخدام زر إرسال الطلب.
+7. استخدم اللهجة المحددة في إعدادات المطعم كما هي: مصري، خليجي، شامي أو فصحى مبسطة. لا تخلط اللهجات.
 
-مثال للاستدعاء:
-العميل: "أريد برجر دبل تشيز"
-أنت: تستدعي add_to_cart({dish_id: "<id البرجر>"}), ثم تقول: "تمام! أضفت برجر دبل تشيز لطلبك. تحب حاجة معاه؟"
+مثال:
+العميل: "عاوز برجر دبل تشيز"
+أنت: add_to_cart بالـ id الصحيح، ثم "أمرك، ضفتهولك. تحب حاجة تانية؟"
+العميل: "بس كده، ابعت"
+أنت: place_order، ثم "تمام، طلبك اتبعت للمطبخ."
 `;
 
       const baseInstructionEn = `You are a host and hospitality assistant for our restaurant. Here is our menu including main courses, drinks, and desserts:
@@ -497,15 +503,19 @@ Answer briefly, courteously and clearly based ONLY on the provided information. 
 You have a function called add_to_cart that lets you add any dish from the menu directly to the table's order. Every dish in the menu above has an "id" field — use it to specify the dish precisely.
 
 Mandatory rules for using the function:
-1. When the guest says "add", "I want", "I'll have", "give me", "I'd like", "order", or any phrase expressing an intent to order — call add_to_cart immediately with the correct dish id. Do not stop at description or recommendation alone.
-2. If the guest mentions multiple dishes in one sentence (e.g. "I want a burger and a donut"), call add_to_cart once per dish.
-3. If they specify a quantity (e.g. "add 2 pizzas"), pass quantity=2.
-4. Never invent an id that is not in the menu. If you cannot find what they asked for, politely apologize and tell them the dish is not available right now.
-5. After every successful call, tell the guest out loud: "Added [dish name] to your order" or similar — so they are reassured it landed.
+1. Keep every spoken reply to one short sentence; do not repeat the full order.
+2. Match the requested item and price exactly against the menu. Never invent products, IDs or prices. If a requested price does not match a menu item, ask a short clarifying question.
+3. When the guest wants an item, call add_to_cart with its exact id and quantity. This adds to the cart only; it does not send the order to the kitchen.
+4. After adding, say briefly: "Of course, added. Would you like anything else?"
+5. Ask if they want anything else. Only call place_order after the guest clearly says they are finished or confirms sending the order.
+6. Call place_order once. Say the order was sent only when the tool returns ok=true; otherwise apologize briefly and offer retry.
+7. Follow the exact configured dialect/locale: Egyptian Arabic, Gulf Arabic, Levantine Arabic, or simple standard Arabic. Never mix dialects.
 
 Example:
-Guest: "I want a double cheese burger"
-You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double cheese burger to your order. Anything else with it?"
+Guest: "I'd like a double cheese burger."
+You: call add_to_cart with its exact id, then "Of course, added. Anything else?"
+Guest: "That's all, send it."
+You: call place_order, then "Your order has been sent to the kitchen."
 `;
 
       const sessionPromise = ai.live.connect({
@@ -531,7 +541,7 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
             ? [{
                 functionDeclarations: [{
                   name: "add_to_cart",
-                  description: "Add a dish from the menu to the guest's table order. Call this when the guest asks to order, add, or have a specific dish. Pass the dish's id exactly as it appears in the menu; the kitchen will receive it.",
+                  description: "Add a dish from the merchant menu to the guest cart only. Do not claim it has been sent to the kitchen; the guest must confirm and call place_order to submit the cart.",
                   parameters: {
                     type: Type.OBJECT,
                     properties: {
@@ -546,7 +556,11 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
                     },
                     required: ["dish_id"],
                   },
-                }],
+                }, ...(onPlaceOrderRef.current ? [{
+                  name: "place_order",
+                  description: "Submit the guest's current cart to the merchant kitchen. Call only after the guest clearly confirms they are finished and wants to send the order. Returns whether secure checkout actually succeeded.",
+                  parameters: { type: Type.OBJECT, properties: {} },
+                }] : [])],
               }]
             : undefined,
         },
@@ -652,7 +666,41 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
               ? tc.functionCalls
               : Array.isArray(tc) ? tc : [];
             for (const fc of functionCalls) {
-              if (!fc || fc.name !== 'add_to_cart') continue;
+              if (!fc) continue;
+              if (fc.name === 'place_order') {
+                const submitOrder = onPlaceOrderRef.current;
+                let ok = false;
+                let error = 'order_submission_unavailable';
+                if (submitOrder) {
+                  try {
+                    ok = await submitOrder();
+                    if (!ok) error = 'checkout_failed';
+                  } catch (submitError) {
+                    console.error('[VoiceWidget] place_order failed:', submitError);
+                    error = 'checkout_failed';
+                  }
+                }
+                try {
+                  const session = await sessionPromise;
+                  session.sendToolResponse({
+                    functionResponses: [{
+                      id: fc.id,
+                      name: 'place_order',
+                      response: {
+                        ok,
+                        message: ok
+                          ? 'The secure checkout confirmed the order was created and sent to the kitchen queue. Tell the guest briefly that it was sent.'
+                          : 'The order was not submitted. Do not say it reached the kitchen. Apologize briefly and ask the guest to retry using the order button.',
+                        error: ok ? undefined : error,
+                      },
+                    }],
+                  });
+                } catch (responseError) {
+                  console.error('[VoiceWidget] place_order response failed:', responseError);
+                }
+                continue;
+              }
+              if (fc.name !== 'add_to_cart') continue;
               const args = fc.args || {};
               const dishId = String(args.dish_id ?? '').trim();
               const qty = Math.max(1, Math.round(Number(args.quantity ?? 1) || 1));
@@ -673,7 +721,7 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
                       response: {
                         ok: false,
                         error: 'dish_not_found',
-                        message: `No dish with id "${dishId}" was found in the menu. Apologize to the guest and tell them this dish is not available.`,
+                        message: `No dish with id "${dishId}" was found in the menu. Apologize briefly and say this item is unavailable.`,
                       },
                     }],
                   });
@@ -701,6 +749,7 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
                       quantity: qty,
                       price: Number(dish.price) || 0,
                       currency: activeCurrency,
+                      message: 'Added to cart only. Ask briefly whether the guest wants anything else. Do not say it was sent to the kitchen.',
                     },
                   }],
                 });
@@ -785,7 +834,7 @@ You: call add_to_cart({dish_id: "<burger id>"}), then say: "Sure! Added double c
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="mb-4 w-80 overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200 flex flex-col"
+            className="mb-4 w-[min(22rem,calc(100vw-2rem))] max-h-[min(80dvh,42rem)] overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200 flex flex-col"
           >
             {/* Header */}
             <div

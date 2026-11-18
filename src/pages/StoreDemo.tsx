@@ -22,7 +22,7 @@ import { playChime, haptic } from '../lib/chime';
 
 export function StoreDemo() {
   const { language, setLanguage } = useLanguage();
-  const { businessType } = useSettings();
+  const { businessType, currency } = useSettings();
   const { user } = useAuth();
   const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount } = useCart();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
@@ -169,11 +169,15 @@ export function StoreDemo() {
   // Design customizer state loaded dynamically
   const [menuPrimaryColor, setMenuPrimaryColor] = React.useState<string>("indigo");
   const [menuBgStyle, setMenuBgStyle] = React.useState<string>("light-clean");
-  const [menuLogoEmoji, setMenuLogoEmoji] = React.useState<string>("🍔");
+  const [menuLogoEmoji, setMenuLogoEmoji] = React.useState<string>("🍽️");
   const [menuBorderRadius, setMenuBorderRadius] = React.useState<string>("rounded-2xl");
   const [menuParticles, setMenuParticles] = React.useState<string>("none");
-  const [menuCurrency, setMenuCurrency] = React.useState<string>(normalizeCurrency(null));
+  const [menuCurrency, setMenuCurrency] = React.useState<string>(normalizeCurrency(currency));
+  React.useEffect(() => { setMenuCurrency(normalizeCurrency(currency)); }, [currency]);
   const [menuLayout, setMenuLayout] = React.useState<string>("grid");
+  const [customAccentColor, setCustomAccentColor] = React.useState<string>("");
+  const [customCardColor, setCustomCardColor] = React.useState<string>("");
+  const [customButtonColor, setCustomButtonColor] = React.useState<string>("");
 
   // Load design customizations on mount and when owner ID changes
   React.useEffect(() => {
@@ -188,8 +192,10 @@ export function StoreDemo() {
         if (config.logoEmoji) setMenuLogoEmoji(config.logoEmoji);
         if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
         if (config.particles) setMenuParticles(config.particles);
-        if (config.currency) setMenuCurrency(normalizeCurrency(config.currency));
         if (config.layout) setMenuLayout(config.layout);
+        if (config.customAccentColor) setCustomAccentColor(config.customAccentColor);
+        if (config.customCardColor) setCustomCardColor(config.customCardColor);
+        if (config.customButtonColor) setCustomButtonColor(config.customButtonColor);
       } catch (e) {
         console.error("Error reading cached store design:", e);
       }
@@ -214,8 +220,10 @@ export function StoreDemo() {
             if (data.logoEmoji) setMenuLogoEmoji(data.logoEmoji);
             if (data.borderRadius) setMenuBorderRadius(data.borderRadius);
             if (data.particles) setMenuParticles(data.particles);
-            if (data.currency) setMenuCurrency(normalizeCurrency(data.currency));
             if (data.layout) setMenuLayout(data.layout);
+            if (data.customAccentColor) setCustomAccentColor(data.customAccentColor);
+            if (data.customCardColor) setCustomCardColor(data.customCardColor);
+            if (data.customButtonColor) setCustomButtonColor(data.customButtonColor);
             
             // Sync back to local storage
             localStorage.setItem(`menu_design_config_${resolvedOwnerId}`, JSON.stringify(data));
@@ -322,10 +330,12 @@ export function StoreDemo() {
   // Guest checkout sends identifiers and quantities only. The trusted API
   // reloads catalog prices and commits the order + outbox in one transaction.
   const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
-  const handleSubmitOrder = async () => {
-    if (cartItems.length === 0 || checkoutStatus === 'sending') return;
+  const [submitErrorMessage, setSubmitErrorMessage] = React.useState('');
+  const handleSubmitOrder = async (): Promise<boolean> => {
+    if (cartItems.length === 0 || checkoutStatus === 'sending') return false;
     setCheckoutStatus('sending');
     setSubmitErrorKind(null);
+    setSubmitErrorMessage('');
     try {
       const normalizeDigits = (value: string) =>
         value
@@ -364,7 +374,8 @@ export function StoreDemo() {
       const result = await response.json().catch(() => null) as any;
       if (!response.ok || !result?.orderId || !result?.guestToken || !Array.isArray(result.items)) {
         setSubmitErrorKind(response.status === 503 ? 'schema' : 'generic');
-        throw new Error(result?.error || 'The secure order service rejected the request');
+        const detail = typeof result?.detail === 'string' ? result.detail : '';
+        throw new Error([result?.error || 'The secure order service rejected the request', detail].filter(Boolean).join(': '));
       }
 
       // Prices and line names in the invoice come exclusively from the server.
@@ -385,10 +396,14 @@ export function StoreDemo() {
         setCheckoutStatus('success');
         setTimeout(() => clearCart(), 120);
       });
+      return true;
     } catch (err) {
-      console.error('Secure order submit error:', err instanceof Error ? err.message : err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Secure order submit error:', message);
+      setSubmitErrorMessage(message);
       setCheckoutStatus('error');
-      setTimeout(() => setCheckoutStatus('idle'), 4500);
+      setTimeout(() => setCheckoutStatus('idle'), 7000);
+      return false;
     }
   };
 
@@ -468,7 +483,7 @@ export function StoreDemo() {
     ctx.fillRect(0, 0, W, H);
 
     // Top accent bar
-    ctx.fillStyle = '#4f46e5';
+    ctx.fillStyle = invoiceAccentHex;
     ctx.fillRect(0, 0, W, 6);
 
     let logoImg: HTMLImageElement | null = null;
@@ -590,34 +605,25 @@ export function StoreDemo() {
     // the mobile-native way to "download"; a plain a.click() download is
     // the fallback for desktop browsers.
     canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const fileName = `invoice-${lastOrder.id.replace('order_', '')}.png`;
-      try {
-        const file = new File([blob], fileName, { type: 'image/png' });
-        // navigator.canShare with files is supported on iOS Safari 15+
-        // and Android Chrome — check before using, fall back silently.
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: language === 'ar' ? `فاتورة الطلب ${lastOrder.id.replace('order_', '')}` : `Invoice ${lastOrder.id.replace('order_', '')}`,
-          });
-          return;
-        }
-      } catch (shareErr: any) {
-        // User cancelled the share sheet — not an error, just stop here.
-        if (shareErr?.name === 'AbortError') return;
-        // Any other share failure falls through to the download path.
+      if (!blob) {
+        setSubmitErrorKind('generic');
+        console.error('[Invoice] Browser could not create the invoice image.');
+        return;
       }
-      // Fallback: classic download (desktop, older mobile browsers)
+      const fileName = `invoice-${lastOrder.id.replace('order_', '')}.png`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = fileName;
+      a.setAttribute('aria-label', language === 'ar' ? 'تنزيل الفاتورة' : 'Download invoice');
+      a.style.position = 'fixed';
+      a.style.left = '-9999px';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
+      a.remove();
+      // Safari/iOS may resolve the download after the click handler returns.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }, 'image/png');
   };
 
   const primaryColorStyles = {
@@ -723,6 +729,11 @@ export function StoreDemo() {
   };
 
   const currentPrimary = primaryColorStyles[menuPrimaryColor as keyof typeof primaryColorStyles] || primaryColorStyles.indigo;
+  const primaryColorHex: Record<string, string> = {
+    indigo: "#4f46e5", rose: "#e11d48", emerald: "#059669",
+    amber: "#f59e0b", violet: "#7c3aed", gold: "#a16207",
+  };
+  const invoiceAccentHex = customAccentColor || primaryColorHex[menuPrimaryColor] || "#4f46e5";
   const currentBgTheme = bgThemeStyles[menuBgStyle as keyof typeof bgThemeStyles] || bgThemeStyles["light-clean"];
 
   // ---- Full-screen Access Gate (geo-fence verdict pending / denied / expired session) ----
@@ -923,9 +934,11 @@ export function StoreDemo() {
 
             <div className="flex justify-between items-start flex-wrap gap-3 md:gap-4 mb-4">
               <div className="flex items-start gap-3 min-w-0 flex-1">
-                {menuLogoEmoji && (
-                  <span className="text-3xl md:text-4xl filter drop-shadow-md select-none shrink-0">
-                    {menuLogoEmoji}
+                {storeSettings.logoUrl ? (
+                  <img src={storeSettings.logoUrl} alt={getRestaurantName()} className="h-12 w-12 md:h-14 md:w-14 rounded-2xl object-contain bg-white/80 p-1 shrink-0" />
+                ) : (
+                  <span className="text-3xl md:text-4xl filter drop-shadow-md select-none shrink-0" aria-hidden="true">
+                    {menuLogoEmoji || '🍽️'}
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
@@ -977,6 +990,7 @@ export function StoreDemo() {
               <button
                 key="all"
                 type="button"
+                style={activeCategory === 'all' && customButtonColor ? { backgroundColor: customButtonColor } : undefined}
                 onClick={() => setActiveCategory('all')}
                 className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap min-h-[44px] transition-all ${
                   activeCategory === 'all'
@@ -992,6 +1006,7 @@ export function StoreDemo() {
                 <button
                   key={cat.id}
                   type="button"
+                  style={activeCategory === cat.id && customButtonColor ? { backgroundColor: customButtonColor } : undefined}
                   onClick={() => setActiveCategory(cat.id)}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap min-h-[44px] transition-all ${
                     activeCategory === cat.id
@@ -1012,11 +1027,11 @@ export function StoreDemo() {
                 // Existing quantity in cart (for showing +1 / + buttons instead of just Add)
                 const inCart = cartItems.find((c) => c.id === item.id);
                 return (
-                <div key={item.id} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-4 md:p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
+                <div key={item.id} style={customCardColor ? { backgroundColor: customCardColor } : undefined} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-4 md:p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <h3 className={`font-extrabold text-sm md:text-base line-clamp-2 ${currentBgTheme.titleText}`}>{item.name}</h3>
-                      <span className={`font-extrabold ${currentPrimary.text} text-base md:text-lg whitespace-nowrap`} dir="ltr">
+                      <span className={`font-extrabold text-base md:text-lg whitespace-nowrap ${currentPrimary.text}`} style={customAccentColor ? { color: customAccentColor } : undefined} dir="ltr">
                         {formatPrice(item.price, menuCurrency)}
                       </span>
                     </div>
@@ -1029,6 +1044,7 @@ export function StoreDemo() {
                   {!inCart ? (
                     <button
                       onClick={() => addToCart({ id: item.id, name: item.name, price: item.price })}
+                      style={customButtonColor ? { backgroundColor: customButtonColor, color: "#ffffff" } : undefined}
                       className={`w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-sm shadow-xs min-h-[44px] ${currentPrimary.buttonBg}`}
                     >
                       <Plus className="w-4 h-4" />
@@ -1237,7 +1253,7 @@ export function StoreDemo() {
                     <>{language === 'ar' ? '✓ تم إرسال الطلب للمطبخ' : '✓ Sent to kitchen'}</>
                   ) : checkoutStatus === 'error' ? (
                     <>
-                      {submitErrorKind === 'not_ready'
+                      {submitErrorKind === 'schema'
                         ? (language === 'ar'
                             ? 'الطلب متوقف مؤقتًا لحماية بياناتك — يجري تجهيز إرسال آمن من الخادم.'
                             : 'Checkout is temporarily unavailable while secure server-side order validation is being implemented.')
@@ -1250,6 +1266,11 @@ export function StoreDemo() {
                     </>
                   )}
                 </button>
+                {checkoutStatus === 'error' && submitErrorMessage && (
+                  <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-700 break-words">
+                    {language === 'ar' ? 'تفاصيل المشكلة: ' : 'Error details: '}{submitErrorMessage}
+                  </p>
+                )}
                 <button
                   onClick={() => { if (confirm(language === 'ar' ? 'تفريغ الطلب؟' : 'Clear order?')) clearCart(); }}
                   className="w-full text-xs text-slate-400 hover:text-rose-500 font-bold transition-colors min-h-[44px]"
@@ -1268,7 +1289,7 @@ export function StoreDemo() {
         <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92dvh] overflow-y-auto">
             {/* Accent bar + logo */}
-            <div className="h-2 bg-indigo-600" />
+            <div className={`h-2 ${currentPrimary.bg}`} style={customAccentColor ? { backgroundColor: customAccentColor } : undefined} />
             <div className="p-6 text-center">
               {/* Logo */}
               <div className="flex justify-center mb-3">
@@ -1344,7 +1365,8 @@ export function StoreDemo() {
               <div className="space-y-2">
                 <button
                   onClick={() => { setTrackingOrder(lastOrder.id); }}
-                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+                  style={customButtonColor ? { backgroundColor: customButtonColor } : undefined}
+                  className={`w-full flex items-center justify-center gap-2 text-white px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${currentPrimary.bg}`}
                 >
                   <Clock className="w-4 h-4" />
                   {language === 'ar' ? 'تتبع الطلب' : 'Track order'}
@@ -1527,7 +1549,7 @@ export function StoreDemo() {
       </div>
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
-      {storeSettings.showVoiceWidget && <VoiceWidget />}
+      {storeSettings.showVoiceWidget && <VoiceWidget onPlaceOrder={handleSubmitOrder} />}
     </div>
   );
 }

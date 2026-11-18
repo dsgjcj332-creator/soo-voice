@@ -66,9 +66,18 @@ jobs:
           sudo apt-get install -y postgresql-client
       - name: Bootstrap isolated Supabase auth roles
         run: psql -X -v ON_ERROR_STOP=1 -f tests/fixtures/pos-migrations-bootstrap.sql
+      - name: Apply POS connection registry foundation
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
+      - name: Bootstrap owner-scoped orders table
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/orders_setup.sql
+      - name: Apply secure guest checkout and outbox migrations
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_19_secure_guest_checkout.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_20_enforce_outbox_lease_expiry.sql
+      - name: Test secure guest checkout, voice-only items and idempotency
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/guest-checkout-integration.sql
       - name: Apply POS migrations in dependency order
         run: |
-          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_21_pos_catalog_storage.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_22_pos_catalog_menu_mapping.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_23_pos_catalog_menu_apply.sql
@@ -80,6 +89,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_28_store_settings_profile_fields.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_29_platform_admin_audit.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_merchant_billing_entitlements.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_menu_customizer_palette.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_01_order_completion_timestamp.sql
       - name: Test store settings save and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/store-settings-migrations-integration.sql
       - name: Verify schema, RLS and grants
@@ -94,3 +105,7 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f tests/platform-admin-audit-integration.sql
       - name: Test merchant billing entitlements
         run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-entitlements-integration.sql
+      - name: Test menu customizer palette migration
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/menu-customizer-palette-integration.sql
+      - name: Test kitchen completion timestamp migration
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/order-completion-timestamp-integration.sql

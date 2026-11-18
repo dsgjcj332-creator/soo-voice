@@ -179,15 +179,39 @@ export function KitchenDisplay() {
     setActionError("");
     setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status: newStatus } : order));
     try {
-      const { data, error } = await supabase
+      const updateResult = await supabase
         .from('orders')
-        .update({ status: newStatus })
+        .update({
+          status: newStatus,
+          completedAt: newStatus === 'completed' ? Date.now() : null,
+        })
         .eq('id', orderId)
         .eq('ownerId', user.uid)
         .select('id,status')
         .maybeSingle();
-      if (error) throw error;
-      if (!data) throw new Error(isAr ? 'الطلب غير موجود أو لا تملك صلاحية تعديله.' : 'Order not found or not allowed.');
+
+      const missingCompletionColumn = Boolean(updateResult.error) &&
+        /completedAt|schema cache|column .* does not exist/i.test(String(updateResult.error?.message || ''));
+      if (missingCompletionColumn) {
+        // Keep kitchen actions working while a deployment is waiting for the
+        // additive timestamp migration. The dashboard falls back to createdAt
+        // until the migration is applied.
+        const fallback = await supabase
+          .from('orders')
+          .update({ status: newStatus })
+          .eq('id', orderId)
+          .eq('ownerId', user.uid)
+          .select('id,status')
+          .maybeSingle();
+        if (fallback.error) throw fallback.error;
+        if (!fallback.data) throw new Error(isAr ? 'الطلب غير موجود أو لا تملك صلاحية تعديله.' : 'Order not found or not allowed.');
+        setActionError(isAr
+          ? 'تم تحديث حالة الطلب. لتسجيل وقت الإنجاز بدقة، طبّق ترحيل completedAt على قاعدة البيانات.'
+          : 'Order status updated. Apply the completedAt migration to track exact completion time.');
+        return;
+      }
+      if (updateResult.error) throw updateResult.error;
+      if (!updateResult.data) throw new Error(isAr ? 'الطلب غير موجود أو لا تملك صلاحية تعديله.' : 'Order not found or not allowed.');
     } catch (error) {
       setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status: previous || order.status } : order));
       setActionError(error instanceof Error ? error.message : (isAr ? 'فشل تحديث حالة الطلب.' : 'Could not update order status.'));

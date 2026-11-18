@@ -4,7 +4,8 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
-import { CURRENCY_LIST, normalizeCurrency, formatPrice, type CurrencyCode } from "../lib/currency";
+import { formatPrice } from "../lib/currency";
+import { useStoreSettings } from "../lib/storeSettings";
 
 /**
  * Menu Designer — the restaurant's visual identity for the digital menu.
@@ -48,7 +49,8 @@ export function MenuDesigner() {
   const { language } = useLanguage();
   const isAr = language === "ar";
   const { user } = useAuth();
-  const { currency, setCurrency } = useSettings();
+  const { currency } = useSettings();
+  const { settings: storeSettings } = useStoreSettings(user?.uid, user?.provider !== "local");
 
   // Designer state
   const [menuPrimaryColor, setMenuPrimaryColor] = useState("indigo");
@@ -56,20 +58,14 @@ export function MenuDesigner() {
   const [menuLogoEmoji, setMenuLogoEmoji] = useState("✨");
   const [menuBorderRadius, setMenuBorderRadius] = useState("rounded-2xl");
   const [menuParticles, setMenuParticles] = useState("none");
-  const [menuCurrency, setMenuCurrency] = useState<CurrencyCode>(currency);
   const [menuLayout, setMenuLayout] = useState("grid");
-  const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success">("idle");
+  const [customAccentColor, setCustomAccentColor] = useState("");
+  const [customCardColor, setCustomCardColor] = useState("");
+  const [customButtonColor, setCustomButtonColor] = useState("");
+  const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success" | "warning">("idle");
+  const [designSaveWarning, setDesignSaveWarning] = useState("");
 
   const activePrimary = COLOR_VARIANTS[menuPrimaryColor] || COLOR_VARIANTS.indigo;
-
-  useEffect(() => {
-    setMenuCurrency(normalizeCurrency(currency));
-  }, [currency]);
-
-  const handleMenuCurrencyChange = (code: CurrencyCode) => {
-    setMenuCurrency(code);
-    setCurrency(code);
-  };
 
   // Load saved design (localStorage cache first, then Supabase)
   useEffect(() => {
@@ -83,6 +79,9 @@ export function MenuDesigner() {
       if (config.borderRadius) setMenuBorderRadius(config.borderRadius);
       if (config.particles) setMenuParticles(config.particles);
       if (config.layout) setMenuLayout(config.layout);
+      if (config.customAccentColor) setCustomAccentColor(config.customAccentColor);
+      if (config.customCardColor) setCustomCardColor(config.customCardColor);
+      if (config.customButtonColor) setCustomButtonColor(config.customButtonColor);
     };
     const localKey = `menu_design_config_${user.uid}`;
     const saved = localStorage.getItem(localKey);
@@ -115,29 +114,53 @@ export function MenuDesigner() {
       logoEmoji: menuLogoEmoji,
       borderRadius: menuBorderRadius,
       particles: menuParticles,
-      currency: menuCurrency,
       layout: menuLayout,
+      customAccentColor,
+      customCardColor,
+      customButtonColor,
       updatedAt: Date.now(),
     };
     setDesignSaveStatus("saving");
+    setDesignSaveWarning("");
     try {
-      if (user.provider === "local") {
-        localStorage.setItem(`menu_design_config_${user.uid}`, JSON.stringify(config));
-      } else {
+      const localKey = `menu_design_config_${user.uid}`;
+      localStorage.setItem(localKey, JSON.stringify(config));
+      localStorage.setItem("menu_design_config_global", JSON.stringify(config));
+      if (user.provider !== "local") {
         const supabase = getSupabase();
         if (!supabase) throw new Error("Supabase is not configured");
         const { error } = await supabase.from("menu_customizer").upsert(
           { ownerId: user.uid, ...config },
           { onConflict: "ownerId" }
         );
-        if (error) throw error;
+        if (error) {
+          const missingPaletteColumns = /customAccentColor|customCardColor|customButtonColor|schema cache|column .* does not exist/i.test(String(error.message || ""));
+          if (!missingPaletteColumns) throw error;
+          const legacyConfig = { ...config };
+          delete (legacyConfig as any).customAccentColor;
+          delete (legacyConfig as any).customCardColor;
+          delete (legacyConfig as any).customButtonColor;
+          const fallback = await supabase.from("menu_customizer").upsert(
+            { ownerId: user.uid, ...legacyConfig },
+            { onConflict: "ownerId" }
+          );
+          if (fallback.error) throw fallback.error;
+          setDesignSaveWarning(isAr
+            ? "تم حفظ التصميم الأساسي على السحابة والألوان المخصصة على هذا الجهاز. طبّق ترحيل ألوان المنيو لمزامنتها بين الأجهزة."
+            : "Base design synced to the cloud; custom colors are saved on this device. Apply the menu palette migration to sync them across devices.");
+          setDesignSaveStatus("warning");
+        } else {
+          setDesignSaveStatus("success");
+        }
+      } else {
+        setDesignSaveStatus("success");
       }
-      setDesignSaveStatus("success");
     } catch (err) {
       console.error("Failed to save design:", err);
-      setDesignSaveStatus("idle");
+      setDesignSaveWarning(isAr ? "تعذر حفظ التصميم. راجع الاتصال وحاول مرة أخرى." : "Could not save the design. Check the connection and retry.");
+      setDesignSaveStatus("warning");
     }
-    setTimeout(() => setDesignSaveStatus("idle"), 2500);
+    window.setTimeout(() => setDesignSaveStatus("idle"), 6000);
   };
 
   const ownerId = user?.uid || "demo_user";
@@ -169,6 +192,8 @@ export function MenuDesigner() {
               <CheckCircle2 className="w-4 h-4" />
               {isAr ? "تم الحفظ" : "Saved"}
             </>
+          ) : designSaveStatus === "warning" ? (
+            <>{isAr ? "حفظ جزئي" : "Partially saved"}</>
           ) : (
             <>
               <Save className="w-4 h-4" />
@@ -177,6 +202,11 @@ export function MenuDesigner() {
           )}
         </button>
       </div>
+      {designSaveWarning && (
+        <p role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+          {designSaveWarning}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* ============ Customizer (left, 2 cols) ============ */}
@@ -239,6 +269,28 @@ export function MenuDesigner() {
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-4">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800">{isAr ? "تخصيص ألوان التفاصيل" : "Fine-tune menu colors"}</h3>
+                  <p className="mt-1 text-xs text-slate-500">{isAr ? "اختار لون التمييز والبطاقات والأزرار بشكل مستقل." : "Choose independent colors for accents, product cards and buttons."}</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { label: isAr ? "لون التمييز" : "Accent color", value: customAccentColor || "#4f46e5", set: setCustomAccentColor },
+                    { label: isAr ? "خلفية خلايا المنتجات" : "Product card color", value: customCardColor || "#ffffff", set: setCustomCardColor },
+                    { label: isAr ? "لون الأزرار" : "Button color", value: customButtonColor || "#4f46e5", set: setCustomButtonColor },
+                  ].map((field) => (
+                    <label key={field.label} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 min-w-0">
+                      <input type="color" value={field.value} onChange={(e) => field.set(e.target.value)} className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border-0 bg-transparent p-0" />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-bold text-slate-700">{field.label}</span>
+                        <span className="block text-[10px] text-slate-400 font-mono" dir="ltr">{field.value}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 3. Logo emoji */}
                 <div>
@@ -268,30 +320,11 @@ export function MenuDesigner() {
                   </div>
                 </div>
 
-                {/* 4. Currency */}
-                <div>
-                  <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
-                    {isAr ? "4. عملة الأسعار" : "4. Display currency"}
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {CURRENCY_LIST.map((cur) => (
-                      <button
-                        key={cur.code}
-                        type="button"
-                        onClick={() => handleMenuCurrencyChange(cur.code)}
-                        className={`flex-1 min-w-[52px] py-2.5 px-2 rounded-xl border-2 text-xs font-extrabold transition-all cursor-pointer ${
-                          menuCurrency === cur.code ? "border-slate-800 bg-slate-50 text-slate-800" : "border-slate-100 text-slate-400 hover:border-slate-200"
-                        }`}
-                      >
-                        {cur.symbol}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2">
-                    {isAr
-                      ? "نفس العملة المحددة في الإعدادات — تزامن تلقائي مع المساعد الصوتي."
-                      : "Same as Settings — auto-synced with the voice assistant."}
-                  </p>
+                {/* Currency is managed centrally in Settings and shared by menu, voice and invoices. */}
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                  <p className="text-xs font-bold text-indigo-900">{isAr ? "عملة المنيو" : "Menu currency"}</p>
+                  <p className="mt-1 text-xs text-indigo-700">{isAr ? "تُدار من الإعدادات وتُطبّق تلقائيًا على المنيو والمساعد الصوتي والفاتورة." : "Managed in Settings and applied automatically to the menu, voice assistant and invoice."}</p>
+                  <p className="mt-2 text-sm font-extrabold text-indigo-900" dir="ltr">{currency}</p>
                 </div>
               </div>
 
@@ -396,7 +429,7 @@ export function MenuDesigner() {
               {isAr ? "معاينة هاتف الضيف" : "Guest phone preview"}
             </p>
 
-            <div className="mx-auto w-[290px] h-[580px] bg-slate-900 rounded-[2.8rem] p-3 shadow-2xl border-4 border-slate-800 relative overflow-hidden flex flex-col">
+            <div className="mx-auto w-[min(290px,calc(100vw-3rem))] h-[580px] max-w-full bg-slate-900 rounded-[2.8rem] p-3 shadow-2xl border-4 border-slate-800 relative overflow-hidden flex flex-col">
               {/* Notch */}
               <div className="absolute top-4 left-1/2 -translate-x-1/2 w-28 h-4.5 bg-slate-950 rounded-full z-30 flex items-center justify-center gap-1.5 px-3">
                 <div className="w-10 h-1 bg-slate-800 rounded-full" />
@@ -446,10 +479,14 @@ export function MenuDesigner() {
 
                 {/* Header */}
                 <div className="pt-8 px-4 pb-3 border-b border-black/5 flex items-center justify-between bg-black/5 backdrop-blur-xs relative z-20">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base animate-bounce">{menuLogoEmoji}</span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {storeSettings.logoUrl ? (
+                      <img src={storeSettings.logoUrl} alt="" className="h-7 w-7 rounded-lg object-contain bg-white p-0.5 shrink-0" />
+                    ) : (
+                      <span className="text-base animate-bounce shrink-0">{menuLogoEmoji || "🍽️"}</span>
+                    )}
                     <span className="font-extrabold tracking-tight text-[11px] truncate w-24">
-                      {user?.displayName || (isAr ? "مطعم الأصالة" : "Asala Restaurant")}
+                      {storeSettings.restaurantName || user?.displayName || (isAr ? "مطعم الأصالة" : "Asala Restaurant")}
                     </span>
                   </div>
                   <span className="bg-emerald-500/10 text-emerald-400 font-bold text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
@@ -489,6 +526,7 @@ export function MenuDesigner() {
                     ].map((card, idx) => (
                       <div
                         key={idx}
+                        style={customCardColor ? { backgroundColor: customCardColor } : undefined}
                         className={`p-3 flex flex-col justify-between transition-all hover:-translate-y-0.5 ${menuBorderRadius} ${
                           menuBgStyle === "light-clean" ? "bg-white border border-slate-100 shadow-xs" :
                           menuBgStyle === "sunset-glow" ? "bg-white/80 border border-orange-100/50 shadow-xs" :
@@ -503,10 +541,10 @@ export function MenuDesigner() {
                           <p className="text-[7px] opacity-60 leading-tight line-clamp-2 mb-2">{card.desc}</p>
                         </div>
                         <div className="flex items-center justify-between mt-1">
-                          <span className={`font-bold text-[9px] ${activePrimary.text}`} dir="ltr">
-                            {formatPrice(card.price, menuCurrency)}
+                          <span className={`font-bold text-[9px] ${activePrimary.text}`} style={customAccentColor ? { color: customAccentColor } : undefined} dir="ltr">
+                            {formatPrice(card.price, currency)}
                           </span>
-                          <button className={`w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] ${activePrimary.bg} flex items-center justify-center`}>
+                          <button style={customButtonColor ? { backgroundColor: customButtonColor } : undefined} className={`w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] ${activePrimary.bg} flex items-center justify-center`}>
                             +
                           </button>
                         </div>
