@@ -25,7 +25,7 @@ All routes are prefixed with `/api/admin/billing`.
 | GET | `/plans` | List plans and historical/current price rows |
 | POST | `/plans` | Create an inactive-by-default plan |
 | PATCH | `/plans/:planId` | Update allowlisted plan presentation/features/limits/activation |
-| POST | `/prices` | Add an effective-dated monthly/yearly price |
+| POST | `/prices` | Add an effective-dated monthly/yearly price |\n| PATCH | `/prices/:priceId` | Activate or deactivate an existing price row without rewriting its history |
 | GET | `/promotions` | List promotions |
 | POST | `/promotions` | Create a bounded percentage or fixed-amount promotion |
 | GET | `/subscriptions` | Paginated read-only subscription list; optional status filter |
