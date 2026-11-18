@@ -76,6 +76,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_25_guest_order_rate_limits.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_26_billing_foundation.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_29_platform_admin_audit.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_merchant_billing_entitlements.sql
       - name: Verify schema, RLS and grants
         run: psql -X -v ON_ERROR_STOP=1 -f sql/verify_pos_catalog_staging.sql
       - name: Test catalog sync, audit trigger and tenant isolation
@@ -84,3 +85,5 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-migrations-integration.sql
       - name: Test platform admin audit immutability and access
         run: psql -X -v ON_ERROR_STOP=1 -f tests/platform-admin-audit-integration.sql
+      - name: Test merchant billing entitlements
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-entitlements-integration.sql
