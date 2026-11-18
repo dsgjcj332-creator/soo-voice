@@ -17,7 +17,7 @@ create index if not exists pos_dispatch_alerts_owner_created_idx
 alter table public.pos_dispatch_alerts enable row level security;
 drop policy if exists "pos_dispatch_alerts_owner_read" on public.pos_dispatch_alerts;
 create policy "pos_dispatch_alerts_owner_read" on public.pos_dispatch_alerts
-  for select to authenticated using (owner_id = auth.uid());
+  for select to authenticated using (owner_id = auth.uid()::text);
 revoke all on public.pos_dispatch_alerts from public;
 revoke all on public.pos_dispatch_alerts from anon;
 revoke all on public.pos_dispatch_alerts from authenticated;
