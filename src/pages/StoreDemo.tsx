@@ -25,12 +25,12 @@ export function StoreDemo() {
   const { language, setLanguage } = useLanguage();
   const { businessType, currency } = useSettings();
   const { user } = useAuth();
-  const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount, orderNote, setOrderNote } = useCart();
+  const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount } = useCart();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
   const [modifierItem, setModifierItem] = React.useState<any | null>(null);
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
-  const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number; notes?: string } | null>(null);
+  const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
   const orderIdempotencyKeyRef = React.useRef<{ key: string; fingerprint: string } | null>(null);
   const [trackingOrder, setTrackingOrder] = React.useState<string | null>(null); // order id being tracked
   const [trackingStatus, setTrackingStatus] = React.useState<string>('pending');
@@ -356,12 +356,10 @@ export function StoreDemo() {
           optionIds: group.options.map(option => option.id).sort(),
         })).sort((a, b) => a.groupId.localeCompare(b.groupId)),
       }));
-      const normalizedOrderNote = String(orderNote || '').trim().slice(0, 1000);
       const requestFingerprint = JSON.stringify({
         ownerId: resolvedOwnerId,
         tableNumber,
         items: [...orderItems].sort((a, b) => a.id.localeCompare(b.id) || JSON.stringify(a.modifiers).localeCompare(JSON.stringify(b.modifiers))),
-        notes: normalizedOrderNote,
         modifiersVersion: 1,
       });
       if (!orderIdempotencyKeyRef.current || orderIdempotencyKeyRef.current.fingerprint !== requestFingerprint) {
@@ -379,7 +377,6 @@ export function StoreDemo() {
           idempotencyKey: orderIdempotencyKeyRef.current.key,
           items: orderItems,
           modifiersVersion: 1,
-          notes: normalizedOrderNote,
         }),
       });
       const result = await response.json().catch(() => null) as any;
@@ -397,7 +394,6 @@ export function StoreDemo() {
         total: Number(result.total),
         tableNumber: String(result.tableNumber),
         createdAt: Number(result.createdAt),
-        notes: normalizedOrderNote,
       };
       orderIdempotencyKeyRef.current = null;
 
@@ -1243,21 +1239,6 @@ export function StoreDemo() {
                   ))}
                 </ul>
               )}
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <label htmlFor="guest-order-note" className="mb-2 block text-xs font-bold text-slate-600">
-                  {language === 'ar' ? 'ملاحظات وتعليمات الطلب (اختياري)' : 'Order instructions (optional)'}
-                </label>
-                <textarea
-                  id="guest-order-note"
-                  value={orderNote}
-                  onChange={(event) => setOrderNote(event.target.value)}
-                  maxLength={1000}
-                  rows={3}
-                  placeholder={language === 'ar' ? 'مثال: بدون بصل، الصوص على جنب...' : 'e.g. No onions, sauce on the side...'}
-                  className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:bg-white"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">{language === 'ar' ? 'سيتم إرسال الملاحظات مع الطلب للمطعم.' : 'These instructions will be sent to the restaurant with your order.'}</p>
-              </div>
             </div>
 
             {/* Footer: total + send order — pb clears the iPhone home
@@ -1370,7 +1351,8 @@ export function StoreDemo() {
                 </span>
               </div>
 
-              {lastOrder.items.map((item, idx) => (
+              <div className="space-y-2 mb-4 pb-4 border-b border-slate-100">
+                {lastOrder.items.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between text-sm">
                     <span className="text-slate-700">
                       <span className="font-bold text-slate-900">{item.quantity}×</span>
@@ -1381,7 +1363,7 @@ export function StoreDemo() {
                     </span>
                   </div>
                 ))}
-              {lastOrder.notes && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">{lastOrder.notes}</p>}
+              </div>
 
               <div className="flex items-center justify-between mb-6">
                 <span className="text-sm font-bold text-slate-500 uppercase tracking-wider">
@@ -1589,7 +1571,7 @@ export function StoreDemo() {
       />}
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
-      {storeSettings.showVoiceWidget && <VoiceWidget onPlaceOrder={handleSubmitOrder} />}
+      {storeSettings.showVoiceWidget && <VoiceWidget ownerId={resolvedOwnerId} onPlaceOrder={handleSubmitOrder} />}
     </div>
   );
 }
