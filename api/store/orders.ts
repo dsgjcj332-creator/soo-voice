@@ -29,6 +29,7 @@ interface RequestBody {
   tableNumber?: string;
   idempotencyKey?: string;
   items?: OrderItemInput[];
+  notes?: string;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,6 +72,7 @@ export default async function handler(req: any, res: any) {
   const tableNumberRaw = typeof body.tableNumber === 'string' ? body.tableNumber : '';
   const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   const inputItems = body.items;
+  const orderNotes = typeof body.notes === 'string' ? body.notes.trim() : '';
 
   // Normalize Arabic-Indic + Persian digits and strip bidi marks.
   const tableNumber = tableNumberRaw
@@ -80,6 +82,11 @@ export default async function handler(req: any, res: any) {
     .trim()
     .slice(0, 24);
 
+  if (body.notes !== undefined && (typeof body.notes !== 'string' || body.notes.length > 1000)) {
+    res.statusCode = 400;
+    res.end(JSON.stringify({ error: 'Order instructions must be 1000 characters or fewer' }));
+    return;
+  }
   if (!UUID_RE.test(ownerId)) {
     res.statusCode = 400;
     res.end(JSON.stringify({ error: 'Invalid owner ID' }));
@@ -168,7 +175,7 @@ export default async function handler(req: any, res: any) {
     `soovoice-guest-order:v1:${ownerId}:${idempotencyKey}`
   );
   const guestTokenHash = sha256Hex(guestToken);
-  const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items }));
+  const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items, notes: orderNotes }));
 
   // --- Call the Supabase RPC ---
   try {
@@ -183,6 +190,7 @@ export default async function handler(req: any, res: any) {
         p_owner_id: ownerId,
         p_table_number: tableNumber,
         p_items: items,
+        p_order_notes: orderNotes,
         p_idempotency_key: idempotencyKey,
         p_guest_token_hash: guestTokenHash,
         p_request_hash: requestHash,
@@ -222,6 +230,7 @@ export default async function handler(req: any, res: any) {
       total: Number(rpcResult.total),
       tableNumber: String(rpcResult.tableNumber),
       createdAt: Number(rpcResult.createdAt),
+      notes: typeof rpcResult.notes === 'string' ? rpcResult.notes : orderNotes,
       replayed: Boolean(rpcResult.replayed),
     }));
   } catch (err: any) {
