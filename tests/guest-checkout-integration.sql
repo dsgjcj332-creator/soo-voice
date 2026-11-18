@@ -60,8 +60,7 @@ $$;
 
 reset role;
 
-do $
-begin
+do $$2
   -- Direct row assertion runs as the database test owner, after resetting
   -- the restricted service_role used to exercise the checkout RPC.
   if not exists (
@@ -73,6 +72,6 @@ begin
     raise exception 'GUEST_ORDER_NOTES_NOT_PERSISTED';
   end if;
 end;
-$;
+$$;
 
 select 'GUEST_CHECKOUT_INTEGRATION_PASSED' as result;
