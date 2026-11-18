@@ -37,7 +37,18 @@ export function GuestModifierPicker({ item, ownerId, language, localMode = false
         }
         if (cancelled) return;
         setGroups(gs.map((g: any) => ({ ...g, options: os.filter((o: any) => o.group_id === g.id).sort((a: any,b: any) => a.sort_order-b.sort_order) })));
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
+      } catch (e) {
+        if (!cancelled) {
+          // Supabase throws PostgrestError objects (not Error instances);
+          // extract their message so guests see a readable reason.
+          const msg = e instanceof Error
+            ? e.message
+            : (e && typeof e === 'object' && typeof (e as { message?: unknown }).message === 'string')
+              ? (e as { message: string }).message
+              : String(e);
+          setError(msg || (ar ? 'تعذر تحميل اختيارات المنتج.' : 'Could not load product options.'));
+        }
+      }
       finally { if (!cancelled) setLoading(false); }
     };
     void load();
