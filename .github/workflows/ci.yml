@@ -77,6 +77,10 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_20_enforce_outbox_lease_expiry.sql
       - name: Test secure guest checkout, voice-only items and idempotency
         run: psql -X -v ON_ERROR_STOP=1 -f tests/guest-checkout-integration.sql
+      - name: Apply structured menu modifier foundation
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_05_menu_item_modifiers.sql
+      - name: Test menu modifier constraints and tenant isolation
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/menu-item-modifiers-integration.sql
       - name: Apply POS migrations in dependency order
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_21_pos_catalog_storage.sql
