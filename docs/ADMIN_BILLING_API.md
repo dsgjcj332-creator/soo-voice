@@ -39,6 +39,10 @@ All routes are prefixed with `/api/admin/billing`.
 - Subscription status, invoices, payment records, refunds, and payment-provider identifiers cannot be mutated through these endpoints.
 - No payment gateway is selected, no charge is initiated, and no invoice is marked paid.
 - First-ten and launch-promotion records are configuration only; redemption enforcement and transactional checkout are separate work.
+- Successful plan, price and promotion mutations append an administrator audit event with the verified actor, action, resource and resulting non-secret state.
+- Audit events are append-only, readable by platform admins only, and never writable from browser sessions.
+
+The append-only audit table is created by `sql/2026_11_29_platform_admin_audit.sql`. Apply it after the billing foundation migration. CI validates admin-only reads, service-role inserts, and rejection of updates/deletes.
 
 ## Verification and deployment
 
