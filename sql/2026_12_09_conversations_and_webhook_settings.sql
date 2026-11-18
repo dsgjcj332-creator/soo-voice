@@ -35,20 +35,20 @@ create table if not exists public.merchant_webhook_settings (
 alter table public.conversations enable row level security;
 drop policy if exists "conversations_owner_read" on public.conversations;
 create policy "conversations_owner_read" on public.conversations
-  for select to authenticated using (owner_id = auth.uid());
+  for select to authenticated using (owner_id = auth.uid()::text);
 alter table public.conversation_messages enable row level security;
 drop policy if exists "conversation_messages_owner_read" on public.conversation_messages;
 create policy "conversation_messages_owner_read" on public.conversation_messages
   for select to authenticated using (
     exists (
       select 1 from public.conversations c
-      where c.id = conversation_id and c.owner_id = auth.uid()
+      where c.id = conversation_id and c.owner_id = auth.uid()::text
     )
   );
 alter table public.merchant_webhook_settings enable row level security;
 drop policy if exists "merchant_webhook_settings_owner_read" on public.merchant_webhook_settings;
 create policy "merchant_webhook_settings_owner_read" on public.merchant_webhook_settings
-  for select to authenticated using (owner_id = auth.uid());
+  for select to authenticated using (owner_id = auth.uid()::text);
 revoke all on public.conversations from public;
 revoke all on public.conversations from anon;
 revoke all on public.conversations from authenticated;
