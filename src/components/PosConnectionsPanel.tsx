@@ -425,7 +425,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
 
     <div className="mt-5 flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm text-sky-900">
       <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
-      <p>{isArabic ? 'يمكن تفعيل استقبال Webhook بعد إضافة فرع وحفظ السر وإعداد عنوان الاستقبال لدى مزوّدك أو وسيطك. هذا يزامن المنيو وحالة الطلبات الواردة فقط؛ إرسال طلب جديد إلى الكاشير يحتاج موصلًا فعليًا مستقلًا.' : 'Inbound webhooks can be activated after mapping a branch, generating a secret, and configuring your provider or middleware. This syncs incoming catalog and order status only; sending new orders still requires a separate provider adapter.'}</p>
+      <p>{isArabic ? 'يمكن تفعيل استقبال Webhook لمزامنة المنيو وحالة الطلبات. إرسال الطلبات للخارج متاح عبر وسيط HTTPS عام بعد إعداد بياناته وربط الأصناف واختيار الفرع الافتراضي.' : 'Inbound webhooks sync catalog and order status. Outbound orders are supported through the signed universal HTTPS bridge after its credentials, item mappings, and default branch are configured.'}</p>
     </div>
 
     {showForm && <form onSubmit={saveConnection} className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
