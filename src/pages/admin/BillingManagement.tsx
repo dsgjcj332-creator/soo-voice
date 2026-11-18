@@ -8,9 +8,9 @@ type Plan = { id: string; plan_key: string; display_name: string; description: s
 type Price = { id: string; plan_id: string; currency: string; billing_interval: string; amount_minor: number; is_active: boolean; effective_from: string; effective_until: string | null };
 type Promotion = { id: string; code: string; discount_type: string; percent_off: number | null; amount_off_minor: number | null; currency: string | null; starts_at: string; ends_at: string; max_redemptions: number | null; redemption_count: number; first_ten_offer: boolean; is_active: boolean };
 type Subscription = { id: string; owner_id: string; plan_id: string; status: string; currency: string | null; billing_interval: string | null; trial_ends_at: string | null; current_period_end: string | null };
-type AdminData = { plans: Plan[]; prices: Price[]; promotions: Promotion[]; subscriptions: Subscription[] };
+type AuditEvent = { id: string; actor_id: string; action: string; resource_type: string; resource_id: string | null; after_state: Record<string, unknown>; request_id: string | null; created_at: string };\ntype AdminData = { plans: Plan[]; prices: Price[]; promotions: Promotion[]; subscriptions: Subscription[]; auditEvents: AuditEvent[] };
 
-const emptyData: AdminData = { plans: [], prices: [], promotions: [], subscriptions: [] };
+const emptyData: AdminData = { plans: [], prices: [], promotions: [], subscriptions: [], auditEvents: [] };
 const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -45,16 +45,16 @@ export function AdminBillingManagement() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [catalog, promotions, subscriptions] = await Promise.all([
+      const [catalog, promotions, subscriptions, auditEvents] = await Promise.all([
         api('/plans'),
         api('/promotions'),
-        api('/subscriptions?limit=50&offset=0'),
+        api('/subscriptions?limit=50&offset=0'),\n        api('/audit-events?limit=50&offset=0'),
       ]);
       setData({
         plans: Array.isArray(catalog.plans) ? catalog.plans : [],
         prices: Array.isArray(catalog.prices) ? catalog.prices : [],
         promotions: Array.isArray(promotions) ? promotions : [],
-        subscriptions: Array.isArray(subscriptions.items) ? subscriptions.items : [],
+        subscriptions: Array.isArray(subscriptions.items) ? subscriptions.items : [],\n        auditEvents: Array.isArray(auditEvents) ? auditEvents : [],
       });
       setPriceForm(current => ({ ...current, plan_id: current.plan_id || catalog.plans?.[0]?.id || '' }));
     } catch (e) {
@@ -170,6 +170,12 @@ export function AdminBillingManagement() {
           <h2 className="mb-4 font-bold text-slate-900">{isAr ? 'العروض والخصومات' : 'Promotions'}</h2>
           {data.promotions.length === 0 ? <p className="text-sm text-slate-500">{isAr ? 'لا توجد عروض.' : 'No promotions yet.'}</p> : <div className="space-y-3">{data.promotions.map(promo => <div key={promo.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div><p className="font-semibold">{promo.code} · {promo.discount_type === 'percent' ? `${promo.percent_off}%` : money(promo.amount_off_minor || 0, promo.currency || 'EGP')}</p><p className="text-xs text-slate-500">{new Date(promo.starts_at).toLocaleDateString()} – {new Date(promo.ends_at).toLocaleDateString()} · {promo.redemption_count}{promo.max_redemptions ? `/${promo.max_redemptions}` : ''}</p>{promo.first_ten_offer && <p className="text-xs text-indigo-600">{isAr ? 'عرض أول عشرة' : 'First-ten offer'}</p>}</div><button type="button" disabled={saving} onClick={() => void togglePromotion(promo)} className={promo.is_active ? 'rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700' : 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600'}>{promo.is_active ? (isAr ? 'نشط — إيقاف' : 'Active — deactivate') : (isAr ? 'غير نشط — تفعيل' : 'Inactive — activate')}</button></div>)}</div>}
         </div>
+      </section>
+
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 font-bold text-slate-900">{isAr ? 'سجل تدقيق إدارة المنصة' : 'Platform administration audit log'}</h2>
+        {data.auditEvents.length === 0 ? <p className="text-sm text-slate-500">{isAr ? 'لا توجد أحداث إدارية مسجلة بعد.' : 'No administrator events recorded yet.'}</p> : <div className="overflow-x-auto"><table className="w-full min-w-[650px] text-start text-sm"><thead><tr className="border-b text-xs text-slate-500"><th className="p-2">{isAr ? 'الإجراء' : 'Action'}</th><th className="p-2">{isAr ? 'نوع العنصر' : 'Resource'}</th><th className="p-2">{isAr ? 'معرّف العنصر' : 'Resource ID'}</th><th className="p-2">{isAr ? 'المنفذ' : 'Actor'}</th><th className="p-2">{isAr ? 'التوقيت' : 'Time'}</th></tr></thead><tbody>{data.auditEvents.map(event => <tr key={event.id} className="border-b border-slate-100"><td className="p-2 font-medium">{event.action}</td><td className="p-2">{event.resource_type}</td><td className="p-2 font-mono text-xs">{event.resource_id || '—'}</td><td className="p-2 font-mono text-xs">{event.actor_id.slice(0, 8)}…</td><td className="p-2">{new Date(event.created_at).toLocaleString(isAr ? 'ar-EG' : 'en-US')}</td></tr>)}</tbody></table></div>}
+        <p className="mt-3 text-xs text-slate-500">{isAr ? 'السجل للقراءة فقط، وتُمنع تعديلات وحذف أحداثه من قاعدة البيانات.' : 'Read-only audit history. Database triggers reject updates and deletes.'}</p>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
