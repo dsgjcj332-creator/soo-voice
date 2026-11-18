@@ -34,6 +34,7 @@ import { FoodicsClient } from './pos/foodics/client';
 import { buildFoodicsOrderPayload, mapFoodicsProductsToCatalogItems, type FoodicsPricingSource } from './pos/foodics/mapping';
 import { exchangeFoodicsAuthorizationCode } from './pos/foodics/oauth';
 import { persistPosCatalogSnapshot } from './pos/catalog-persistence';
+import { StripeClient, mapStripeStatus, mapStripeSubscription, type StripeWebhookEvent } from './billing/stripe/client';
 import type { PosCreateOrderInput, PosProviderId } from './pos/types';
 
 /** Service-role REST backend for the server-to-server (API key) routes. */
@@ -209,7 +210,7 @@ export function createApiApp() {
       if (!response.ok) return null;
       const user = await response.json() as { id?: unknown };
       if (typeof user?.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(user.id)) return null;
-      return { backend, ownerId: user.id };
+      return { backend, ownerId: user.id, accessToken: match[1] };
     } catch {
       return null;
     }
@@ -1390,6 +1391,347 @@ export function createApiApp() {
     } catch (err) {
       console.error('[API] POS location deactivate error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'Could not deactivate POS location' });
+    }
+  });
+
+  // ============ MERCHANT BILLING (Stripe subscriptions) ============
+  const stripeSecretKey = () => {
+    const secretKey = process.env.STRIPE_SECRET_KEY || '';
+    return secretKey.length >= 20 ? secretKey : '';
+  };
+
+  app.get('/api/billing/plans', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    try {
+      const plansQuery = new URLSearchParams({
+        select: 'id,plan_key,display_name,description,features,usage_limits',
+        is_active: 'eq.true', order: 'sort_order.asc', limit: '20',
+      });
+      const plansResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/billing_plans?${plansQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const plans = await plansResponse.json().catch(() => null) as Array<{
+        id: string; plan_key: string; display_name: string;
+        description: string | null; features: Record<string, unknown>; usage_limits: Record<string, unknown>;
+      }> | null;
+      if (!plansResponse.ok || !Array.isArray(plans)) {
+        console.error('[API] Billing plans read failed:', plansResponse.status);
+        res.status(503).json({ error: 'Billing plans are temporarily unavailable' });
+        return;
+      }
+      const pricesQuery = new URLSearchParams({
+        select: 'id,plan_id,currency,billing_interval,amount_minor',
+        is_active: 'eq.true', limit: '200',
+      });
+      const pricesResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/billing_plan_prices?${pricesQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const prices = await pricesResponse.json().catch(() => null) as Array<{
+        id: string; plan_id: string; currency: string; billing_interval: string; amount_minor: string | number;
+      }> | null;
+      if (!pricesResponse.ok || !Array.isArray(prices)) {
+        console.error('[API] Billing prices read failed:', pricesResponse.status);
+        res.status(503).json({ error: 'Billing plans are temporarily unavailable' });
+        return;
+      }
+      const pricesByPlan = new Map<string, typeof prices>();
+      for (const price of prices) {
+        const list = pricesByPlan.get(price.plan_id) ?? [];
+        list.push(price);
+        pricesByPlan.set(price.plan_id, list);
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json(plans.map(plan => ({ ...plan, prices: pricesByPlan.get(plan.id) ?? [] })));
+    } catch (error) {
+      console.error('[API] Billing plans error:', error instanceof Error ? error.message : 'unknown');
+      res.status(500).json({ error: 'Failed to fetch billing plans' });
+    }
+  });
+
+  app.get('/api/billing/subscription', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth || !auth.accessToken) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    try {
+      // get_my_billing_entitlements() is a security-definer RPC resolving
+      // auth.uid(), so it must run with the merchant's own JWT, never the
+      // service key.
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/get_my_billing_entitlements`, {
+        method: 'POST',
+        headers: {
+          apikey: auth.backend.anonKey,
+          Authorization: `Bearer ${auth.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+      });
+      if (!response.ok) {
+        console.error('[API] Billing entitlements read failed:', response.status);
+        res.status(503).json({ error: 'Billing subscription is temporarily unavailable' });
+        return;
+      }
+      const data = await response.json().catch(() => null);
+      res.set('Cache-Control', 'no-store');
+      res.json(data ?? null);
+    } catch (error) {
+      console.error('[API] Billing subscription error:', error instanceof Error ? error.message : 'unknown');
+      res.status(500).json({ error: 'Failed to fetch billing subscription' });
+    }
+  });
+
+  app.post('/api/billing/checkout', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const secretKey = stripeSecretKey();
+    if (!secretKey) { res.status(503).json({ error: 'BILLING_NOT_CONFIGURED' }); return; }
+    const body = req.body || {};
+    const planKey = typeof body.planKey === 'string' ? body.planKey.trim() : '';
+    const billingInterval = body.billingInterval === 'yearly' ? 'yearly' : body.billingInterval === 'monthly' ? 'monthly' : '';
+    const currency = typeof body.currency === 'string' ? body.currency.trim().toUpperCase() : '';
+    if (!/^[a-z][a-z0-9_-]{1,39}$/.test(planKey) || !billingInterval || !/^[A-Z]{3}$/.test(currency)) {
+      res.status(400).json({ error: 'A valid plan key, billing interval and currency are required' });
+      return;
+    }
+    try {
+      const planQuery = new URLSearchParams({
+        select: 'id,plan_key,display_name', plan_key: `eq.${planKey}`, is_active: 'eq.true', limit: '1',
+      });
+      const planResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/billing_plans?${planQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const planRows = await planResponse.json().catch(() => null) as Array<{
+        id: string; plan_key: string; display_name: string;
+      }> | null;
+      if (!planResponse.ok || !Array.isArray(planRows)) {
+        res.status(503).json({ error: 'Billing plans are temporarily unavailable' });
+        return;
+      }
+      const plan = planRows[0];
+      if (!plan) { res.status(404).json({ error: 'Active plan not found' }); return; }
+      const priceQuery = new URLSearchParams({
+        select: 'id,amount_minor', plan_id: `eq.${plan.id}`, currency: `eq.${currency}`,
+        billing_interval: `eq.${billingInterval}`, is_active: 'eq.true',
+        effective_until: 'is.null', order: 'effective_from.desc', limit: '1',
+      });
+      const priceResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/billing_plan_prices?${priceQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const priceRows = await priceResponse.json().catch(() => null) as Array<{
+        id: string; amount_minor: string | number;
+      }> | null;
+      if (!priceResponse.ok || !Array.isArray(priceRows)) {
+        res.status(503).json({ error: 'Billing plans are temporarily unavailable' });
+        return;
+      }
+      const price = priceRows[0];
+      const amountMinor = Number(price?.amount_minor);
+      if (!price || !Number.isFinite(amountMinor) || amountMinor < 0) {
+        res.status(404).json({ error: 'No active price for this plan, currency and interval' });
+        return;
+      }
+      const host = req.get('host') ?? 'localhost';
+      const origin = `${req.protocol}://${host}`;
+      const client = new StripeClient({ secretKey });
+      const session = await client.createCheckoutSession({
+        planName: plan.display_name,
+        currency,
+        amountMinor,
+        billingInterval: billingInterval as 'monthly' | 'yearly',
+        clientReferenceId: auth.ownerId,
+        metadata: {
+          owner_id: auth.ownerId,
+          plan_id: plan.id,
+          price_id: price.id,
+          plan_key: plan.plan_key,
+          billing_interval: billingInterval,
+          currency,
+        },
+        successUrl: process.env.BILLING_CHECKOUT_SUCCESS_URL || `${origin}/settings?billing=checkout-success`,
+        cancelUrl: process.env.BILLING_CHECKOUT_CANCEL_URL || `${origin}/settings?billing=checkout-cancel`,
+      });
+      res.set('Cache-Control', 'no-store');
+      res.json({ checkoutUrl: session.url, sessionId: session.id });
+    } catch (error) {
+      console.error('[API] Billing checkout error:', error instanceof Error ? error.message : 'unknown');
+      res.status(502).json({ error: 'STRIPE_CHECKOUT_FAILED' });
+    }
+  });
+
+  // Stripe webhook ingress: verified against the documented v1 signature
+  // scheme before any processing, and kept idempotent per subscription.
+  app.post('/api/billing/webhooks/stripe', async (req, res) => {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    if (webhookSecret.length < 16) {
+      res.status(503).json({ error: 'BILLING_WEBHOOK_NOT_CONFIGURED' });
+      return;
+    }
+    const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
+    const signatureHeader = firstHeader(req.headers['stripe-signature']) || '';
+    if (!rawBody || rawBody.length === 0 || rawBody.length > 1024 * 1024 || !signatureHeader) {
+      res.status(400).json({ error: 'Invalid Stripe webhook request' });
+      return;
+    }
+    let event: StripeWebhookEvent;
+    try {
+      event = StripeClient.verifyWebhookSignature(rawBody, signatureHeader, webhookSecret);
+    } catch (error) {
+      console.error('[API] Stripe webhook signature verification failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(400).json({ error: 'STRIPE_WEBHOOK_SIGNATURE_INVALID' });
+      return;
+    }
+    const backend = getPosBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'BILLING_WEBHOOK_NOT_CONFIGURED' });
+      return;
+    }
+    try {
+      const object = event.data.object;
+      if (event.type === 'checkout.session.completed') {
+        const ownerId = typeof object.client_reference_id === 'string' ? object.client_reference_id : '';
+        const subscriptionId = typeof object.subscription === 'string' ? object.subscription : '';
+        const metadata = (object.metadata && typeof object.metadata === 'object' ? object.metadata : {}) as Record<string, unknown>;
+        const planId = typeof metadata.plan_id === 'string' ? metadata.plan_id : '';
+        const priceId = typeof metadata.price_id === 'string' ? metadata.price_id : '';
+        const billingInterval = metadata.billing_interval === 'yearly' ? 'yearly' : 'monthly';
+        const currencyRaw = typeof metadata.currency === 'string' ? metadata.currency.toUpperCase() : '';
+        const currency = /^[A-Z]{3}$/.test(currencyRaw) ? currencyRaw : null;
+        if (!isUuid(ownerId) || !isUuid(planId) || !isUuid(priceId) || !subscriptionId) {
+          res.json({ received: true, handled: 'ignored_invalid_payload' });
+          return;
+        }
+        const existingQuery = new URLSearchParams({ select: 'id', external_subscription_id: `eq.${subscriptionId}`, limit: '1' });
+        const existingResponse = await fetch(`${backend.supabaseUrl}/rest/v1/merchant_subscriptions?${existingQuery}`, {
+          headers: posServiceHeaders(backend.serviceKey),
+        });
+        const existingRows = await existingResponse.json().catch(() => null) as Array<{ id: string }> | null;
+        if (!existingResponse.ok || !Array.isArray(existingRows)) {
+          res.status(503).json({ error: 'Billing storage is temporarily unavailable' });
+          return;
+        }
+        if (existingRows.length > 0) { res.json({ received: true, handled: 'duplicate' }); return; }
+        const stripeSubscription = stripeSecretKey()
+          ? await new StripeClient({ secretKey: stripeSecretKey() }).retrieveSubscription(subscriptionId)
+          : null;
+        const insertResponse = await fetch(`${backend.supabaseUrl}/rest/v1/merchant_subscriptions`, {
+          method: 'POST',
+          headers: { ...posServiceHeaders(backend.serviceKey), Prefer: 'return=representation' },
+          body: JSON.stringify([{
+            owner_id: ownerId,
+            plan_id: planId,
+            price_id: priceId,
+            status: stripeSubscription ? mapStripeStatus(stripeSubscription.status) : 'active',
+            billing_interval: billingInterval,
+            currency,
+            trial_ends_at: null,
+            current_period_start: stripeSubscription?.currentPeriodStart ?? null,
+            current_period_end: stripeSubscription?.currentPeriodEnd ?? null,
+            cancel_at_period_end: stripeSubscription?.cancelAtPeriodEnd ?? false,
+            payment_provider: 'stripe',
+            external_subscription_id: subscriptionId,
+            metadata: {
+              stripe_customer_id: typeof object.customer === 'string' ? object.customer : null,
+              checkout_session_id: typeof object.id === 'string' ? object.id : null,
+            },
+          }]),
+        });
+        const insertedRows = await insertResponse.json().catch(() => null) as Array<{ id: string }> | null;
+        if (!insertResponse.ok || !Array.isArray(insertedRows) || insertedRows.length !== 1) {
+          console.error('[API] Stripe subscription insert failed:', insertResponse.status);
+          res.status(502).json({ error: 'STRIPE_WEBHOOK_PROCESSING_FAILED' });
+          return;
+        }
+        res.json({ received: true, handled: 'subscription_activated', subscriptionId: insertedRows[0].id });
+        return;
+      }
+      if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+        const subscriptionId = typeof object.id === 'string' ? object.id : '';
+        if (!subscriptionId) { res.json({ received: true, handled: 'ignored_invalid_payload' }); return; }
+        const mapped = mapStripeSubscription(object);
+        const status = event.type === 'customer.subscription.deleted'
+          ? 'canceled'
+          : mapStripeStatus(mapped.status);
+        const updateResponse = await fetch(`${backend.supabaseUrl}/rest/v1/merchant_subscriptions?external_subscription_id=eq.${encodeURIComponent(subscriptionId)}`, {
+          method: 'PATCH',
+          headers: { ...posServiceHeaders(backend.serviceKey), Prefer: 'return=representation' },
+          body: JSON.stringify({
+            status,
+            current_period_start: mapped.currentPeriodStart,
+            current_period_end: mapped.currentPeriodEnd,
+            cancel_at_period_end: mapped.cancelAtPeriodEnd,
+            canceled_at: mapped.canceledAt ?? (status === 'canceled' ? new Date().toISOString() : null),
+            updated_at: new Date().toISOString(),
+          }),
+        });
+        const updatedRows = await updateResponse.json().catch(() => null) as Array<{ id: string }> | null;
+        if (!updateResponse.ok || !Array.isArray(updatedRows)) {
+          console.error('[API] Stripe subscription update failed:', updateResponse.status);
+          res.status(502).json({ error: 'STRIPE_WEBHOOK_PROCESSING_FAILED' });
+          return;
+        }
+        if (updatedRows.length === 0) {
+          console.error('[API] Stripe webhook for unknown subscription:', subscriptionId);
+          res.json({ received: true, handled: 'unknown_subscription' });
+          return;
+        }
+        res.json({ received: true, handled: 'subscription_updated' });
+        return;
+      }
+      res.json({ received: true, handled: `ignored_${event.type}` });
+    } catch (error) {
+      console.error('[API] Stripe webhook processing error:', error instanceof Error ? error.message : 'unknown');
+      res.status(502).json({ error: 'STRIPE_WEBHOOK_PROCESSING_FAILED' });
+    }
+  });
+
+  app.post('/api/billing/subscription/cancel', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const secretKey = stripeSecretKey();
+    if (!secretKey) { res.status(503).json({ error: 'BILLING_NOT_CONFIGURED' }); return; }
+    const body = req.body || {};
+    const resume = body.resume === true;
+    try {
+      const query = new URLSearchParams({
+        select: 'id,status,payment_provider,external_subscription_id,cancel_at_period_end',
+        owner_id: `eq.${auth.ownerId}`,
+        status: 'in.(active,trialing,past_due)',
+        order: 'created_at.desc', limit: '1',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/merchant_subscriptions?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const rows = await response.json().catch(() => null) as Array<{
+        id: string; status: string; payment_provider: string | null; external_subscription_id: string | null;
+      }> | null;
+      if (!response.ok || !Array.isArray(rows)) {
+        res.status(503).json({ error: 'Billing storage is temporarily unavailable' });
+        return;
+      }
+      const row = rows[0];
+      if (!row) { res.status(404).json({ error: 'No active subscription found' }); return; }
+      if (row.payment_provider !== 'stripe' || !row.external_subscription_id) {
+        res.status(409).json({ error: 'BILLING_SUBSCRIPTION_NOT_MANAGED_BY_STRIPE' });
+        return;
+      }
+      const client = new StripeClient({ secretKey });
+      const updated = await client.setSubscriptionCancelAtPeriodEnd(row.external_subscription_id, !resume);
+      await fetch(`${auth.backend.supabaseUrl}/rest/v1/merchant_subscriptions?id=eq.${row.id}`, {
+        method: 'PATCH',
+        headers: posServiceHeaders(auth.backend.serviceKey),
+        body: JSON.stringify({ cancel_at_period_end: !resume, updated_at: new Date().toISOString() }),
+      });
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        status: updated.status,
+        cancelAtPeriodEnd: !resume,
+        currentPeriodEnd: updated.currentPeriodEnd,
+        message: resume
+          ? 'The subscription will stay active at the end of the current period'
+          : 'The subscription will cancel at the end of the current period',
+      });
+    } catch (error) {
+      console.error('[API] Billing subscription cancel error:', error instanceof Error ? error.message : 'unknown');
+      res.status(502).json({ error: 'STRIPE_SUBSCRIPTION_UPDATE_FAILED' });
     }
   });
 
