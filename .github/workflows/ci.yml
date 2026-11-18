@@ -96,6 +96,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_27_merchant_daily_tasks.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/store_settings.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_28_store_settings_profile_fields.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_07_merchant_settings.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_29_platform_admin_audit.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_merchant_billing_entitlements.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_menu_customizer_palette.sql
@@ -104,6 +105,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_03_pos_multi_branch_order_routing.sql
       - name: Test store settings save and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/store-settings-migrations-integration.sql
+      - name: Test merchant settings persistence and tenant isolation
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/merchant-settings-migrations-integration.sql
       - name: Verify schema, RLS and grants
         run: psql -X -v ON_ERROR_STOP=1 -f sql/verify_pos_catalog_staging.sql
       - name: Test catalog sync, audit trigger and tenant isolation
