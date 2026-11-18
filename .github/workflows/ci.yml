@@ -79,6 +79,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/store_settings.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_28_store_settings_profile_fields.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_29_platform_admin_audit.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_merchant_billing_entitlements.sql
       - name: Test store settings save and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/store-settings-migrations-integration.sql
       - name: Verify schema, RLS and grants
