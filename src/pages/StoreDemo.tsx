@@ -18,6 +18,7 @@ import {
   sessionRemainingSeconds, formatCountdown,
 } from '../lib/storeSettings';
 import { playChime, haptic } from '../lib/chime';
+import { GuestModifierPicker } from '../components/GuestModifierPicker';
 
 
 export function StoreDemo() {
@@ -26,6 +27,7 @@ export function StoreDemo() {
   const { user } = useAuth();
   const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount } = useCart();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
+  const [modifierItem, setModifierItem] = React.useState<any | null>(null);
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number } | null>(null);
@@ -1049,7 +1051,7 @@ export function StoreDemo() {
                       mobile tapping. */}
                   {!inCart ? (
                     <button
-                      onClick={() => addToCart({ id: item.id, name: item.name, price: item.price })}
+                      onClick={() => setModifierItem(item)}
                       style={customButtonColor ? { backgroundColor: customButtonColor, color: "#ffffff" } : undefined}
                       className={`w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-sm shadow-xs min-h-[44px] ${currentPrimary.buttonBg}`}
                     >
@@ -1558,6 +1560,15 @@ export function StoreDemo() {
           </>
         )}
       </div>
+
+      {modifierItem && <GuestModifierPicker
+        item={modifierItem}
+        ownerId={resolvedOwnerId}
+        language={language}
+        localMode={user?.provider === 'local' || !getSupabaseConfig().isConfigured}
+        onClose={() => setModifierItem(null)}
+        onAdd={(selected) => addToCart(selected)}
+      />}
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
       {storeSettings.showVoiceWidget && <VoiceWidget onPlaceOrder={handleSubmitOrder} />}
