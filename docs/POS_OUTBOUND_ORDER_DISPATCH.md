@@ -84,14 +84,14 @@ Set the following server-side environment variables:
 - `POS_CREDENTIALS_ENCRYPTION_KEY` (base64-encoded 32-byte key)
 - `POS_OUTBOX_WORKER_SECRET` (random secret, at least 32 characters)
 
-Call the protected endpoint from a trusted scheduler once per minute:
+The included GitHub Actions workflow calls the protected endpoint every five minutes. Add these repository Actions secrets to enable it:\n\n- `POS_OUTBOX_WORKER_URL` (the HTTPS application origin, without `/api/...`).\n- `POS_OUTBOX_WORKER_SECRET` (the same secret configured on the server).\n\nYou can also call the endpoint from another trusted scheduler:
 
 ```http
 GET /api/pos/outbox/dispatch
 Authorization: Bearer <POS_OUTBOX_WORKER_SECRET>
 ```
 
-The endpoint claims up to 10 events with a 120-second lease. It is safe to run multiple workers because the database claim uses `FOR UPDATE SKIP LOCKED`. Do not expose the worker secret to the browser or call this endpoint from the public storefront. This PR adds the worker endpoint but does not configure a scheduler automatically.
+The endpoint claims up to 10 events with a 120-second lease. It is safe to run multiple workers because the database claim uses `FOR UPDATE SKIP LOCKED`. Do not expose the worker secret to the browser or call this endpoint from the public storefront. The included GitHub Actions scheduler remains idle until both repository secrets are configured.
 
 ## Retries and operations
 
