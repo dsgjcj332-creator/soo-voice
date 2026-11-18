@@ -86,6 +86,17 @@ begin
   end;
 end $$;
 
+-- New connections start with neither direction enabled.
+do $
+begin
+  if (select inbound_webhooks_enabled from public.pos_connections
+      where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') is distinct from false
+     or (select outbound_orders_enabled from public.pos_connections
+      where id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') is distinct from false then
+    raise exception 'POS_CAPABILITY_FLAGS_MUST_DEFAULT_FALSE';
+  end if;
+end $;
+
 -- Authenticated merchants can read only their own routing rows.
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
