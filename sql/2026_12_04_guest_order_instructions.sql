@@ -147,7 +147,7 @@ begin
     'replayed', false
   );
 end;
-$;
+$$;
 
 -- Remove the legacy six-argument overload so PostgREST has one unambiguous RPC.
 drop function if exists public.create_guest_order(text,text,jsonb,text,text,text);
