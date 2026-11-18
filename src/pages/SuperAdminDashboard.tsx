@@ -12,6 +12,24 @@ export function SuperAdminDashboard() {
   const [conversations24h, setConversations24h] = useState<number | null>(null);
   const [orders24h, setOrders24h] = useState<number | null>(null);
   const [adminActionError, setAdminActionError] = useState("");
+  const [billingOverview, setBillingOverview] = useState<{
+    activePlans: number | null;
+    activeSubscriptions: number | null;
+    trialingSubscriptions: number | null;
+    pastDueSubscriptions: number | null;
+    openInvoices: number | null;
+    paidInvoices: number | null;
+    activePromotions: number | null;
+  }>({
+    activePlans: null,
+    activeSubscriptions: null,
+    trialingSubscriptions: null,
+    pastDueSubscriptions: null,
+    openInvoices: null,
+    paidInvoices: null,
+    activePromotions: null,
+  });
+  const [billingOverviewError, setBillingOverviewError] = useState("");
 
   useEffect(() => {
     const unsubscribe = subscribeToMerchants((data) => {
@@ -19,6 +37,51 @@ export function SuperAdminDashboard() {
       setLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Billing overview is visible only to trusted app_metadata admins via
+  // database RLS; the browser receives read-only aggregates, never write access.
+  useEffect(() => {
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) return;
+    let cancelled = false;
+
+    const fetchBillingOverview = async () => {
+      const [plans, active, trialing, pastDue, openInvoices, paidInvoices, promotions] = await Promise.all([
+        supabase.from('billing_plans').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('merchant_subscriptions').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('merchant_subscriptions').select('id', { count: 'exact', head: true }).eq('status', 'trialing'),
+        supabase.from('merchant_subscriptions').select('id', { count: 'exact', head: true }).eq('status', 'past_due'),
+        supabase.from('billing_invoices').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+        supabase.from('billing_invoices').select('id', { count: 'exact', head: true }).eq('status', 'paid'),
+        supabase.from('billing_promotions').select('id', { count: 'exact', head: true }).eq('is_active', true),
+      ]);
+      const firstError = [plans, active, trialing, pastDue, openInvoices, paidInvoices, promotions]
+        .find((result) => result.error)?.error;
+      if (cancelled) return;
+      if (firstError) {
+        setBillingOverviewError(firstError.message);
+        return;
+      }
+      setBillingOverviewError("");
+      setBillingOverview({
+        activePlans: plans.count ?? 0,
+        activeSubscriptions: active.count ?? 0,
+        trialingSubscriptions: trialing.count ?? 0,
+        pastDueSubscriptions: pastDue.count ?? 0,
+        openInvoices: openInvoices.count ?? 0,
+        paidInvoices: paidInvoices.count ?? 0,
+        activePromotions: promotions.count ?? 0,
+      });
+    };
+
+    void fetchBillingOverview();
+    const interval = window.setInterval(() => void fetchBillingOverview(), 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, []);
 
   // Real platform activity from the database (last 24 hours)
@@ -123,6 +186,40 @@ export function SuperAdminDashboard() {
           </motion.div>
         ))}
       </div>
+
+      <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-slate-800">{language === 'ar' ? 'نظرة عامة على الاشتراكات والفوترة' : 'Subscriptions & Billing Overview'}</h2>
+            <p className="mt-1 text-xs text-slate-500">{language === 'ar' ? 'قراءة مباشرة من سجلات الفوترة، بدون تفعيل أو تعديل مالي من المتصفح.' : 'Live read-only billing records; no financial changes are made from the browser.'}</p>
+          </div>
+          <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">{language === 'ar' ? 'عرض فقط' : 'Read only'}</span>
+        </div>
+        {billingOverviewError && (
+          <p role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            {language === 'ar' ? 'تعذر تحميل بيانات الفوترة. تأكد من تطبيق ترحيل الفوترة وتعيين دور الإدارة الموثوق.' : 'Could not load billing data. Apply the billing migration and verify the trusted admin role.'}
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {[
+            [language === 'ar' ? 'الباقات النشطة' : 'Active plans', billingOverview.activePlans],
+            [language === 'ar' ? 'اشتراكات نشطة' : 'Active subscriptions', billingOverview.activeSubscriptions],
+            [language === 'ar' ? 'فترات تجريبية' : 'Trialing', billingOverview.trialingSubscriptions],
+            [language === 'ar' ? 'متأخرة السداد' : 'Past due', billingOverview.pastDueSubscriptions],
+            [language === 'ar' ? 'فواتير مفتوحة' : 'Open invoices', billingOverview.openInvoices],
+            [language === 'ar' ? 'فواتير مدفوعة' : 'Paid invoices', billingOverview.paidInvoices],
+            [language === 'ar' ? 'عروض نشطة' : 'Active promotions', billingOverview.activePromotions],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <p className="text-xs font-semibold text-slate-500">{label}</p>
+              <p className="mt-2 text-2xl font-extrabold text-slate-800">{value === null ? '—' : value}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-[11px] text-slate-400">
+          {language === 'ar' ? 'الإيرادات النقدية لن تظهر هنا قبل توصيل بوابة دفع موثقة ومطابقة المدفوعات الناجحة بالفواتير.' : 'Cash revenue is intentionally omitted until a verified payment gateway reconciles successful payments to invoices.'}
+        </p>
+      </section>
 
       {/* Charts & Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

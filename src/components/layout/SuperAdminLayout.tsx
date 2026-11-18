@@ -8,7 +8,8 @@ import {
   LogOut, 
   Activity,
   Globe,
-  Mic
+  Mic,
+  CreditCard
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { cn } from "../../lib/utils";
@@ -22,6 +23,7 @@ export function SuperAdminLayout() {
     { name: language === 'ar' ? 'إدارة المتاجر' : 'Merchants', href: '/admin/merchants', icon: Users },
     { name: language === 'ar' ? 'استوديو الأصوات' : 'Voice Studio', href: '/admin/voices', icon: Mic },
     { name: language === 'ar' ? 'الخوادم والـ API' : 'Servers & API', href: '/admin/servers', icon: Database },
+    { name: language === 'ar' ? 'إدارة الاشتراكات والباقات' : 'Plans & Billing', href: '/admin/billing', icon: CreditCard },
     { name: language === 'ar' ? 'إعدادات النظام' : 'System Settings', href: '/admin/settings', icon: Settings },
   ];
 
