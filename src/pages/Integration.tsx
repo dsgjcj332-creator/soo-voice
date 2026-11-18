@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   Code2,
@@ -15,7 +15,7 @@ import {
   Database,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getSupabase, getSupabaseConfig } from '../lib/supabase';
+import { getSupabaseConfig } from '../lib/supabase';
 import { PosConnectionsPanel } from '../components/PosConnectionsPanel';
 
 export function Integration() {
@@ -24,44 +24,8 @@ export function Integration() {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'iframe' | 'sdk' | 'webhook'>('iframe');
 
-  // Webhook settings states
-  const [webhookUrl, setWebhookUrl] = useState('');
-  const [isSavingWebhook, setIsSavingWebhook] = useState(false);
-  const [webhookStatusMessage, setWebhookStatusMessage] = useState('');
-
-  // Webhook debugger states
-  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
-  const [testStatusCode, setTestStatusCode] = useState<number | null>(null);
-  const [testResponseBody, setTestResponseBody] = useState<string>('');
-  const [showTerminal, setShowTerminal] = useState(false);
-
   // Connection status
   const { isConfigured } = getSupabaseConfig();
-
-  // Load webhook settings
-  useEffect(() => {
-    if (!user) return;
-    if (user.provider === 'local') return;
-    const fetchWebhookSettings = async () => {
-      try {
-        const supabase = getSupabase();
-        const { isConfigured } = getSupabaseConfig();
-        if (isConfigured && supabase) {
-          const { data, error } = await supabase
-            .from('webhook_settings')
-            .select('*')
-            .eq('ownerId', user.uid)
-            .single();
-          if (!error && data) {
-            if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching webhook settings:', err);
-      }
-    };
-    fetchWebhookSettings();
-  }, [user]);
 
   const origin = window.location.origin;
   const ownerId = user?.uid || 'merchant_abc123';
@@ -114,23 +78,6 @@ export function Integration() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSaveWebhook = async () => {
-    // URL persistence is intentionally disabled until a trusted backend
-    // validates destinations against SSRF (private, loopback and link-local
-    // address) attacks and owns signed, retryable delivery.
-    setWebhookStatusMessage(language === 'ar'
-      ? 'حفظ الويب هوك متوقف مؤقتًا. سيتم تفعيله بعد إضافة فحص أمني للرابط وخدمة تسليم موثوقة من الخادم.'
-      : 'Webhook URL saving is disabled until server-side destination validation and secure delivery are available.');
-  };
-
-  const handleTestWebhook = async () => {
-    setShowTerminal(true);
-    setTestStatusCode(501);
-    setTestResponseBody(language === 'ar'
-      ? 'اختبار الويب هوك من المتصفح متوقف لأسباب أمنية. يلزم تنفيذ التسليم والتوقيع من السيرفر.'
-      : 'Browser-side webhook testing is disabled for security. A signed server-side outbox endpoint is required.');
-  };
-
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto font-sans" id="integrations-page-root">
       <div className="mb-8">
@@ -165,140 +112,29 @@ export function Integration() {
 
       <PosConnectionsPanel language={language} />
 
-      {/* Webhooks section */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 mb-8">
-        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 flex flex-col md:flex-row gap-4 items-start">
-          <div className="bg-indigo-100 p-3 rounded-xl text-indigo-700 shrink-0">
-            <Webhook className="w-6 h-6" />
+      {/* POS delivery configuration */}
+      <section className="mb-8 rounded-3xl border border-indigo-100 bg-indigo-50/70 p-6 md:p-8">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-indigo-100 p-3 text-indigo-700">
+            <Database className="h-6 w-6" />
           </div>
-          <div className="space-y-1">
-            <h3 className="font-extrabold text-indigo-900 text-sm md:text-base">
-              {language === 'ar' ? 'ربط نظام الكاشير (POS) عبر الويب هوك' : 'Connect your POS via webhooks'}
-            </h3>
-            <p className="text-xs md:text-sm text-indigo-800/80 leading-relaxed">
+          <div className="space-y-2">
+            <h2 className="text-base font-extrabold text-indigo-950">
+              {language === 'ar' ? 'إعدادات توصيل الطلبات للكاشير' : 'POS order delivery'}
+            </h2>
+            <p className="text-sm leading-7 text-indigo-900/80">
               {language === 'ar'
-                ? 'إرسال الطلبات إلى أنظمة الكاشير غير مفعّل حاليًا. يلزم تجهيز خدمة تسليم آمنة تتحقق من الرابط وتوقّع الطلبات وتعيد المحاولة عند الفشل.'
-                : 'POS order delivery is not enabled yet. A secure delivery service with destination validation, request signing, and retries is required.'}
+                ? 'إدارة اتصالات الكاشير والفروع وتفعيل استقبال تحديثات الحالة وإرسال الطلبات موجودة في قسم اتصالات POS أعلاه. فعّل كل اتجاه بشكل مستقل بعد تجهيز الطرف المقابل.'
+                : 'Manage POS connections, branches, inbound status updates, and outbound order delivery in the POS Connections panel above. Enable each direction separately after its endpoint is configured.'}
+            </p>
+            <p className="text-xs leading-6 text-indigo-800/80">
+              {language === 'ar'
+                ? 'مهم: موصل الويب هوك العام يتيح الربط مع الأنظمة التي توفر نقطة HTTPS لاستقبال الطلبات. هذا لا يعني أن كل شركة كاشير لديها تكامل API أصلي أو OAuth جاهز؛ الموصل الأصلي لكل مزود يحتاج تنفيذه واختباره بشكل مستقل.'
+                : 'Important: the generic webhook bridge works with systems that expose an HTTPS order endpoint. It does not mean every POS vendor already has a native API or OAuth integration; each native provider adapter must be implemented and tested separately.'}
             </p>
           </div>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-          <div className="space-y-5">
-            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <Server className="w-4 h-4 text-indigo-500" />
-              {language === 'ar' ? 'معلومات نقطة الويب هوك' : 'Webhook endpoint'}
-            </h3>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1.5">
-                  {language === 'ar' ? 'رابط استقبال الطلبات:' : 'Webhook URL:'}
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://my-pos.com/api/v1/orders"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
-                />
-              </div>
-
-              <p className="text-xs text-slate-500">
-                {language === 'ar'
-                  ? 'مفتاح توقيع الويب هوك يُدار على السيرفر فقط ولا يظهر في المتصفح.'
-                  : 'Webhook signing credentials are managed server-side and are never exposed in the browser.'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button
-                onClick={handleSaveWebhook}
-                disabled={isSavingWebhook}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-5 py-3 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-indigo-100 shadow-md"
-              >
-                {isSavingWebhook ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}
-                {language === 'ar' ? 'حفظ' : 'Save'}
-              </button>
-
-              <button
-                onClick={handleTestWebhook}
-                disabled={isTestingWebhook || !webhookUrl}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 disabled:opacity-50 px-5 py-3 rounded-xl font-bold text-xs transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Play className="w-4 h-4 text-indigo-500" />
-                {language === 'ar' ? 'تجربة إرسال طلب' : 'Test dispatch'}
-              </button>
-            </div>
-
-            {webhookStatusMessage && (
-              <p className="text-xs font-bold text-indigo-600 animate-pulse">{webhookStatusMessage}</p>
-            )}
-          </div>
-
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-4">
-            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-widest flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-indigo-500" />
-              {language === 'ar' ? 'صيغة الحمولة (JSON Payload)' : 'Expected JSON payload'}
-            </h4>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              {language === 'ar'
-                ? 'مثال توضيحي لشكل الحدث بعد تفعيل خدمة التسليم الآمنة:'
-                : 'Illustrative event shape only; live dispatch is not enabled:'}
-            </p>
-            <pre className="bg-slate-900 text-slate-300 p-4 rounded-xl text-[11px] font-mono leading-relaxed overflow-x-auto max-h-48 border border-slate-800">
-              <code>{`{
-  "event": "order.created",
-  "timestamp": 1718919020101,
-    "data": {
-    "id": "order_734291",
-    "ownerId": "${user?.uid || 'merchant_uid'}",
-    "tableNumber": "5",
-    "items": [
-      { "id": "1", "name": "Classic Burger", "price": 12.99, "quantity": 2 }
-    ],
-    "total": 25.98,
-    "status": "pending",
-    "createdAt": 1718919020101
-  }
-}`}</code>
-            </pre>
-          </div>
-        </div>
-
-        {showTerminal && (
-          <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 font-mono text-xs border border-slate-800 shadow-lg space-y-3 relative overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
-              <span className="flex items-center gap-2 text-indigo-400 font-bold">
-                <Terminal className="w-4 h-4" />
-                {language === 'ar' ? 'سجل الاتصال المباشر' : 'Live webhook tester'}
-              </span>
-              <button
-                onClick={() => setShowTerminal(false)}
-                className="text-slate-500 hover:text-slate-300 text-[10px] uppercase font-bold"
-              >
-                {language === 'ar' ? 'إغلاق' : 'Close'}
-              </button>
-            </div>
-            <div className="space-y-1 bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner overflow-x-auto max-h-52">
-              <p className="text-slate-500">&gt; Dispatching POST to: <span className="text-slate-300">{webhookUrl}</span></p>
-              <p className="text-slate-500">&gt; Headers: Content-Type: application/json | x-soovoice-signature: sha256_...</p>
-              {isTestingWebhook ? (
-                <p className="text-amber-400 animate-pulse">&gt; WAITING FOR RESPONSE... (8000ms limit)</p>
-              ) : (
-                <>
-                  <p className="text-amber-400">&gt; Dispatch disabled by security policy.</p>
-                  <p className={`font-bold ${testStatusCode === 200 || testStatusCode === 201 ? 'text-green-400' : 'text-rose-400'}`}>
-                    &gt; RESPONSE STATUS: {testStatusCode} {testStatusCode === 200 || testStatusCode === 201 ? 'OK' : 'ERROR'}
-                  </p>
-                  <p className="text-indigo-300 font-semibold mt-2">&gt; RESPONSE BODY:</p>
-                  <pre className="text-slate-300 whitespace-pre-wrap text-[10px] pl-2 font-mono">{testResponseBody}</pre>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      </section>
 
       {/* Widget embed section */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
