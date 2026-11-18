@@ -85,6 +85,16 @@ export function AdminBillingManagement() {
     finally { setSaving(false); }
   };
 
+  const togglePrice = async (price: Price) => {
+    setSaving(true); setError(''); setNotice('');
+    try {
+      await api(`/prices/${price.id}`, { method: 'PATCH', body: JSON.stringify({ is_active: !price.is_active }) });
+      setNotice(isAr ? 'تم تحديث حالة السعر.' : 'Price status updated.');
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not update price'); }
+    finally { setSaving(false); }
+  };
+
   const togglePromotion = async (promo: Promotion) => {
     setSaving(true); setError(''); setNotice('');
     try {
@@ -154,7 +164,7 @@ export function AdminBillingManagement() {
       <section className="mb-6 grid gap-5 xl:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-4 font-bold text-slate-900">{isAr ? 'الباقات والأسعار' : 'Plans & prices'}</h2>
-          {loading ? <p className="text-sm text-slate-500">{isAr ? 'جاري التحميل...' : 'Loading...'}</p> : data.plans.length === 0 ? <p className="text-sm text-slate-500">{isAr ? 'لا توجد باقات بعد.' : 'No plans yet.'}</p> : <div className="space-y-3">{data.plans.map(plan => <div key={plan.id} className="rounded-xl border border-slate-200 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold">{plan.display_name} <span className="text-xs text-slate-400">({plan.plan_key})</span></p><p className="text-xs text-slate-500">{plan.description}</p></div><button type="button" disabled={saving} onClick={() => void togglePlan(plan)} className={plan.is_active ? 'rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700' : 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600'}>{plan.is_active ? (isAr ? 'نشطة — إيقاف' : 'Active — deactivate') : (isAr ? 'غير نشطة — تفعيل' : 'Inactive — activate')}</button></div><div className="mt-2 flex flex-wrap gap-2">{data.prices.filter(price => price.plan_id === plan.id).map(price => <span key={price.id} className="rounded-md bg-slate-100 px-2 py-1 text-xs">{money(price.amount_minor, price.currency)} / {price.billing_interval} · {price.is_active ? (isAr ? 'نشط' : 'active') : (isAr ? 'غير نشط' : 'inactive')}</span>)}</div></div>)}</div>}
+          {loading ? <p className="text-sm text-slate-500">{isAr ? 'جاري التحميل...' : 'Loading...'}</p> : data.plans.length === 0 ? <p className="text-sm text-slate-500">{isAr ? 'لا توجد باقات بعد.' : 'No plans yet.'}</p> : <div className="space-y-3">{data.plans.map(plan => <div key={plan.id} className="rounded-xl border border-slate-200 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-semibold">{plan.display_name} <span className="text-xs text-slate-400">({plan.plan_key})</span></p><p className="text-xs text-slate-500">{plan.description}</p></div><button type="button" disabled={saving} onClick={() => void togglePlan(plan)} className={plan.is_active ? 'rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700' : 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600'}>{plan.is_active ? (isAr ? 'نشطة — إيقاف' : 'Active — deactivate') : (isAr ? 'غير نشطة — تفعيل' : 'Inactive — activate')}</button></div><div className="mt-2 flex flex-wrap gap-2">{data.prices.filter(price => price.plan_id === plan.id).map(price => <button type="button" key={price.id} disabled={saving} onClick={() => void togglePrice(price)} className={price.is_active ? 'rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-700' : 'rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600'}>{money(price.amount_minor, price.currency)} / {price.billing_interval} · {price.is_active ? (isAr ? 'نشط — إيقاف' : 'active — deactivate') : (isAr ? 'غير نشط — تفعيل' : 'inactive — activate')}</button>)}</div></div>)}</div>}
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="mb-4 font-bold text-slate-900">{isAr ? 'العروض والخصومات' : 'Promotions'}</h2>
