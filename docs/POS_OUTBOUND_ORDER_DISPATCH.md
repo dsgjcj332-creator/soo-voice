@@ -39,7 +39,7 @@ The dispatcher never guesses a destination. It uses the merchant's saved default
 
 The merchant must save a default branch under Integrations → POS → Order routing. The default is used for orders without a matching table reference. Optional table rules route an exact table identifier (case-insensitive after trimming) to another active branch and POS connection. An exact table rule takes precedence over the default. If no default exists, or a selected connection/branch is disconnected or inactive, the event is retried and is never sent to an arbitrary branch.
 
-The routing table is tenant-scoped and readable by its merchant; all writes go through authenticated API endpoints and service-role database functions that verify the selected connection is connected and the branch is active and belongs to it. The migration automatically seeds a default only for merchants that have exactly one connected POS connection with exactly one active mapped branch. Merchants with multiple branches must choose explicitly.
+The routing table is tenant-scoped and readable by its merchant; all writes go through authenticated API endpoints and service-role database functions that verify the selected connection is connected and the branch is active and belongs to it. The migration automatically seeds a default only for merchants that already have outbound enabled on exactly one connected POS connection with exactly one active mapped branch. Other merchants must explicitly enable outbound and choose a default branch.
 
 Each routed branch needs its own approved menu-to-POS mappings and active catalog items. A menu item missing from the selected branch's mapping blocks that order rather than silently sending it to a different branch.
 
