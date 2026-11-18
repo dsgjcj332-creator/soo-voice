@@ -1117,13 +1117,14 @@ export function createApiApp() {
       const connectionResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_connections?${connectionQuery}`, {
         headers: posServiceHeaders(backend.serviceKey),
       });
-      const connectionRows = await connectionResponse.json().catch(() => null) as Array<{
+      type PosConnectionRow = {
         id: string; provider: string; credentials_ciphertext: string | null;
         credentials_key_version: string | null;
-      }> | null;
+      };
+      const connectionRows = await connectionResponse.json().catch(() => null) as PosConnectionRow[] | null;
       if (!connectionResponse.ok || !Array.isArray(connectionRows)) throw new Error('POS_CONNECTION_LOOKUP_FAILED');
 
-      const configured: Array<{ connection: typeof connectionRows[number]; credentials: Record<string, unknown> }> = [];
+      const configured: Array<{ connection: PosConnectionRow; credentials: Record<string, unknown> }> = [];
       for (const connection of connectionRows) {
         if (!connection.credentials_ciphertext || !connection.credentials_key_version) continue;
         let credentials: Record<string, unknown>;
