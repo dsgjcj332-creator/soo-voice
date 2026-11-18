@@ -125,6 +125,28 @@ begin
 end;
 $$;
 
+create or replace function public.clear_pos_order_routes_for_inactive_location()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $
+begin
+  if old.active = true and new.active = false then
+    delete from public.pos_order_routes
+    where owner_id = new.owner_id and location_id = new.id;
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists pos_order_routes_clear_inactive_location on public.pos_locations;
+create trigger pos_order_routes_clear_inactive_location
+after update of active on public.pos_locations
+for each row execute function public.clear_pos_order_routes_for_inactive_location();
+
+revoke all on function public.clear_pos_order_routes_for_inactive_location() from public, anon, authenticated, service_role;
+
 create or replace function public.delete_pos_order_route(p_owner_id uuid, p_route_id uuid)
 returns boolean
 language plpgsql
