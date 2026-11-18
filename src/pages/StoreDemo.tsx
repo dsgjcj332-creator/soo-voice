@@ -330,10 +330,12 @@ export function StoreDemo() {
   // Guest checkout sends identifiers and quantities only. The trusted API
   // reloads catalog prices and commits the order + outbox in one transaction.
   const [submitErrorKind, setSubmitErrorKind] = React.useState<'rls' | 'network' | 'schema' | 'generic' | null>(null);
+  const [submitErrorMessage, setSubmitErrorMessage] = React.useState('');
   const handleSubmitOrder = async (): Promise<boolean> => {
     if (cartItems.length === 0 || checkoutStatus === 'sending') return false;
     setCheckoutStatus('sending');
     setSubmitErrorKind(null);
+    setSubmitErrorMessage('');
     try {
       const normalizeDigits = (value: string) =>
         value
@@ -396,7 +398,9 @@ export function StoreDemo() {
       });
       return true;
     } catch (err) {
-      console.error('Secure order submit error:', err instanceof Error ? err.message : err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Secure order submit error:', message);
+      setSubmitErrorMessage(message);
       setCheckoutStatus('error');
       setTimeout(() => setCheckoutStatus('idle'), 7000);
       return false;
@@ -1257,6 +1261,11 @@ export function StoreDemo() {
                     </>
                   )}
                 </button>
+                {checkoutStatus === 'error' && submitErrorMessage && (
+                  <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-700 break-words">
+                    {language === 'ar' ? 'تفاصيل المشكلة: ' : 'Error details: '}{submitErrorMessage}
+                  </p>
+                )}
                 <button
                   onClick={() => { if (confirm(language === 'ar' ? 'تفريغ الطلب؟' : 'Clear order?')) clearCart(); }}
                   className="w-full text-xs text-slate-400 hover:text-rose-500 font-bold transition-colors min-h-[44px]"
