@@ -1328,10 +1328,28 @@ export function createApiApp() {
 
     const store = new SupabaseOutboxStore(backend.supabaseUrl, backend.serviceKey);
     const resolveTarget = async (event: OrderOutboxEvent): Promise<PosDispatchTarget> => {
+      const routeQuery = new URLSearchParams({
+        select: 'id,connection_id,location_id,route_type,route_value',
+        owner_id: `eq.${event.owner_id}`,
+      });
+      const routeResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_order_routes?${routeQuery}`, {
+        headers: posServiceHeaders(backend.serviceKey),
+      });
+      const routeRows = await routeResponse.json().catch(() => null) as Array<{
+        id: string; connection_id: string; location_id: string;
+        route_type: 'default' | 'table'; route_value: string | null;
+      }> | null;
+      if (!routeResponse.ok || !Array.isArray(routeRows)) throw new Error('POS_ORDER_ROUTE_LOOKUP_FAILED');
+      const tableReference = typeof event.payload.tableNumber === 'string'
+        ? event.payload.tableNumber : '';
+      const route = selectPosOrderRoute(routeRows, tableReference);
+
       const connectionQuery = new URLSearchParams({
         select: 'id,provider,credentials_ciphertext,credentials_key_version',
+        id: `eq.${route.connection_id}`,
         owner_id: `eq.${event.owner_id}`,
         status: 'eq.connected',
+        limit: '1',
       });
       const connectionResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_connections?${connectionQuery}`, {
         headers: posServiceHeaders(backend.serviceKey),
@@ -1342,32 +1360,31 @@ export function createApiApp() {
       };
       const connectionRows = await connectionResponse.json().catch(() => null) as PosConnectionRow[] | null;
       if (!connectionResponse.ok || !Array.isArray(connectionRows)) throw new Error('POS_CONNECTION_LOOKUP_FAILED');
-
-      const configured: Array<{ connection: PosConnectionRow; credentials: Record<string, unknown> }> = [];
-      for (const connection of connectionRows) {
-        if (!connection.credentials_ciphertext || !connection.credentials_key_version) continue;
-        let credentials: Record<string, unknown>;
-        try {
-          credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
-        } catch {
-          throw new Error('POS_CREDENTIALS_UNAVAILABLE');
-        }
-        if (typeof credentials.orderWebhookUrl === 'string' &&
-            typeof credentials.orderWebhookSecret === 'string' &&
-            credentials.orderWebhookSecret.length >= 32) {
-          configured.push({ connection, credentials });
-        }
+      if (connectionRows.length !== 1) throw new Error('POS_ROUTE_CONNECTION_NOT_CONNECTED');
+      const selected = connectionRows[0];
+      if (!selected.credentials_ciphertext || !selected.credentials_key_version) {
+        throw new Error('POS_CREDENTIALS_UNAVAILABLE');
       }
-      if (configured.length === 0) throw new Error('POS_ORDER_TARGET_NOT_CONFIGURED');
-      if (configured.length !== 1) throw new Error('POS_ORDER_TARGET_AMBIGUOUS');
-      const selected = configured[0];
-      if (!posProviders.has(selected.connection.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
+      let credentials: Record<string, unknown>;
+      try {
+        credentials = decryptPosCredentials(selected.credentials_ciphertext, selected.credentials_key_version);
+      } catch {
+        throw new Error('POS_CREDENTIALS_UNAVAILABLE');
+      }
+      if (typeof credentials.orderWebhookUrl !== 'string' ||
+          typeof credentials.orderWebhookSecret !== 'string' ||
+          credentials.orderWebhookSecret.length < 32) {
+        throw new Error('POS_ORDER_TARGET_NOT_CONFIGURED');
+      }
+      if (!posProviders.has(selected.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
 
       const locationQuery = new URLSearchParams({
         select: 'id,currency,provider_location_id',
+        id: `eq.${route.location_id}`,
         owner_id: `eq.${event.owner_id}`,
-        connection_id: `eq.${selected.connection.id}`,
+        connection_id: `eq.${selected.id}`,
         active: 'eq.true',
+        limit: '1',
       });
       const locationResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
         headers: posServiceHeaders(backend.serviceKey),
@@ -1376,8 +1393,7 @@ export function createApiApp() {
         id: string; currency: string | null; provider_location_id: string;
       }> | null;
       if (!locationResponse.ok || !Array.isArray(locationRows)) throw new Error('POS_LOCATION_LOOKUP_FAILED');
-      if (locationRows.length === 0) throw new Error('POS_LOCATION_NOT_CONFIGURED');
-      if (locationRows.length !== 1) throw new Error('POS_ORDER_LOCATION_AMBIGUOUS');
+      if (locationRows.length !== 1) throw new Error('POS_ROUTE_LOCATION_NOT_ACTIVE');
       const location = locationRows[0];
 
       const rawItems = event.payload.items;
@@ -1448,8 +1464,8 @@ export function createApiApp() {
         providerLocationId: location.provider_location_id,
         async createOrder(input: PosCreateOrderInput) {
           return sendCustomPosOrderWebhook({
-            orderWebhookUrl: selected.credentials.orderWebhookUrl as string,
-            orderWebhookSecret: selected.credentials.orderWebhookSecret as string,
+            orderWebhookUrl: credentials.orderWebhookUrl as string,
+            orderWebhookSecret: credentials.orderWebhookSecret as string,
           }, input);
         },
       } as PosDispatchTarget;
