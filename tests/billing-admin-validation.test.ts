@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isTrustedPlatformAdmin,
   isValidPlanInput,
   isValidPlanPatch,
   isValidPriceInput,
@@ -79,4 +80,13 @@ test('promotion dates and redemption limits are validated', () => {
   };
   assert.equal(isValidPromotionInput(valid), false);
   assert.equal(isValidPromotionInput({ ...valid, ends_at: '2027-01-01T00:00:00Z', max_redemptions: 0 }), false);
+});
+
+test('admin authorization trusts only verified app_metadata role claims', () => {
+  assert.equal(isTrustedPlatformAdmin({ role: 'admin' }), true);
+  assert.equal(isTrustedPlatformAdmin({ roles: ['merchant', 'admin'] }), true);
+  assert.equal(isTrustedPlatformAdmin({ role: 'merchant', roles: ['merchant'] }), false);
+  assert.equal(isTrustedPlatformAdmin(null), false);
+  // A caller-controlled user_metadata object is not passed to this predicate.
+  assert.equal(isTrustedPlatformAdmin({ display_name: 'Owner', role: 'admin' }), true);
 });
