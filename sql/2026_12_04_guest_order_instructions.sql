@@ -147,7 +147,10 @@ begin
     'replayed', false
   );
 end;
-$$;
+$;
+
+-- Remove the legacy six-argument overload so PostgREST has one unambiguous RPC.
+drop function if exists public.create_guest_order(text,text,jsonb,text,text,text);
 
 revoke all on function public.create_guest_order(text,text,jsonb,text,text,text,text) from public, anon, authenticated;
 grant execute on function public.create_guest_order(text,text,jsonb,text,text,text,text) to service_role;
