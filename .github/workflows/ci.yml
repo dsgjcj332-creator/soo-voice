@@ -104,12 +104,15 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_02_pos_order_status_webhook.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_03_pos_multi_branch_order_routing.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_08_pos_dispatch_alerts.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_09_conversations_and_webhook_settings.sql
       - name: Test store settings save and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/store-settings-migrations-integration.sql
       - name: Test merchant settings persistence and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/merchant-settings-migrations-integration.sql
       - name: Test POS dispatch alerts write and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/pos-dispatch-alerts-integration.sql
+      - name: Test conversations and webhook settings storage and isolation
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/conversations-webhook-settings-integration.sql
       - name: Verify schema, RLS and grants
         run: psql -X -v ON_ERROR_STOP=1 -f sql/verify_pos_catalog_staging.sql
       - name: Test catalog sync, audit trigger and tenant isolation
