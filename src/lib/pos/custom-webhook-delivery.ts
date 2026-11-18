@@ -59,7 +59,7 @@ async function secureHttpsPost(request: SignedWebhookRequest): Promise<{ statusC
     throw new Error('POS_WEBHOOK_URL_NOT_ALLOWED');
   }
 
-  let addresses: Awaited<ReturnType<typeof lookup>>[];
+  let addresses;
   try {
     addresses = await lookup(url.hostname, { all: true, verbatim: true });
   } catch {
