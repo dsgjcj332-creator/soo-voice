@@ -11,7 +11,7 @@ values
   ('faaaaaaa-faaa-4aaa-8aaa-aaaaaaaaaaaa','f1111111-f111-4111-8111-111111111111','custom','connected',true),
   ('fbbbbbbb-fbbb-4bbb-8bbb-bbbbbbbbbbbb','f1111111-f111-4111-8111-111111111111','custom','connected',true),
   ('fccccccc-fccc-4ccc-8ccc-cccccccccccc','f2222222-f222-4222-8222-222222222222','custom','connected',true),
-  ('fddddddd-fddd-4ddd-8ddd-dddddddddddd','f1111111-f111-4111-8111-111111111111','custom','pending');
+  ('fddddddd-fddd-4ddd-8ddd-dddddddddddd','f1111111-f111-4111-8111-111111111111','custom','pending',false);
 
 insert into public.pos_locations(id, owner_id, connection_id, provider_location_id, name, currency, active)
 values
