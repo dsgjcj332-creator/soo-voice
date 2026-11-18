@@ -177,7 +177,7 @@ export function StoreDemo() {
   const [menuLayout, setMenuLayout] = React.useState<string>("grid");
   const [customAccentColor, setCustomAccentColor] = React.useState<string>("");
   const [customCardColor, setCustomCardColor] = React.useState<string>("");
-  const [customButtonColor, setCustomButtonColor] = React.useState<string>("#4f46e5");
+  const [customButtonColor, setCustomButtonColor] = React.useState<string>("");
 
   // Load design customizations on mount and when owner ID changes
   React.useEffect(() => {
