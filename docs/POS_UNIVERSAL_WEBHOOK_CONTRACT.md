@@ -39,11 +39,30 @@ The connection's encrypted credentials must contain a `webhookSecret` string of 
 
 Each item must satisfy SooVoice's canonical catalog normalizer. Set `completeSnapshot` to true only when the payload contains the full catalog for that mapped branch; partial updates must use false. Provider-specific payloads must be translated into this contract by a vendor adapter or middleware.
 
+## Order status events
+
+The same endpoint accepts `x-pos-event-type: order.status` for a provider order that SooVoice previously submitted and linked to the local order.
+
+Example JSON body:
+
+```json
+{
+  "providerLocationId": "vendor-branch-123",
+  "providerOrderId": "vendor-order-987",
+  "status": "preparing",
+  "occurredAt": "2026-11-18T10:05:00.000Z"
+}
+```
+
+The `status` field must be one of SooVoice's canonical states: `pending`, `preparing`, `completed`, or `cancelled`. Vendor-specific states must be translated by the vendor adapter or merchant middleware. The provider order ID must match an accepted `pos_order_links` record for this exact connection and branch; a webhook cannot update an arbitrary local order.
+
+Status events are deduplicated by connection and provider event ID. Local order transitions are monotonic: `pending` may advance to `preparing`, `completed`, or `cancelled`; `preparing` may advance to `completed` or `cancelled`; `completed` and `cancelled` are terminal. Late/out-of-order events are acknowledged but cannot regress a terminal order. Completing an order records `completedAt` for the dashboard.
+
 ## Delivery guarantees and limits
 
 - HMAC verification uses the raw request body, timing-safe digest comparison, and a five-minute timestamp tolerance.
 - The server resolves the connection and active branch from stored database records; request data cannot choose an owner or internal branch ID.
 - Event IDs are unique per connection. Duplicate deliveries are acknowledged without applying the catalog twice.
 - Event receipt and catalog snapshot sync execute in one database transaction.
-- Only `catalog.snapshot` is implemented in this first ingress milestone. Order events, provider-specific OAuth, webhook subscription setup, secret provisioning/rotation UI, and polling adapters remain separate work.
+- `catalog.snapshot` and `order.status` are supported canonical event types. Provider-specific OAuth, automatic webhook subscription setup, order creation adapters, secret provisioning/rotation UI, and polling adapters remain separate work.
 - This bridge does not make every POS vendor compatible automatically. A vendor must support outbound webhooks or have a middleware adapter that can produce this signed canonical contract.
