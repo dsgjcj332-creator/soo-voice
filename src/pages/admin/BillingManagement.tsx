@@ -8,7 +8,8 @@ type Plan = { id: string; plan_key: string; display_name: string; description: s
 type Price = { id: string; plan_id: string; currency: string; billing_interval: string; amount_minor: number; is_active: boolean; effective_from: string; effective_until: string | null };
 type Promotion = { id: string; code: string; discount_type: string; percent_off: number | null; amount_off_minor: number | null; currency: string | null; starts_at: string; ends_at: string; max_redemptions: number | null; redemption_count: number; first_ten_offer: boolean; is_active: boolean };
 type Subscription = { id: string; owner_id: string; plan_id: string; status: string; currency: string | null; billing_interval: string | null; trial_ends_at: string | null; current_period_end: string | null };
-type AuditEvent = { id: string; actor_id: string; action: string; resource_type: string; resource_id: string | null; after_state: Record<string, unknown>; request_id: string | null; created_at: string };\ntype AdminData = { plans: Plan[]; prices: Price[]; promotions: Promotion[]; subscriptions: Subscription[]; auditEvents: AuditEvent[] };
+type AuditEvent = { id: string; actor_id: string; action: string; resource_type: string; resource_id: string | null; after_state: Record<string, unknown>; request_id: string | null; created_at: string };
+type AdminData = { plans: Plan[]; prices: Price[]; promotions: Promotion[]; subscriptions: Subscription[]; auditEvents: AuditEvent[] };
 
 const emptyData: AdminData = { plans: [], prices: [], promotions: [], subscriptions: [], auditEvents: [] };
 const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100';
@@ -48,13 +49,15 @@ export function AdminBillingManagement() {
       const [catalog, promotions, subscriptions, auditEvents] = await Promise.all([
         api('/plans'),
         api('/promotions'),
-        api('/subscriptions?limit=50&offset=0'),\n        api('/audit-events?limit=50&offset=0'),
+        api('/subscriptions?limit=50&offset=0'),
+        api('/audit-events?limit=50&offset=0'),
       ]);
       setData({
         plans: Array.isArray(catalog.plans) ? catalog.plans : [],
         prices: Array.isArray(catalog.prices) ? catalog.prices : [],
         promotions: Array.isArray(promotions) ? promotions : [],
-        subscriptions: Array.isArray(subscriptions.items) ? subscriptions.items : [],\n        auditEvents: Array.isArray(auditEvents) ? auditEvents : [],
+        subscriptions: Array.isArray(subscriptions.items) ? subscriptions.items : [],
+        auditEvents: Array.isArray(auditEvents) ? auditEvents : [],
       });
       setPriceForm(current => ({ ...current, plan_id: current.plan_id || catalog.plans?.[0]?.id || '' }));
     } catch (e) {
