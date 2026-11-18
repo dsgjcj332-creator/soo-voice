@@ -564,15 +564,15 @@ export function createApiApp() {
       res.status(503).json({ error: 'POS catalog review is temporarily unavailable' });
     }
   });
-  // Returns only merchant-owned public menu rows eligible for an explicit POS mapping.
+  // Returns merchant-owned menu rows, including assistant-only items that can
+  // be offered by voice and still need an explicit POS catalog mapping.
   app.get('/api/pos/menu-items', posConnectionRateLimit, async (req, res) => {
     const auth = await authenticatePosMerchant(req);
     if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
     try {
       const query = new URLSearchParams({
-        select: 'id,name,description,price',
+        select: 'id,name,description,price,isAiOnly',
         ownerId: `eq.${auth.ownerId}`,
-        or: '(isAiOnly.is.null,isAiOnly.eq.false)',
         order: 'name.asc',
         limit: '1000',
       });
@@ -705,7 +705,7 @@ export function createApiApp() {
       // menu_items uses the existing camelCase ownerId tenant column. Verify ownership
       // before accepting a free-form menu item ID; never trust an ID supplied by the browser.
       const menuQuery = new URLSearchParams({
-        select: 'id', id: `eq.${menuItemId}`, ownerId: `eq.${auth.ownerId}`, or: '(isAiOnly.is.null,isAiOnly.eq.false)', limit: '1',
+        select: 'id,isAiOnly', id: `eq.${menuItemId}`, ownerId: `eq.${auth.ownerId}`, limit: '1',
       });
       const menuResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/menu_items?${menuQuery}`, {
         headers: posServiceHeaders(auth.backend.serviceKey),
