@@ -533,6 +533,109 @@ export function createApiApp() {
     }
   });
 
+  // Explicitly activate inbound canonical webhooks after the merchant has
+  // configured the provider endpoint, saved a per-connection secret, and mapped
+  // at least one active branch. This is not an outbound order-create adapter.
+  app.post('/api/pos/connections/:connectionId/activate-webhooks', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const connectionId = req.params.connectionId;
+    if (!isUuid(connectionId) || req.body?.confirmWebhookConfigured !== true) {
+      res.status(400).json({ error: 'Confirm webhook configuration and provide a valid connection ID' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,status,credentials_ciphertext,credentials_key_version',
+        id: `eq.${connectionId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        limit: '1',
+      });
+      const read = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const rows = await read.json().catch(() => null) as Array<{
+        id: string; status: string; credentials_ciphertext: string | null;
+        credentials_key_version: string | null;
+      }> | null;
+      if (!read.ok) {
+        res.status(503).json({ error: 'Could not verify POS connection' });
+        return;
+      }
+      if (!Array.isArray(rows) || rows.length !== 1) {
+        res.status(404).json({ error: 'POS connection not found' });
+        return;
+      }
+      const connection = rows[0];
+      if (!connection.credentials_ciphertext || !connection.credentials_key_version) {
+        res.status(409).json({ error: 'Generate a webhook secret before activation' });
+        return;
+      }
+      const credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
+      if (typeof credentials.webhookSecret !== 'string' || credentials.webhookSecret.length < 32) {
+        res.status(409).json({ error: 'Generate a webhook secret before activation' });
+        return;
+      }
+      const locationQuery = new URLSearchParams({
+        select: 'id',
+        owner_id: `eq.${auth.ownerId}`,
+        connection_id: `eq.${connectionId}`,
+        active: 'eq.true',
+        limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locations = await locationResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!locationResponse.ok) {
+        res.status(503).json({ error: 'Could not verify an active POS branch' });
+        return;
+      }
+      if (!Array.isArray(locations) || locations.length === 0) {
+        res.status(409).json({ error: 'Add at least one active POS branch before activation' });
+        return;
+      }
+      if (connection.status === 'connected') {
+        res.set('Cache-Control', 'no-store');
+        res.json({ activated: true, alreadyActive: true, inboundWebhooks: true, outboundOrderCreation: false });
+        return;
+      }
+      if (!['pending', 'degraded'].includes(connection.status)) {
+        res.status(409).json({ error: 'This POS connection cannot be activated from its current state' });
+        return;
+      }
+      const updateQuery = new URLSearchParams({
+        id: `eq.${connectionId}`,
+        owner_id: `eq.${auth.ownerId}`,
+        status: `eq.${connection.status}`,
+        select: 'id,status',
+      });
+      const update = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${updateQuery}`, {
+        method: 'PATCH',
+        headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({ status: 'connected', last_error_code: null, updated_at: new Date().toISOString() }),
+      });
+      const updated = await update.json().catch(() => null) as Array<{ id: string; status: string }> | null;
+      if (!update.ok) {
+        console.error('[API] POS webhook activation failed:', update.status);
+        res.status(503).json({ error: 'Could not activate POS webhooks' });
+        return;
+      }
+      if (!Array.isArray(updated) || updated.length !== 1) {
+        res.status(409).json({ error: 'POS connection changed; refresh and try again' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({ activated: true, alreadyActive: false, inboundWebhooks: true, outboundOrderCreation: false });
+    } catch (err) {
+      console.error('[API] POS webhook activation error:', err instanceof Error ? err.message : 'unknown');
+      res.status(503).json({ error: 'Could not activate POS webhooks' });
+    }
+  });
+
   // ============ POS CATALOG REVIEW (READ-ONLY) ============
   // Exposes only persisted snapshots owned by the authenticated merchant.
   app.get('/api/pos/catalog', posConnectionRateLimit, async (req, res) => {

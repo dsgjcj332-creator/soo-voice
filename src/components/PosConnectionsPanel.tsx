@@ -61,15 +61,19 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [error, setError] = useState(false);
   const [webhookSecret, setWebhookSecret] = useState('');
   const [rotatingWebhookConnectionId, setRotatingWebhookConnectionId] = useState('');
+  const [activatingWebhookConnectionId, setActivatingWebhookConnectionId] = useState('');
 
-  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'catalog/apply' | 'catalog/apply-events' | 'menu-items', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
+  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'catalog/apply' | 'catalog/apply-events' | 'menu-items' | 'connections/activate-webhooks', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
     const supabase = getSupabase();
     if (!supabase || !user || user.provider !== 'supabase') {
       throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified Supabase session is required.');
     }
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session?.access_token) throw new Error(isArabic ? 'انتهت جلسة الدخول. سجّل الدخول مجددًا.' : 'Your session expired. Please sign in again.');
-    const response = await fetch(`/api/pos/${path}${resourceId ? `/${encodeURIComponent(resourceId)}` : ''}`, {
+    const endpoint = path === 'connections/activate-webhooks'
+      ? `/api/pos/connections/${encodeURIComponent(resourceId || '')}/activate-webhooks`
+      : `/api/pos/${path}${resourceId ? `/${encodeURIComponent(resourceId)}` : ''}`;
+    const response = await fetch(endpoint, {
       method,
       headers: {
         Authorization: `Bearer ${session.access_token}`,
@@ -252,6 +256,34 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     }
   };
 
+  const activateWebhookConnection = async (connection: PosConnection) => {
+    const activeBranches = locations.filter(location => location.connection_id === connection.id && location.active).length;
+    if (activeBranches === 0) {
+      setError(true);
+      setMessage(isArabic ? 'أضف فرعًا نشطًا قبل تفعيل Webhook.' : 'Add an active branch before activating webhooks.');
+      return;
+    }
+    const confirmed = window.confirm(isArabic
+      ? 'هل أكدت إعداد عنوان Webhook والسر داخل نظام الكاشير أو الوسيط؟ سيؤدي هذا إلى تفعيل استقبال تحديثات المنيو وحالة الطلبات فقط؛ إرسال طلبات جديدة للكاشير يحتاج موصلًا منفصلًا.'
+      : 'Have you configured the webhook URL and secret in your POS or middleware? This enables inbound catalog and order-status updates only; sending new orders still requires a separate provider adapter.');
+    if (!confirmed) return;
+    setActivatingWebhookConnectionId(connection.id);
+    setError(false);
+    setMessage('');
+    try {
+      await request('connections/activate-webhooks', 'POST', { confirmWebhookConfigured: true }, connection.id);
+      setMessage(isArabic
+        ? 'تم تفعيل استقبال Webhook لهذا الاتصال. مزامنة المنيو والحالات متاحة، لكن إرسال الطلبات للكاشير لم يُفعّل بعد.'
+        : 'Inbound webhooks are active for this connection. Catalog and status sync are enabled; outbound order creation is not.');
+      await loadConnections();
+    } catch (err) {
+      setError(true);
+      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تفعيل Webhook.' : 'Could not activate webhooks.'));
+    } finally {
+      setActivatingWebhookConnectionId('');
+    }
+  };
+
   const saveBranch = async (event: React.FormEvent) => {
     event.preventDefault();
     setSavingBranch(true);
@@ -297,7 +329,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const statusLabel = (status: string) => {
     const labels: Record<string, [string, string]> = {
       pending: ['قيد الإعداد', 'Pending setup'],
-      connected: ['متصل', 'Connected'],
+      connected: ['استقبال Webhook مفعّل', 'Inbound webhooks active'],
       degraded: ['يحتاج مراجعة', 'Degraded'],
       reauthorization_required: ['يحتاج إعادة تفويض', 'Reauthorization required'],
       disconnected: ['غير متصل', 'Disconnected'],
@@ -326,7 +358,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
 
     <div className="mt-5 flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sm text-sky-900">
       <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
-      <p>{isArabic ? 'الربط المحفوظ يظهر كـ «قيد الإعداد» حتى نضيف موصلًا فعليًا للمزوّد ونجري اختبار مصادقة ناجحًا. إضافة البيانات وحدها لا تعني أن الطلبات أو المنيو تتم مزامنتها.' : 'A saved connection remains “Pending setup” until a real provider adapter is implemented and authentication succeeds. Saving credentials alone does not synchronize menus or orders.'}</p>
+      <p>{isArabic ? 'يمكن تفعيل استقبال Webhook بعد إضافة فرع وحفظ السر وإعداد عنوان الاستقبال لدى مزوّدك أو وسيطك. هذا يزامن المنيو وحالة الطلبات الواردة فقط؛ إرسال طلب جديد إلى الكاشير يحتاج موصلًا فعليًا مستقلًا.' : 'Inbound webhooks can be activated after mapping a branch, generating a secret, and configuring your provider or middleware. This syncs incoming catalog and order status only; sending new orders still requires a separate provider adapter.'}</p>
     </div>
 
     {showForm && <form onSubmit={saveConnection} className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -375,6 +407,13 @@ export function PosConnectionsPanel({ language }: { language: string }) {
               {rotatingWebhookConnectionId === connection.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
               {isArabic ? 'إنشاء / تجديد سر Webhook' : 'Generate / rotate webhook secret'}
             </button>
+            <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/api/pos/webhooks/${connection.id}`).then(() => setMessage(isArabic ? 'تم نسخ عنوان Webhook.' : 'Webhook URL copied.')).catch(() => setMessage(isArabic ? 'تعذر النسخ؛ انسخ العنوان يدويًا.' : 'Copy failed; copy the URL manually.'))} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+              <Copy className="h-3.5 w-3.5" />{isArabic ? 'نسخ عنوان Webhook' : 'Copy webhook URL'}
+            </button>
+            {connection.status !== 'connected' && <button type="button" onClick={() => void activateWebhookConnection(connection)} disabled={activatingWebhookConnectionId === connection.id || !locations.some(location => location.connection_id === connection.id && location.active)} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+              {activatingWebhookConnectionId === connection.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              {isArabic ? 'تفعيل استقبال Webhook' : 'Activate inbound webhooks'}
+            </button>}
           </div>
         </div>;
       })}
