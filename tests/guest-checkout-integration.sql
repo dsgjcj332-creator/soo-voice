@@ -62,13 +62,8 @@ reset role;
 
 do $
 begin
-  if (select order_notes from public.orders where id = 'order_' || replace((
-    select id::text from public.order_outbox where payload->>'notes' = 'No onions, sauce on the side' limit 1
-  ), '-', '')) is null then
-    -- The durable outbox assertion above is the service-role boundary; the
-    -- direct row assertion below runs as the database test owner.
-    null;
-  end if;
+  -- Direct row assertion runs as the database test owner, after resetting
+  -- the restricted service_role used to exercise the checkout RPC.
   if not exists (
     select 1 from public.orders o
     join public.order_outbox ob on ob.order_id = o.id
