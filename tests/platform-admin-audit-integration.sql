@@ -1,7 +1,7 @@
 -- Run after the billing foundation and platform admin audit migrations.
 select set_config('request.jwt.claim.role', 'service_role', false);
-insert into auth.users(id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
-values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','authenticated','authenticated','audit-admin@soovoice.test','',now(),'{"role":"admin"}','{}',now(),now())
+insert into auth.users(id)
+values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
 on conflict (id) do nothing;
 insert into public.platform_admin_audit_events(actor_id, action, resource_type, resource_id, after_state)
 values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','billing.plan.created','billing_plan','ci-plan-1','{"plan_key":"ci-plan"}');
