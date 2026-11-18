@@ -115,9 +115,9 @@ begin
     end if;
     if exists (
       select 1
-        from jsonb_array_elements(v_line_modifiers) m
-       group by m->>'groupId'
-      having count(*) > 1 or m->>'groupId' is null
+        from jsonb_array_elements(v_line_modifiers) as submitted(modifier)
+       group by modifier->>'groupId'
+      having count(*) > 1 or modifier->>'groupId' is null
     ) then
       raise exception 'INVALID_MODIFIER_GROUP';
     end if;
@@ -133,9 +133,9 @@ begin
          and g.is_active = true
        order by g.sort_order, g.id
     loop
-      select m into v_modifier_entry
-        from jsonb_array_elements(v_line_modifiers) m
-       where m->>'groupId' = v_group.id::text
+      select submitted.modifier into v_modifier_entry
+        from jsonb_array_elements(v_line_modifiers) as submitted(modifier)
+       where submitted.modifier->>'groupId' = v_group.id::text
        limit 1;
 
       v_option_ids := case
@@ -193,9 +193,9 @@ begin
     -- Reject groups that are inactive, belong to another item, or another merchant.
     if jsonb_array_length(v_line_modifiers) <> (
       select count(*)
-        from jsonb_array_elements(v_line_modifiers) submitted
+        from jsonb_array_elements(v_line_modifiers) as submitted(modifier)
         join public.menu_modifier_groups g
-          on g.id::text = submitted->>'groupId'
+          on g.id::text = submitted.modifier->>'groupId'
          and g.owner_id::text = p_owner_id
          and g.menu_item_id = v_item_id
          and g.is_active = true
