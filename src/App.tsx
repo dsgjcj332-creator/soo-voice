@@ -14,6 +14,7 @@ import { SuperAdminDashboard } from "./pages/SuperAdminDashboard";
 import { AdminMerchants } from "./pages/admin/Merchants";
 import { AdminServers } from "./pages/admin/Servers";
 import { AdminSystemSettings } from "./pages/admin/SystemSettings";
+import { AdminBillingManagement } from "./pages/admin/BillingManagement";
 import { AdminVoices } from "./pages/admin/Voices";
 import { VoiceWidget } from "./components/widget/VoiceWidget";
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -76,6 +77,7 @@ function AppRoutes() {
           <Route path="voices" element={<AdminVoices />} />
           <Route path="servers" element={<AdminServers />} />
           <Route path="settings" element={<AdminSystemSettings />} />
+          <Route path="billing" element={<AdminBillingManagement />} />
         </Route>
 
         <Route path="/app" element={user ? <DashboardLayout /> : <Navigate to="/auth" />}>
