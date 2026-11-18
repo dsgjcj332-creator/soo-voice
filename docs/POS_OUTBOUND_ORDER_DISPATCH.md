@@ -32,7 +32,7 @@ Then:
 5. Configure the middleware to accept the signed order contract below.
 6. Configure the inbound webhook secret separately if you also want catalog/status updates.
 
-For safety, the current dispatcher requires exactly one connected POS connection with outbound webhook credentials and exactly one active branch for that merchant. If zero or multiple destinations are configured, the order remains in retry/dead-letter handling instead of being sent to an arbitrary branch. Multi-connection and multi-branch routing UI is a subsequent milestone.
+The dispatcher never guesses a destination. It uses the merchant's saved default route or an exact table-specific override, and verifies that the referenced connection is connected and the branch is active before loading credentials or catalog mappings.
 
 ## Multi-branch routing
 
