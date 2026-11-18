@@ -49,7 +49,7 @@ select c.owner_id, c.id, l.id, 'default'
 from public.pos_connections c
 join public.pos_locations l
   on l.owner_id = c.owner_id and l.connection_id = c.id and l.active = true
-where c.status = 'connected'
+where c.status = 'connected' and c.outbound_orders_enabled = true
   and not exists (select 1 from public.pos_order_routes r where r.owner_id = c.owner_id)
   and 1 = (
     select count(*)
@@ -103,6 +103,12 @@ begin
     where c.id = p_connection_id and c.owner_id = p_owner_id and c.status = 'connected'
   ) then
     raise exception 'POS_ROUTE_CONNECTION_NOT_CONNECTED' using errcode = '42501';
+  end if;
+  if not exists (
+    select 1 from public.pos_connections c
+    where c.id = p_connection_id and c.owner_id = p_owner_id and c.outbound_orders_enabled = true
+  ) then
+    raise exception 'POS_ROUTE_OUTBOUND_NOT_ENABLED' using errcode = '42501';
   end if;
   if not exists (
     select 1 from public.pos_locations l
