@@ -21,7 +21,7 @@ select set_config('request.jwt.claim.sub', 'aaaa1111-1111-4111-8111-111111111111
 do $$
 declare v_count integer; v_insert_blocked boolean := false;
 begin
- select count(*) into v_count from public.conversations where owner_id = auth.uid();
+ select count(*) into v_count from public.conversations where owner_id = auth.uid()::text;
  if v_count <> 1 then raise exception 'CONVERSATIONS_OWNER_READ_FAILED'; end if;
  select count(*) into v_count from public.conversations;
  if v_count <> 1 then raise exception 'CONVERSATIONS_TENANT_LEAK'; end if;
@@ -30,7 +30,7 @@ begin
  select count(*) into v_count from public.merchant_webhook_settings;
  if v_count <> 1 then raise exception 'WEBHOOK_SETTINGS_OWNER_READ_FAILED'; end if;
  begin
-  insert into public.conversations(owner_id, session_id) values (auth.uid(), 'sess-x');
+  insert into public.conversations(owner_id, session_id) values (auth.uid()::text, 'sess-x');
  exception when insufficient_privilege then v_insert_blocked := true;
  end;
  if not v_insert_blocked then raise exception 'CONVERSATIONS_MERCHANT_INSERT_ALLOWED'; end if;
