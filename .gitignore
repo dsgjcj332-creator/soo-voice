@@ -9,5 +9,5 @@ coverage/
 .vercel/
 .netlify/
 *.tsbuildinfo
-# Generated Vercel catch-all bundle (built by scripts/bundle-api.mjs)
-api/\[...slug\].js
+# Generated Vercel API function bundles (built by scripts/bundle-api.mjs)
+api/**/*.js
