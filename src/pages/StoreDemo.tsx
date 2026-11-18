@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { VoiceWidget } from '../components/widget/VoiceWidget';
 import { useAuth } from '../contexts/AuthContext';
-import { useCart, getCartLineId } from '../contexts/CartContext';
+import { useCart } from '../contexts/CartContext';
 import { getSupabase, getSupabaseConfig } from '../lib/supabase';
 import { normalizeCurrency, formatPrice } from '../lib/currency';
 import { useSearchParams } from 'react-router-dom';
