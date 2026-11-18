@@ -236,6 +236,35 @@ export function createBillingAdminRouter() {
     }
   });
 
+  router.patch('/prices/:priceId', async (req, res) => {
+    if (!/^[0-9a-f-]{36}$/i.test(req.params.priceId) ||
+        !req.body || typeof req.body !== 'object' || Array.isArray(req.body) ||
+        Object.keys(req.body).length !== 1 || typeof req.body.is_active !== 'boolean') {
+      res.status(400).json({ error: 'Only the active state of a price can be changed' });
+      return;
+    }
+    const { backend } = res.locals.billingAdmin;
+    try {
+      const query = new URLSearchParams({ id: `eq.${req.params.priceId}`, select: '*' });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/billing_plan_prices?${query}`, {
+        method: 'PATCH', headers: { ...headers(backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({ is_active: req.body.is_active }),
+      });
+      const rows = await response.json().catch(() => null);
+      if (!response.ok) {
+        res.status(400).json({ error: 'Could not update price status' });
+        return;
+      }
+      if (!Array.isArray(rows) || rows.length !== 1) {
+        res.status(404).json({ error: 'Price not found' });
+        return;
+      }
+      res.json(rows[0]);
+    } catch {
+      res.status(503).json({ error: 'Could not update price status' });
+    }
+  });
+
   router.get('/promotions', async (_req, res) => {
     const { backend } = res.locals.billingAdmin;
     try {
