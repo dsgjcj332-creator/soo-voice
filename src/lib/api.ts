@@ -435,6 +435,18 @@ export function createApiApp() {
       res.status(400).json({ error: 'Provider and non-empty credentials object are required' });
       return;
     }
+    // Foodics uses an account-level API token issued with the account owner's
+    // authorization. Accept only that secret here; do not silently store
+    // arbitrary JSON or imply that saving it verifies a live connection.
+    if (provider === 'foodics') {
+      const keys = Object.keys(credentials as Record<string, unknown>);
+      const apiToken = (credentials as Record<string, unknown>).apiToken;
+      if (keys.length !== 1 || keys[0] !== 'apiToken' || typeof apiToken !== 'string' ||
+          apiToken.trim().length < 20 || apiToken.trim().length > 4096) {
+        res.status(400).json({ error: 'Foodics requires a valid apiToken field only' });
+        return;
+      }
+    }
     let serialized: string;
     try {
       serialized = JSON.stringify(credentials);
