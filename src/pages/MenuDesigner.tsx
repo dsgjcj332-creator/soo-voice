@@ -62,7 +62,8 @@ export function MenuDesigner() {
   const [customAccentColor, setCustomAccentColor] = useState("");
   const [customCardColor, setCustomCardColor] = useState("");
   const [customButtonColor, setCustomButtonColor] = useState("");
-  const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success">("idle");
+  const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success" | "warning">("idle");
+  const [designSaveWarning, setDesignSaveWarning] = useState("");
 
   const activePrimary = COLOR_VARIANTS[menuPrimaryColor] || COLOR_VARIANTS.indigo;
 
@@ -120,24 +121,46 @@ export function MenuDesigner() {
       updatedAt: Date.now(),
     };
     setDesignSaveStatus("saving");
+    setDesignSaveWarning("");
     try {
-      if (user.provider === "local") {
-        localStorage.setItem(`menu_design_config_${user.uid}`, JSON.stringify(config));
-      } else {
+      const localKey = `menu_design_config_${user.uid}`;
+      localStorage.setItem(localKey, JSON.stringify(config));
+      localStorage.setItem("menu_design_config_global", JSON.stringify(config));
+      if (user.provider !== "local") {
         const supabase = getSupabase();
         if (!supabase) throw new Error("Supabase is not configured");
         const { error } = await supabase.from("menu_customizer").upsert(
           { ownerId: user.uid, ...config },
           { onConflict: "ownerId" }
         );
-        if (error) throw error;
+        if (error) {
+          const missingPaletteColumns = /customAccentColor|customCardColor|customButtonColor|schema cache|column .* does not exist/i.test(String(error.message || ""));
+          if (!missingPaletteColumns) throw error;
+          const legacyConfig = { ...config };
+          delete (legacyConfig as any).customAccentColor;
+          delete (legacyConfig as any).customCardColor;
+          delete (legacyConfig as any).customButtonColor;
+          const fallback = await supabase.from("menu_customizer").upsert(
+            { ownerId: user.uid, ...legacyConfig },
+            { onConflict: "ownerId" }
+          );
+          if (fallback.error) throw fallback.error;
+          setDesignSaveWarning(isAr
+            ? "تم حفظ التصميم الأساسي على السحابة والألوان المخصصة على هذا الجهاز. طبّق ترحيل ألوان المنيو لمزامنتها بين الأجهزة."
+            : "Base design synced to the cloud; custom colors are saved on this device. Apply the menu palette migration to sync them across devices.");
+          setDesignSaveStatus("warning");
+        } else {
+          setDesignSaveStatus("success");
+        }
+      } else {
+        setDesignSaveStatus("success");
       }
-      setDesignSaveStatus("success");
     } catch (err) {
       console.error("Failed to save design:", err);
-      setDesignSaveStatus("idle");
+      setDesignSaveWarning(isAr ? "تعذر حفظ التصميم. راجع الاتصال وحاول مرة أخرى." : "Could not save the design. Check the connection and retry.");
+      setDesignSaveStatus("warning");
     }
-    setTimeout(() => setDesignSaveStatus("idle"), 2500);
+    window.setTimeout(() => setDesignSaveStatus("idle"), 6000);
   };
 
   const ownerId = user?.uid || "demo_user";
@@ -169,6 +192,8 @@ export function MenuDesigner() {
               <CheckCircle2 className="w-4 h-4" />
               {isAr ? "تم الحفظ" : "Saved"}
             </>
+          ) : designSaveStatus === "warning" ? (
+            <>{isAr ? "حفظ جزئي" : "Partially saved"}</>
           ) : (
             <>
               <Save className="w-4 h-4" />
@@ -177,6 +202,11 @@ export function MenuDesigner() {
           )}
         </button>
       </div>
+      {designSaveWarning && (
+        <p role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+          {designSaveWarning}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* ============ Customizer (left, 2 cols) ============ */}
