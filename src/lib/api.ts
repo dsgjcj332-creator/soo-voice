@@ -202,8 +202,8 @@ export function createApiApp() {
     const timestamp = firstHeader(req.headers['x-pos-timestamp']);
     const signature = firstHeader(req.headers['x-pos-signature']);
     const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
-    if (!isUuid(connectionId) || !eventId || eventId.length > 160 ||
-        !eventType || eventType !== 'catalog.snapshot' ||
+    if (!isUuid(connectionId) || !eventId || !/^[A-Za-z0-9._:-]{1,160}$/.test(eventId) ||
+        !eventType || !['catalog.snapshot', 'order.status'].includes(eventType) ||
         !rawBody || rawBody.length === 0 || rawBody.length > 2 * 1024 * 1024) {
       res.status(400).json({ error: 'Invalid POS webhook request' });
       return;
@@ -249,9 +249,21 @@ export function createApiApp() {
 
       const body = req.body as Record<string, unknown>;
       const providerLocationId = typeof body?.providerLocationId === 'string' ? body.providerLocationId.trim() : '';
-      if (!providerLocationId || providerLocationId.length > 160 ||
-          typeof body.completeSnapshot !== 'boolean' || !Array.isArray(body.items)) {
+      if (!providerLocationId || providerLocationId.length > 160) {
+        res.status(400).json({ error: 'Invalid POS webhook branch' });
+        return;
+      }
+      if (eventType === 'catalog.snapshot' &&
+          (typeof body.completeSnapshot !== 'boolean' || !Array.isArray(body.items))) {
         res.status(400).json({ error: 'Invalid POS catalog snapshot payload' });
+        return;
+      }
+      const providerOrderId = typeof body.providerOrderId === 'string' ? body.providerOrderId.trim() : '';
+      const orderStatus = typeof body.status === 'string' ? body.status.trim() : '';
+      if (eventType === 'order.status' &&
+          (!providerOrderId || providerOrderId.length > 200 ||
+           !['pending', 'preparing', 'completed', 'cancelled'].includes(orderStatus))) {
+        res.status(400).json({ error: 'Invalid POS order status payload' });
         return;
       }
       const locationQuery = new URLSearchParams({
@@ -272,6 +284,40 @@ export function createApiApp() {
       }
       if (!Array.isArray(locations) || locations.length !== 1) {
         res.status(404).json({ error: 'Mapped active POS branch not found' });
+        return;
+      }
+
+      if (eventType === 'order.status') {
+        const rpcResponse = await fetch(`${backend.supabaseUrl}/rest/v1/rpc/ingest_pos_order_status_webhook`, {
+          method: 'POST',
+          headers: posServiceHeaders(backend.serviceKey),
+          body: JSON.stringify({
+            p_owner_id: connection.owner_id,
+            p_connection_id: connection.id,
+            p_location_id: locations[0].id,
+            p_provider_event_id: eventId,
+            p_event_metadata: {
+              provider: connection.provider,
+              providerLocationId,
+              occurredAt: typeof body.occurredAt === 'string' ? body.occurredAt.slice(0, 40) : null,
+            },
+            p_provider_order_id: providerOrderId,
+            p_order_status: orderStatus,
+          }),
+        });
+        const result = await rpcResponse.json().catch(() => null) as Record<string, unknown> | null;
+        if (!rpcResponse.ok || !result || result.accepted !== true) {
+          console.error('[API] POS order status webhook ingestion failed:', rpcResponse.status);
+          res.status(503).json({ error: 'POS order status webhook could not be processed; retry later' });
+          return;
+        }
+        res.set('Cache-Control', 'no-store');
+        res.status(200).json({
+          accepted: true,
+          duplicate: result.duplicate === true,
+          updated: result.updated === true,
+          status: typeof result.status === 'string' ? result.status : undefined,
+        });
         return;
       }
 
