@@ -123,7 +123,8 @@ begin
       from public.menu_items mi
      where mi.id::text = v_line.line->>'id'
        and mi."ownerId"::text = p_owner_id
-       and coalesce(mi."isAiOnly", false) = false
+     -- Assistant-only items are intentionally orderable when the voice agent
+     -- offers them; they remain hidden from the visual public catalog.
      limit 1;
 
     if not found or v_item_price is null or v_item_price <= 0 then
