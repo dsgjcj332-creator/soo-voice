@@ -283,6 +283,43 @@ export function createBillingAdminRouter() {
     }
   });
 
+  router.patch('/promotions/:promotionId', async (req, res) => {
+    const body = req.body as JsonObject;
+    const allowed = new Set(['description', 'ends_at', 'max_redemptions', 'is_active']);
+    const keys = body && typeof body === 'object' && !Array.isArray(body) ? Object.keys(body) : [];
+    const valid = /^[0-9a-f-]{36}$/i.test(req.params.promotionId) && keys.length > 0 &&
+      keys.every(key => allowed.has(key)) &&
+      (body.description === undefined || body.description === null || (typeof body.description === 'string' && body.description.length <= 2000)) &&
+      (body.ends_at === undefined || (typeof body.ends_at === 'string' && !Number.isNaN(Date.parse(body.ends_at)))) &&
+      (body.max_redemptions === undefined || body.max_redemptions === null ||
+        (Number.isSafeInteger(body.max_redemptions) && Number(body.max_redemptions) > 0)) &&
+      (body.is_active === undefined || typeof body.is_active === 'boolean');
+    if (!valid) {
+      res.status(400).json({ error: 'Invalid promotion update' });
+      return;
+    }
+    const { backend } = res.locals.billingAdmin;
+    try {
+      const query = new URLSearchParams({ id: `eq.${req.params.promotionId}`, select: '*' });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/billing_promotions?${query}`, {
+        method: 'PATCH', headers: { ...headers(backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify(body),
+      });
+      const rows = await response.json().catch(() => null);
+      if (!response.ok) {
+        res.status(400).json({ error: 'Could not update promotion; redemption limits cannot be set below the redeemed count' });
+        return;
+      }
+      if (!Array.isArray(rows) || rows.length !== 1) {
+        res.status(404).json({ error: 'Promotion not found' });
+        return;
+      }
+      res.json(rows[0]);
+    } catch {
+      res.status(503).json({ error: 'Could not update promotion' });
+    }
+  });
+
   router.get('/subscriptions', async (req, res) => {
     const { backend } = res.locals.billingAdmin;
     const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit || '50'), 10) || 50, 1), 100);
