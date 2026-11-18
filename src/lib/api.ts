@@ -1456,7 +1456,7 @@ export function createApiApp() {
         const mappingQuery = new URLSearchParams({
           select: 'provider_item_id,menu_item_id',
           owner_id: `eq.${event.owner_id}`,
-          connection_id: `eq.${selected.connection.id}`,
+          connection_id: `eq.${selected.id}`,
           location_id: `eq.${location.id}`,
           menu_item_id: `eq.${menuItemId}`,
           limit: '1',
@@ -1473,7 +1473,7 @@ export function createApiApp() {
         const catalogQuery = new URLSearchParams({
           select: 'provider_item_id,currency,active,available',
           owner_id: `eq.${event.owner_id}`,
-          connection_id: `eq.${selected.connection.id}`,
+          connection_id: `eq.${selected.id}`,
           location_id: `eq.${location.id}`,
           provider_item_id: `eq.${mappingRows[0].provider_item_id}`,
           active: 'eq.true',
@@ -1499,11 +1499,11 @@ export function createApiApp() {
 
       const context = {
         merchantId: event.owner_id,
-        connectionId: selected.connection.id,
+        connectionId: selected.id,
         locationId: location.id,
       };
       return {
-        provider: selected.connection.provider as PosProviderId,
+        provider: selected.provider as PosProviderId,
         context,
         orderCurrency,
         menuMappings: mappings,
