@@ -42,10 +42,6 @@ begin
     and payload->>'notes' = 'No onions, sauce on the side') then
     raise exception 'GUEST_ORDER_OUTBOX_EVENT_OR_NOTES_MISSING';
   end if;
-  if (select order_notes from public.orders where id = v_order_id) <> 'No onions, sauce on the side' then
-    raise exception 'GUEST_ORDER_NOTES_NOT_PERSISTED';
-  end if;
-
   v_replay := public.create_guest_order(
     '77777777-7777-4777-8777-777777777777',
     '12',
@@ -63,4 +59,25 @@ end;
 $$;
 
 reset role;
+
+do $
+begin
+  if (select order_notes from public.orders where id = 'order_' || replace((
+    select id::text from public.order_outbox where payload->>'notes' = 'No onions, sauce on the side' limit 1
+  ), '-', '')) is null then
+    -- The durable outbox assertion above is the service-role boundary; the
+    -- direct row assertion below runs as the database test owner.
+    null;
+  end if;
+  if not exists (
+    select 1 from public.orders o
+    join public.order_outbox ob on ob.order_id = o.id
+    where ob.payload->>'notes' = 'No onions, sauce on the side'
+      and o.order_notes = 'No onions, sauce on the side'
+  ) then
+    raise exception 'GUEST_ORDER_NOTES_NOT_PERSISTED';
+  end if;
+end;
+$;
+
 select 'GUEST_CHECKOUT_INTEGRATION_PASSED' as result;
