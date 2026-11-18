@@ -414,7 +414,8 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     try {
       await request('locations', 'PATCH', { active: false }, location.id);
       setLocations(current => current.map(item => item.id === location.id ? { ...item, active: false } : item));
-      setMessage(isArabic ? 'تم إيقاف ربط الفرع مع الاحتفاظ بسجل الطلبات.' : 'Branch mapping deactivated; order history was preserved.');
+      await loadOrderRoutes();
+      setMessage(isArabic ? 'تم إيقاف ربط الفرع وحذف قواعد توجيهه مع الاحتفاظ بسجل الطلبات.' : 'Branch mapping deactivated; its routing rules were cleared and order history was preserved.');
     } catch (err) {
       setError(true);
       setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر إزالة ربط الفرع.' : 'Could not remove branch mapping.'));
