@@ -5,8 +5,8 @@ do $$
 begin
   if to_regclass('public.menu_customizer') is not null then
     alter table public.menu_customizer
-      add column if not exists "customAccentColor" text not null default '#4f46e5',
-      add column if not exists "customCardColor" text not null default '#ffffff',
+      add column if not exists "customAccentColor" text not null default '',
+      add column if not exists "customCardColor" text not null default '',
       add column if not exists "customButtonColor" text not null default '#4f46e5';
   end if;
 end
@@ -22,9 +22,27 @@ begin
     ) then
       alter table public.menu_customizer
         add constraint menu_customizer_palette_hex_check check (
-          "customAccentColor" ~ '^#[0-9A-Fa-f]{6}$'
-          and "customCardColor" ~ '^#[0-9A-Fa-f]{6}$'
-          and "customButtonColor" ~ '^#[0-9A-Fa-f]{6}$'
+          ("customAccentColor" = '' or "customAccentColor" ~ '^#[0-9A-Fa-f]{6}
+        );
+    end if;
+  end if;
+end
+$$;
+)
+          and ("customCardColor" = '' or "customCardColor" ~ '^#[0-9A-Fa-f]{6}
+        );
+    end if;
+  end if;
+end
+$$;
+)
+          and ("customButtonColor" = '' or "customButtonColor" ~ '^#[0-9A-Fa-f]{6}
+        );
+    end if;
+  end if;
+end
+$$;
+)
         );
     end if;
   end if;
