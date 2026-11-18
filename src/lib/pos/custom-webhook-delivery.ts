@@ -53,9 +53,9 @@ function isPublicAddress(address: string): boolean {
 
 async function secureHttpsPost(request: SignedWebhookRequest): Promise<{ statusCode: number; body: string }> {
   const url = new URL(request.url);
-  if (url.protocol !== 'https:' || url.username || url.password || url.port && url.port !== '443' ||
-      !url.hostname || isIP(url.hostname) !== 0 || url.hostname === 'localhost' ||
-      !url.hostname.includes('.')) {
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
+      url.port && url.port !== '443' || !url.hostname || isIP(url.hostname) !== 0 ||
+      url.hostname === 'localhost' || !url.hostname.includes('.')) {
     throw new Error('POS_WEBHOOK_URL_NOT_ALLOWED');
   }
 
@@ -116,8 +116,8 @@ export async function sendCustomPosOrderWebhook(
     throw new Error('POS_ORDER_WEBHOOK_CREDENTIALS_MISSING');
   }
   const url = new URL(credentials.orderWebhookUrl);
-  if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') ||
-      isIP(url.hostname) !== 0 || !url.hostname.includes('.')) {
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
+      (url.port && url.port !== '443') || isIP(url.hostname) !== 0 || !url.hostname.includes('.')) {
     throw new Error('POS_WEBHOOK_URL_NOT_ALLOWED');
   }
   if (!Number.isSafeInteger(nowSeconds) || nowSeconds < 1) throw new Error('INVALID_WEBHOOK_TIMESTAMP');
