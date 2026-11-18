@@ -20,7 +20,8 @@ create table if not exists public.menu_modifier_groups (
     min_select <= max_select and
     (not is_required or min_select >= 1)
   ),
-  constraint menu_modifier_group_item_name_uidx unique (owner_id, menu_item_id, name)
+  constraint menu_modifier_group_item_name_uidx unique (owner_id, menu_item_id, name),
+  constraint menu_modifier_groups_id_owner_uidx unique (id, owner_id)
 );
 
 create index if not exists menu_modifier_groups_item_idx
@@ -44,10 +45,6 @@ create table if not exists public.menu_modifier_options (
     on delete cascade,
   constraint menu_modifier_option_group_name_uidx unique (group_id, name)
 );
-
--- The composite parent key is required for tenant-safe option ownership.
-create unique index if not exists menu_modifier_groups_id_owner_uidx
-  on public.menu_modifier_groups(id, owner_id);
 
 create index if not exists menu_modifier_options_group_idx
   on public.menu_modifier_options(owner_id, group_id, sort_order)
