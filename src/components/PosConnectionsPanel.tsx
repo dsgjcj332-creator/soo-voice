@@ -282,7 +282,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       return;
     }
     const confirmed = window.confirm(isArabic
-      ? 'هل أكدت إعداد عنوان Webhook والسر داخل نظام الكاشير أو الوسيط؟ سيؤدي هذا إلى تفعيل استقبال تحديثات المنيو وحالة الطلبات فقط؛ إرسال طلبات جديدة للكاشير يحتاج موصلًا منفصلًا.'
+      ? 'هل أكدت إعداد عنوان Webhook والسر داخل نظام الكاشير أو الوسيط؟ هذا يفعّل استقبال تحديثات المنيو وحالة الطلبات. إرسال الطلبات يتطلب أيضًا إعداد وسيط الإرسال وقواعد توجيه الفروع.'
       : 'Have you configured the webhook URL and secret in your POS or middleware? This enables inbound catalog and order-status updates only; sending new orders still requires a separate provider adapter.');
     if (!confirmed) return;
     setActivatingWebhookConnectionId(connection.id);
@@ -291,7 +291,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     try {
       await request('connections/activate-webhooks', 'POST', { confirmWebhookConfigured: true }, connection.id);
       setMessage(isArabic
-        ? 'تم تفعيل استقبال Webhook لهذا الاتصال. مزامنة المنيو والحالات متاحة، لكن إرسال الطلبات للكاشير لم يُفعّل بعد.'
+        ? 'تم تفعيل استقبال Webhook. لإرسال الطلبات، تأكد من إعداد وسيط الإرسال وربط الأصناف وحفظ الفرع الافتراضي.'
         : 'Inbound webhooks are active for this connection. Catalog and status sync are enabled; outbound order creation is not.');
       await loadConnections();
     } catch (err) {
