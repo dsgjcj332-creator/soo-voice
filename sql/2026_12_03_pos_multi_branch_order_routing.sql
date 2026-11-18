@@ -86,7 +86,7 @@ begin
     v_value := null;
   else
     v_value := upper(btrim(coalesce(p_route_value, '')));
-    if length(v_value) not between 1 and 40 or v_value !~ '^[A-Z0-9][A-Z0-9 _./-]*$' then
+    if length(v_value) not between 1 and 40 or v_value !~ '^[A-Z0-9][A-Z0-9 _./-]*\\Z' then
       raise exception 'INVALID_TABLE_ROUTE_VALUE' using errcode = '22023';
     end if;
   end if;
@@ -130,7 +130,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $
+as $function$
 begin
   if old.active = true and new.active = false then
     delete from public.pos_order_routes
@@ -138,7 +138,7 @@ begin
   end if;
   return new;
 end;
-$;
+$function$;
 
 drop trigger if exists pos_order_routes_clear_inactive_location on public.pos_locations;
 create trigger pos_order_routes_clear_inactive_location
