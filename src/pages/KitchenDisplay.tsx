@@ -181,7 +181,10 @@ export function KitchenDisplay() {
     try {
       const { data, error } = await supabase
         .from('orders')
-        .update({ status: newStatus })
+        .update({
+          status: newStatus,
+          completedAt: newStatus === 'completed' ? Date.now() : null,
+        })
         .eq('id', orderId)
         .eq('ownerId', user.uid)
         .select('id,status')
