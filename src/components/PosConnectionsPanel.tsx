@@ -424,7 +424,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
 
   const routableLocations = locations.filter(location =>
     location.active && connections.some(connection =>
-      connection.id === location.connection_id && connection.status === 'connected'));
+      connection.id === location.connection_id && connection.outbound_orders_active === true));
 
   const statusLabel = (status: string) => {
     const labels: Record<string, [string, string]> = {
