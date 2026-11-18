@@ -145,6 +145,7 @@ test('outbound-only POS credentials can activate dispatch without an inbound web
       });
       return json([{
         id: connectionId, status: 'pending',
+        inbound_webhooks_enabled: false, outbound_orders_enabled: false,
         credentials_ciphertext: encrypted.ciphertext,
         credentials_key_version: encrypted.keyVersion,
       }]);
@@ -168,6 +169,8 @@ test('outbound-only POS credentials can activate dispatch without an inbound web
     assert.equal(result.outboundOrderCreation, true);
     assert.equal(result.inboundWebhooks, false);
     assert.equal(savedStatus?.status, 'connected');
+    assert.equal(savedStatus?.inbound_webhooks_enabled, false);
+    assert.equal(savedStatus?.outbound_orders_enabled, true);
   });
 });
 
