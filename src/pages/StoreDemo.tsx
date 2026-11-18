@@ -175,8 +175,8 @@ export function StoreDemo() {
   const [menuCurrency, setMenuCurrency] = React.useState<string>(normalizeCurrency(currency));
   React.useEffect(() => { setMenuCurrency(normalizeCurrency(currency)); }, [currency]);
   const [menuLayout, setMenuLayout] = React.useState<string>("grid");
-  const [customAccentColor, setCustomAccentColor] = React.useState<string>("#4f46e5");
-  const [customCardColor, setCustomCardColor] = React.useState<string>("#ffffff");
+  const [customAccentColor, setCustomAccentColor] = React.useState<string>("");
+  const [customCardColor, setCustomCardColor] = React.useState<string>("");
   const [customButtonColor, setCustomButtonColor] = React.useState<string>("#4f46e5");
 
   // Load design customizations on mount and when owner ID changes
@@ -985,7 +985,7 @@ export function StoreDemo() {
               <button
                 key="all"
                 type="button"
-                style={activeCategory === 'all' ? { backgroundColor: customButtonColor } : undefined}
+                style={activeCategory === 'all' && customButtonColor ? { backgroundColor: customButtonColor } : undefined}
                 onClick={() => setActiveCategory('all')}
                 className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap min-h-[44px] transition-all ${
                   activeCategory === 'all'
@@ -1001,7 +1001,7 @@ export function StoreDemo() {
                 <button
                   key={cat.id}
                   type="button"
-                  style={activeCategory === cat.id ? { backgroundColor: customButtonColor } : undefined}
+                  style={activeCategory === cat.id && customButtonColor ? { backgroundColor: customButtonColor } : undefined}
                   onClick={() => setActiveCategory(cat.id)}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap min-h-[44px] transition-all ${
                     activeCategory === cat.id
@@ -1022,11 +1022,11 @@ export function StoreDemo() {
                 // Existing quantity in cart (for showing +1 / + buttons instead of just Add)
                 const inCart = cartItems.find((c) => c.id === item.id);
                 return (
-                <div key={item.id} style={{ backgroundColor: customCardColor }} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-4 md:p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
+                <div key={item.id} style={customCardColor ? { backgroundColor: customCardColor } : undefined} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-4 md:p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <h3 className={`font-extrabold text-sm md:text-base line-clamp-2 ${currentBgTheme.titleText}`}>{item.name}</h3>
-                      <span className="font-extrabold text-base md:text-lg whitespace-nowrap" style={{ color: customAccentColor }} dir="ltr">
+                      <span className={`font-extrabold text-base md:text-lg whitespace-nowrap ${currentPrimary.text}`} style={customAccentColor ? { color: customAccentColor } : undefined} dir="ltr">
                         {formatPrice(item.price, menuCurrency)}
                       </span>
                     </div>
@@ -1039,8 +1039,8 @@ export function StoreDemo() {
                   {!inCart ? (
                     <button
                       onClick={() => addToCart({ id: item.id, name: item.name, price: item.price })}
-                      style={{ backgroundColor: customButtonColor, color: "#ffffff" }}
-                      className="w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-sm shadow-xs min-h-[44px]"
+                      style={customButtonColor ? { backgroundColor: customButtonColor, color: "#ffffff" } : undefined}
+                      className={`w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-sm shadow-xs min-h-[44px] ${currentPrimary.buttonBg}`}
                     >
                       <Plus className="w-4 h-4" />
                       {language === 'ar' ? 'إضافة للطلب' : 'Add to order'}
@@ -1284,7 +1284,7 @@ export function StoreDemo() {
         <div className="fixed inset-0 z-[17000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden max-h-[92dvh] overflow-y-auto">
             {/* Accent bar + logo */}
-            <div className="h-2" style={{ backgroundColor: customAccentColor }} />
+            <div className={`h-2 ${currentPrimary.bg}`} style={customAccentColor ? { backgroundColor: customAccentColor } : undefined} />
             <div className="p-6 text-center">
               {/* Logo */}
               <div className="flex justify-center mb-3">
@@ -1360,8 +1360,8 @@ export function StoreDemo() {
               <div className="space-y-2">
                 <button
                   onClick={() => { setTrackingOrder(lastOrder.id); }}
-                  style={{ backgroundColor: customButtonColor }}
-                  className="w-full flex items-center justify-center gap-2 text-white px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer"
+                  style={customButtonColor ? { backgroundColor: customButtonColor } : undefined}
+                  className={`w-full flex items-center justify-center gap-2 text-white px-4 py-3.5 rounded-xl text-sm font-bold transition-colors cursor-pointer ${currentPrimary.bg}`}
                 >
                   <Clock className="w-4 h-4" />
                   {language === 'ar' ? 'تتبع الطلب' : 'Track order'}
