@@ -267,6 +267,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
         throw new Error(isArabic ? 'لم يتم استلام السر الجديد بشكل صحيح.' : 'The new secret response was invalid.');
       }
       setWebhookSecret(result.secret);
+      await loadConnections();
       setMessage(isArabic
         ? 'تم إنشاء السر. انسخه واحفظه الآن؛ لن نعرضه مرة أخرى. السر السابق لم يعد صالحًا.'
         : 'Secret generated. Copy and store it now; it will not be shown again. The previous secret is no longer valid.');
