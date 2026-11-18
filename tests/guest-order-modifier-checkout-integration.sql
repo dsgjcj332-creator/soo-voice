@@ -19,7 +19,8 @@ insert into public.menu_modifier_groups(
 insert into public.menu_modifier_options(id, owner_id, group_id, name, price_delta)
 values
  ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', '88888888-8888-4888-8888-888888888888', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Cheese', 15),
- ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', '88888888-8888-4888-8888-888888888888', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bacon', 20)
+ ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', '88888888-8888-4888-8888-888888888888', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Bacon', 20),
+ ('99999999-9999-4999-8999-999999999999', '88888888-8888-4888-8888-888888888888', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'Extra cheese', 10)
 on conflict (id) do nothing;
 
 set role service_role;
@@ -81,7 +82,7 @@ begin
   begin
     perform public.create_guest_order(
       '88888888-8888-4888-8888-888888888888', 'A1',
-      '[{"id":"modifier-checkout-burger","quantity":1,"modifiers":[{"groupId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","optionIds":["dddddddd-dddd-4ddd-8ddd-dddddddddddd","eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","dddddddd-dddd-4ddd-8ddd-dddddddddddd"]}]}]'::jsonb,
+      '[{"id":"modifier-checkout-burger","quantity":1,"modifiers":[{"groupId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","optionIds":["dddddddd-dddd-4ddd-8ddd-dddddddddddd","eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee","99999999-9999-4999-8999-999999999999"]}]}]'::jsonb,
       '', 1, 'modifier-checkout-max-key-001', repeat('a',64), repeat('b',64)
     );
     raise exception 'MAX_MODIFIER_SELECTION_WAS_NOT_ENFORCED';
