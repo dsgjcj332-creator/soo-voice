@@ -70,8 +70,8 @@ export function AdminBillingManagement() {
   const submit = async (path: string, body: unknown, success: string) => {
     setSaving(true); setError(''); setNotice('');
     try {
-      await api(path, { method: 'POST', body: JSON.stringify(body) });
-      setNotice(success);
+      const result = await api(path, { method: 'POST', body: JSON.stringify(body) });
+      setNotice(result.audit_logged === false ? (isAr ? 'تم الحفظ لكن تعذر تسجيل العملية في سجل التدقيق؛ راجع السجل قبل تكرارها.' : 'Saved, but audit logging failed. Review the audit log before retrying.') : success);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save changes');
