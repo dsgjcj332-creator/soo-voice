@@ -95,6 +95,31 @@ function headers(key: string) {
   return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 }
 
+async function writePlatformAdminAudit(
+  backend: { supabaseUrl: string; serviceKey: string },
+  actorId: string,
+  action: string,
+  resourceType: string,
+  resourceId: string | null,
+  afterState: Record<string, unknown>,
+  requestId?: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${backend.supabaseUrl}/rest/v1/platform_admin_audit_events`, {
+      method: 'POST',
+      headers: { ...headers(backend.serviceKey), Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        actor_id: actorId, action, resource_type: resourceType, resource_id: resourceId,
+        after_state: afterState,
+        request_id: requestId && /^[A-Za-z0-9._:-]{1,128}$/.test(requestId) ? requestId : null,
+      }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function createBillingAdminRouter() {
   const router = express.Router();
 
@@ -156,7 +181,7 @@ export function createBillingAdminRouter() {
       res.status(400).json({ error: 'Invalid plan details' });
       return;
     }
-    const { backend } = res.locals.billingAdmin;
+    const { backend, adminId } = res.locals.billingAdmin;
     const body = req.body;
     const payload = {
       plan_key: body.plan_key, display_name: body.display_name.trim(),
@@ -174,7 +199,14 @@ export function createBillingAdminRouter() {
         res.status(response.status === 409 ? 409 : 400).json({ error: response.status === 409 ? 'Plan key already exists' : 'Could not create plan' });
         return;
       }
-      res.status(201).json(Array.isArray(rows) ? rows[0] : rows);
+      const saved = Array.isArray(rows) ? rows[0] : rows[0];
+      const auditLogged = await writePlatformAdminAudit(
+        backend, adminId, 'billing.plan.created', 'billing_plan', typeof saved?.id === 'string' ? saved.id : null,
+        { id: saved?.id, plan_key: saved?.plan_key, is_active: saved?.is_active },
+        typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+      );
+      if (!auditLogged) console.error('Platform admin audit write failed', { action: 'billing.plan.created', resourceId: saved.id });
+      res.status(201).json({ ...saved, audit_logged: auditLogged });
     } catch {
       res.status(503).json({ error: 'Could not create plan' });
     }
@@ -185,7 +217,7 @@ export function createBillingAdminRouter() {
       res.status(400).json({ error: 'Invalid plan update' });
       return;
     }
-    const { backend } = res.locals.billingAdmin;
+    const { backend, adminId } = res.locals.billingAdmin;
     const body = { ...req.body, ...(typeof req.body.display_name === 'string' ? { display_name: req.body.display_name.trim() } : {}) };
     try {
       const query = new URLSearchParams({ id: `eq.${req.params.planId}`, select: '*' });
@@ -202,7 +234,14 @@ export function createBillingAdminRouter() {
         res.status(404).json({ error: 'Plan not found' });
         return;
       }
-      res.json(rows[0]);
+      const saved = Array.isArray(rows) ? rows[0] : rows[0];
+      const auditLogged = await writePlatformAdminAudit(
+        backend, adminId, 'billing.plan.updated', 'billing_plan', typeof saved?.id === 'string' ? saved.id : null,
+        { id: saved?.id, plan_key: saved?.plan_key, is_active: saved?.is_active },
+        typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+      );
+      if (!auditLogged) console.error('Platform admin audit write failed', { action: 'billing.plan.updated', resourceId: saved.id });
+      res.json({ ...saved, audit_logged: auditLogged });
     } catch {
       res.status(503).json({ error: 'Could not update plan' });
     }
@@ -213,7 +252,7 @@ export function createBillingAdminRouter() {
       res.status(400).json({ error: 'Invalid plan price' });
       return;
     }
-    const { backend } = res.locals.billingAdmin;
+    const { backend, adminId } = res.locals.billingAdmin;
     const body = req.body;
     const payload = {
       plan_id: body.plan_id, currency: body.currency, billing_interval: body.billing_interval,
@@ -230,7 +269,14 @@ export function createBillingAdminRouter() {
         res.status(400).json({ error: 'Could not create plan price; verify the plan exists and the effective date is unique' });
         return;
       }
-      res.status(201).json(Array.isArray(rows) ? rows[0] : rows);
+      const saved = Array.isArray(rows) ? rows[0] : rows[0];
+      const auditLogged = await writePlatformAdminAudit(
+        backend, adminId, 'billing.price.created', 'billing_plan_price', typeof saved?.id === 'string' ? saved.id : null,
+        { id: saved?.id, plan_id: saved?.plan_id, currency: saved?.currency, amount_minor: saved?.amount_minor, is_active: saved?.is_active },
+        typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+      );
+      if (!auditLogged) console.error('Platform admin audit write failed', { action: 'billing.price.created', resourceId: saved.id });
+      res.status(201).json({ ...saved, audit_logged: auditLogged });
     } catch {
       res.status(503).json({ error: 'Could not create plan price' });
     }
@@ -243,7 +289,7 @@ export function createBillingAdminRouter() {
       res.status(400).json({ error: 'Only the active state of a price can be changed' });
       return;
     }
-    const { backend } = res.locals.billingAdmin;
+    const { backend, adminId } = res.locals.billingAdmin;
     try {
       const query = new URLSearchParams({ id: `eq.${req.params.priceId}`, select: '*' });
       const response = await fetch(`${backend.supabaseUrl}/rest/v1/billing_plan_prices?${query}`, {
@@ -259,7 +305,14 @@ export function createBillingAdminRouter() {
         res.status(404).json({ error: 'Price not found' });
         return;
       }
-      res.json(rows[0]);
+      const saved = Array.isArray(rows) ? rows[0] : rows[0];
+      const auditLogged = await writePlatformAdminAudit(
+        backend, adminId, 'billing.price.activation_changed', 'billing_plan_price', typeof saved?.id === 'string' ? saved.id : null,
+        { id: saved?.id, plan_id: saved?.plan_id, currency: saved?.currency, amount_minor: saved?.amount_minor, is_active: saved?.is_active },
+        typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+      );
+      if (!auditLogged) console.error('Platform admin audit write failed', { action: 'billing.price.activation_changed', resourceId: saved.id });
+      res.json({ ...saved, audit_logged: auditLogged });
     } catch {
       res.status(503).json({ error: 'Could not update price status' });
     }
@@ -285,7 +338,7 @@ export function createBillingAdminRouter() {
       res.status(400).json({ error: 'Invalid promotion details' });
       return;
     }
-    const { backend } = res.locals.billingAdmin;
+    const { backend, adminId } = res.locals.billingAdmin;
     const body = req.body;
     const payload = {
       code: body.code, description: body.description ?? null, discount_type: body.discount_type,
@@ -306,7 +359,14 @@ export function createBillingAdminRouter() {
         res.status(response.status === 409 ? 409 : 400).json({ error: response.status === 409 ? 'Promotion code already exists' : 'Could not create promotion' });
         return;
       }
-      res.status(201).json(Array.isArray(rows) ? rows[0] : rows);
+      const saved = Array.isArray(rows) ? rows[0] : rows[0];
+      const auditLogged = await writePlatformAdminAudit(
+        backend, adminId, 'billing.promotion.created', 'billing_promotion', typeof saved?.id === 'string' ? saved.id : null,
+        { id: saved?.id, code: saved?.code, discount_type: saved?.discount_type, is_active: saved?.is_active },
+        typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+      );
+      if (!auditLogged) console.error('Platform admin audit write failed', { action: 'billing.promotion.created', resourceId: saved.id });
+      res.status(201).json({ ...saved, audit_logged: auditLogged });
     } catch {
       res.status(503).json({ error: 'Could not create promotion' });
     }
@@ -327,7 +387,7 @@ export function createBillingAdminRouter() {
       res.status(400).json({ error: 'Invalid promotion update' });
       return;
     }
-    const { backend } = res.locals.billingAdmin;
+    const { backend, adminId } = res.locals.billingAdmin;
     try {
       const query = new URLSearchParams({ id: `eq.${req.params.promotionId}`, select: '*' });
       const response = await fetch(`${backend.supabaseUrl}/rest/v1/billing_promotions?${query}`, {
@@ -343,9 +403,36 @@ export function createBillingAdminRouter() {
         res.status(404).json({ error: 'Promotion not found' });
         return;
       }
-      res.json(rows[0]);
+      const saved = Array.isArray(rows) ? rows[0] : rows[0];
+      const auditLogged = await writePlatformAdminAudit(
+        backend, adminId, 'billing.promotion.updated', 'billing_promotion', typeof saved?.id === 'string' ? saved.id : null,
+        { id: saved?.id, code: saved?.code, discount_type: saved?.discount_type, is_active: saved?.is_active },
+        typeof req.headers['x-request-id'] === 'string' ? req.headers['x-request-id'] : undefined,
+      );
+      if (!auditLogged) console.error('Platform admin audit write failed', { action: 'billing.promotion.updated', resourceId: saved.id });
+      res.json({ ...saved, audit_logged: auditLogged });
     } catch {
       res.status(503).json({ error: 'Could not update promotion' });
+    }
+  });
+
+  router.get('/audit-events', async (req, res) => {
+    const { backend } = res.locals.billingAdmin;
+    const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit || '50'), 10) || 50, 1), 100);
+    const offset = Math.max(Number.parseInt(String(req.query.offset || '0'), 10) || 0, 0);
+    const query = new URLSearchParams({
+      select: 'id,actor_id,action,resource_type,resource_id,after_state,request_id,created_at',
+      order: 'created_at.desc', limit: String(limit), offset: String(offset),
+    });
+    try {
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/platform_admin_audit_events?${query}`, { headers: headers(backend.serviceKey) });
+      if (!response.ok) {
+        res.status(503).json({ error: 'Could not load platform audit events' });
+        return;
+      }
+      res.json(await response.json());
+    } catch {
+      res.status(503).json({ error: 'Could not load platform audit events' });
     }
   });
 
