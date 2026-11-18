@@ -28,6 +28,7 @@ import { createBillingAdminRouter } from './billing-admin-api';
 import { processOrderOutboxBatch, type OrderOutboxEvent, type PosDispatchTarget } from './pos/outbox-worker';
 import { sendCustomPosOrderWebhook } from './pos/custom-webhook-delivery';
 import { SupabaseOutboxStore } from './pos/supabase-outbox-store';
+import { selectPosOrderRoute } from './pos/order-routing';
 import type { PosCreateOrderInput, PosProviderId } from './pos/types';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
@@ -1046,6 +1047,121 @@ export function createApiApp() {
     } catch (err) {
       console.error('[API] POS menu apply history error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'POS menu apply history is temporarily unavailable' });
+    }
+  });
+
+  // ============ MERCHANT POS ORDER ROUTING ============
+  // Routing rules are edited only through verified merchant sessions. The
+  // database RPC rechecks connection/location ownership and active state.
+  app.get('/api/pos/order-routes', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,connection_id,location_id,route_type,route_value,created_at,updated_at',
+        owner_id: `eq.${auth.ownerId}`,
+        order: 'route_type.asc,route_value.asc',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_order_routes?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const rows = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(rows)) {
+        res.status(503).json({ error: 'POS order routes are temporarily unavailable' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json(rows);
+    } catch (error) {
+      console.error('[API] POS order route list failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'POS order routes are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/order-routes', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const body = req.body || {};
+    const connectionId = typeof body.connectionId === 'string' ? body.connectionId : '';
+    const locationId = typeof body.locationId === 'string' ? body.locationId : '';
+    const routeType = body.routeType;
+    const routeValue = body.routeValue;
+    if (!isUuid(connectionId) || !isUuid(locationId) ||
+        !['default', 'table'].includes(routeType) ||
+        (routeType === 'default' && routeValue != null) ||
+        (routeType === 'table' && (typeof routeValue !== 'string' ||
+          routeValue.trim().length < 1 || routeValue.trim().length > 40 ||
+          !/^[A-Za-z0-9][A-Za-z0-9 _./-]*$/.test(routeValue.trim())))) {
+      res.status(400).json({ error: 'A valid route type, connection, branch, and optional table reference are required' });
+      return;
+    }
+    try {
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/save_pos_order_route`, {
+        method: 'POST',
+        headers: posServiceHeaders(auth.backend.serviceKey),
+        body: JSON.stringify({
+          p_owner_id: auth.ownerId,
+          p_connection_id: connectionId,
+          p_location_id: locationId,
+          p_route_type: routeType,
+          p_route_value: routeType === 'table' ? routeValue.trim().toUpperCase() : null,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result || typeof result !== 'object') {
+        const code = typeof result?.message === 'string' ? result.message : '';
+        if (code.includes('NOT_CONNECTED') || code.includes('NOT_ACTIVE_OR_NOT_OWNED')) {
+          res.status(409).json({ error: 'The selected POS connection or branch is not active and connected' });
+          return;
+        }
+        console.error('[API] POS order route save failed:', response.status, code);
+        res.status(503).json({ error: 'Could not save POS order route' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json(result);
+    } catch (error) {
+      console.error('[API] POS order route save failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS order route' });
+    }
+  });
+
+  app.delete('/api/pos/order-routes/:routeId', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const routeId = req.params.routeId;
+    if (!isUuid(routeId)) {
+      res.status(400).json({ error: 'A valid route ID is required' });
+      return;
+    }
+    try {
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/delete_pos_order_route`, {
+        method: 'POST',
+        headers: posServiceHeaders(auth.backend.serviceKey),
+        body: JSON.stringify({ p_owner_id: auth.ownerId, p_route_id: routeId }),
+      });
+      const deleted = await response.json().catch(() => false);
+      if (!response.ok) {
+        res.status(503).json({ error: 'Could not delete POS order route' });
+        return;
+      }
+      if (deleted !== true) {
+        res.status(404).json({ error: 'POS order route not found' });
+        return;
+      }
+      res.status(200).json({ id: routeId, deleted: true });
+    } catch (error) {
+      console.error('[API] POS order route delete failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'Could not delete POS order route' });
     }
   });
 
