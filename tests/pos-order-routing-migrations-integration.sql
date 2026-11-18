@@ -6,11 +6,11 @@ insert into auth.users(id) values
   ('f2222222-f222-4222-8222-222222222222')
 on conflict do nothing;
 
-insert into public.pos_connections(id, owner_id, provider, status)
+insert into public.pos_connections(id, owner_id, provider, status, outbound_orders_enabled)
 values
-  ('faaaaaaa-faaa-4aaa-8aaa-aaaaaaaaaaaa','f1111111-f111-4111-8111-111111111111','custom','connected'),
-  ('fbbbbbbb-fbbb-4bbb-8bbb-bbbbbbbbbbbb','f1111111-f111-4111-8111-111111111111','custom','connected'),
-  ('fccccccc-fccc-4ccc-8ccc-cccccccccccc','f2222222-f222-4222-8222-222222222222','custom','connected');
+  ('faaaaaaa-faaa-4aaa-8aaa-aaaaaaaaaaaa','f1111111-f111-4111-8111-111111111111','custom','connected',true),
+  ('fbbbbbbb-fbbb-4bbb-8bbb-bbbbbbbbbbbb','f1111111-f111-4111-8111-111111111111','custom','connected',true),
+  ('fccccccc-fccc-4ccc-8ccc-cccccccccccc','f2222222-f222-4222-8222-222222222222','custom','connected',true);
 
 insert into public.pos_locations(id, owner_id, connection_id, provider_location_id, name, currency, active)
 values
