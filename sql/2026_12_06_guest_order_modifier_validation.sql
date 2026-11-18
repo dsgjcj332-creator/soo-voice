@@ -39,6 +39,7 @@ declare
   v_modifier_total numeric(12,2);
   v_line_price numeric(12,2);
   v_modifier_entry jsonb;
+  v_group_options jsonb;
   v_created_at bigint := floor(extract(epoch from clock_timestamp()) * 1000);
 begin
   if p_owner_id is null or p_owner_id !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
@@ -152,16 +153,14 @@ begin
         raise exception 'INVALID_MODIFIER_SELECTION';
       end if;
       if exists (
-        select 1 from jsonb_array_elements_text(v_option_ids) x
-        group by x having count(*) > 1
+        select 1 from jsonb_array_elements_text(v_option_ids) as chosen(option_id)
+        group by option_id having count(*) > 1
       ) then
         raise exception 'DUPLICATE_MODIFIER_OPTION';
       end if;
 
-      declare
-        v_group_options jsonb := '[]'::jsonb;
-      begin
-        for v_option in
+      v_group_options := '[]'::jsonb;
+      for v_option in
           select o.id, o.name, o.price_delta
             from jsonb_array_elements_text(v_option_ids) chosen(option_id)
             join public.menu_modifier_options o
@@ -177,19 +176,18 @@ begin
             'priceDelta', v_option.price_delta
           ));
           v_modifier_total := v_modifier_total + v_option.price_delta;
-        end loop;
+      end loop;
 
-        if jsonb_array_length(v_group_options) <> v_selected_count then
-          raise exception 'MODIFIER_UNAVAILABLE';
-        end if;
-        if v_selected_count > 0 then
-          v_group_modifiers := v_group_modifiers || jsonb_build_array(jsonb_build_object(
-            'groupId', v_group.id,
-            'groupName', v_group.name,
-            'options', v_group_options
-          ));
-        end if;
-      end;
+      if jsonb_array_length(v_group_options) <> v_selected_count then
+        raise exception 'MODIFIER_UNAVAILABLE';
+      end if;
+      if v_selected_count > 0 then
+        v_group_modifiers := v_group_modifiers || jsonb_build_array(jsonb_build_object(
+          'groupId', v_group.id,
+          'groupName', v_group.name,
+          'options', v_group_options
+        ));
+      end if;
     end loop;
 
     -- Reject groups that are inactive, belong to another item, or another merchant.
