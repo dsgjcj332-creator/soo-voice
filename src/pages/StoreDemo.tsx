@@ -1522,7 +1522,7 @@ export function StoreDemo() {
       </div>
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
-      {storeSettings.showVoiceWidget && <VoiceWidget />}
+      {storeSettings.showVoiceWidget && <VoiceWidget onPlaceOrder={handleSubmitOrder} />}
     </div>
   );
 }
