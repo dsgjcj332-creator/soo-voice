@@ -13,6 +13,13 @@ values
   ('33333333-cccc-4ccc-8ccc-333333333333', '11111111-aaaa-4aaa-8aaa-111111111111', 'EGP', 'monthly', 149000, true),
   ('44444444-dddd-4ddd-8ddd-444444444444', '22222222-bbbb-4bbb-8bbb-222222222222', 'EGP', 'monthly', 0, true);
 
+insert into public.billing_promotions(
+  code, description, discount_type, percent_off, starts_at, ends_at, is_active
+) values (
+  'TEST50', 'CI-only test promotion', 'percent', 50,
+  now() - interval '1 day', now() + interval '30 days', true
+);
+
 insert into public.merchant_subscriptions(
   id, owner_id, plan_id, price_id, status, billing_interval, currency
 ) values
@@ -106,6 +113,14 @@ begin
   if v_count <> 2 then raise exception 'BILLING_TEST_ADMIN_PLAN_CATALOG_FAILED'; end if;
   select count(*) into v_count from public.billing_invoices;
   if v_count <> 1 then raise exception 'BILLING_TEST_ADMIN_INVOICE_OVERVIEW_FAILED'; end if;
+  select count(*) into v_count from public.billing_payments;
+  if v_count <> 1 then raise exception 'BILLING_TEST_ADMIN_PAYMENT_OVERVIEW_FAILED'; end if;
+  select count(*) into v_count from public.billing_usage_records;
+  if v_count <> 1 then raise exception 'BILLING_TEST_ADMIN_USAGE_OVERVIEW_FAILED'; end if;
+  select count(*) into v_count from public.billing_subscription_events;
+  if v_count <> 1 then raise exception 'BILLING_TEST_ADMIN_EVENT_OVERVIEW_FAILED'; end if;
+  select count(*) into v_count from public.billing_promotions;
+  if v_count <> 1 then raise exception 'BILLING_TEST_ADMIN_PROMOTION_OVERVIEW_FAILED'; end if;
 end;
 $admin_read_test$;
 reset role;
