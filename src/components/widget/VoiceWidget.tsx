@@ -17,7 +17,7 @@ import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 import { currencyPromptLabel } from "../../lib/currency";
 import { brandColor } from "../../lib/theme";
-import { useCart, CartSelectedModifierGroup } from "../../contexts/CartContext";
+import { useCart, type CartSelectedModifierGroup } from "../../contexts/CartContext";
 import { playChime, haptic } from "../../lib/chime";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "error";
