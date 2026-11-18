@@ -96,6 +96,93 @@ export function Billing() {
   const [monthlyVisitors, setMonthlyVisitors] = useState(10000);
   const [averageOrderValue, setAverageOrderValue] = useState(50);
 
+  // Live subscription actions (Stripe checkout + cancel) through the billing API
+  const [availablePlans, setAvailablePlans] = useState<Array<{
+    plan_key: string;
+    display_name: string;
+    prices: Array<{ currency: string; billing_interval: string; amount_minor: number }>;
+  }>>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [checkoutInProgress, setCheckoutInProgress] = useState<string | null>(null);
+  const [cancelInProgress, setCancelInProgress] = useState(false);
+  const [billingActionError, setBillingActionError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPlans = async () => {
+      if (!user || user.provider === "local") { setPlansLoading(false); return; }
+      try {
+        const supabase = getSupabase();
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+        if (!token) { setPlansLoading(false); return; }
+        const response = await fetch("/api/billing/plans", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error(`plans_${response.status}`);
+        const rows = await response.json();
+        if (!cancelled && Array.isArray(rows)) setAvailablePlans(rows as typeof availablePlans);
+      } catch {
+        if (!cancelled) setAvailablePlans([]);
+      } finally {
+        if (!cancelled) setPlansLoading(false);
+      }
+    };
+    void loadPlans();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const authBearerToken = async (): Promise<string | null> => {
+    const supabase = getSupabase();
+    const { data } = await supabase.auth.getSession();
+    return data?.session?.access_token ?? null;
+  };
+
+  const handleSubscribe = async (planKey: string, billingInterval: "monthly" | "yearly", planCurrency: string) => {
+    setBillingActionError("");
+    setCheckoutInProgress(`${planKey}:${billingInterval}`);
+    try {
+      const token = await authBearerToken();
+      if (!token) throw new Error("auth");
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ planKey, billingInterval, currency: planCurrency }),
+      });
+      const body = await response.json().catch(() => null) as { checkoutUrl?: string } | null;
+      if (!response.ok || !body?.checkoutUrl) throw new Error(`checkout_${response.status}`);
+      window.location.href = body.checkoutUrl;
+    } catch {
+      setBillingActionError(language === "ar"
+        ? "تعذر بدء عملية الدفع. تأكد من تهيئة بوابة الدفع على الخادم ثم أعد المحاولة."
+        : "Could not start checkout. Make sure the payment gateway is configured on the server, then retry.");
+    } finally {
+      setCheckoutInProgress(null);
+    }
+  };
+
+  const handleCancelSubscription = async (resume: boolean) => {
+    setBillingActionError("");
+    setCancelInProgress(true);
+    try {
+      const token = await authBearerToken();
+      if (!token) throw new Error("auth");
+      const response = await fetch("/api/billing/subscription/cancel", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ resume }),
+      });
+      if (!response.ok) throw new Error(`cancel_${response.status}`);
+      window.location.reload();
+    } catch {
+      setBillingActionError(language === "ar"
+        ? "تعذر تحديث الاشتراك. أعد المحاولة بعد قليل."
+        : "Could not update the subscription. Please retry shortly.");
+    } finally {
+      setCancelInProgress(false);
+    }
+  };
+
   // Single shared currency map (src/lib/currency.ts)
   const symbol = currencySymbol(currency);
 
@@ -203,11 +290,13 @@ export function Billing() {
         <div className="lg:col-span-2 space-y-8">
           
           {/* Subscription Tiers */}
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-            {language === "ar"
-              ? "تنبيه: الدفع الإلكتروني وإدارة الاشتراكات الآلية غير متصلين حاليًا. أسعار الباقات المدفوعة لم تعتمد بعد، ولن يتم إنشاء اشتراك أو تحصيل مبلغ من هذه الصفحة."
-              : "Notice: automated billing and subscription management are not connected yet. Paid plan prices are not finalized, and this page will not create a subscription or charge a payment."}
-          </div>
+          {!plansLoading && availablePlans.length === 0 && (
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+              {language === "ar"
+                ? "تنبيه: بوابة الدفع غير مهيأة على الخادم بعد، لذلك لا يمكن إنشاء اشتراك مدفوع من هذه الصفحة حاليًا."
+                : "Notice: the payment gateway is not configured on the server yet, so paid subscriptions cannot be started from this page."}
+            </div>
+          )}
           <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6 border-b pb-4">
               <h2 className="text-lg font-bold text-slate-800">
@@ -269,6 +358,32 @@ export function Billing() {
                 </div>
               )}
             </div>
+            {currentSubscription && ["active", "trialing", "past_due"].includes(currentSubscription.status) && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                <p className="text-xs text-slate-500">
+                  {currentSubscription.cancel_at_period_end
+                    ? (language === "ar" ? "الاشتراك مجدول للإلغاء في نهاية الفترة الحالية." : "Your subscription is scheduled to cancel at the end of the current period.")
+                    : (language === "ar" ? "الاشتراك نشط ويجدد تلقائيًا." : "Your subscription is active and renews automatically.")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleCancelSubscription(currentSubscription.cancel_at_period_end)}
+                  disabled={cancelInProgress}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {cancelInProgress
+                    ? (language === "ar" ? "جارٍ التنفيذ..." : "Working...")
+                    : currentSubscription.cancel_at_period_end
+                      ? (language === "ar" ? "استئناف التجديد التلقائي" : "Resume auto-renewal")
+                      : (language === "ar" ? "إلغاء الاشتراك" : "Cancel subscription")}
+                </button>
+              </div>
+            )}
+            {billingActionError && (
+              <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                {billingActionError}
+              </p>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {pricingPlans.map((plan) => {
                 return (
@@ -308,14 +423,51 @@ export function Billing() {
                     </div>
 
                     <div className="mt-6 pt-4 border-t border-slate-100">
-                      <button
-                        type="button"
-                        disabled
-                        title={language === "ar" ? "سيتم تفعيل الاشتراكات بعد ربط بوابة الدفع ونظام الاشتراكات" : "Subscriptions will be enabled after billing and payment integration"}
-                        className="w-full cursor-not-allowed rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-500"
-                      >
-                        {language === "ar" ? "الاشتراك غير متاح حاليًا" : "Subscriptions unavailable"}
-                      </button>
+                      {(() => {
+                        const realPlan = availablePlans.find((row) => row.plan_key === plan.id);
+                        const monthlyPrice = realPlan?.prices.find((row) => row.currency === currency && row.billing_interval === "monthly");
+                        const yearlyPrice = realPlan?.prices.find((row) => row.currency === currency && row.billing_interval === "yearly");
+                        if (!realPlan || (!monthlyPrice && !yearlyPrice)) {
+                          return (
+                            <button
+                              type="button"
+                              disabled
+                              title={language === "ar" ? "لا يتوفر سعر نشط لهذه الباقة بعملتك حاليًا" : "No active price for this plan in your currency yet"}
+                              className="w-full cursor-not-allowed rounded-xl bg-slate-100 py-2.5 text-xs font-bold text-slate-500"
+                            >
+                              {language === "ar" ? "الاشتراك غير متاح حاليًا" : "Subscriptions unavailable"}
+                            </button>
+                          );
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {monthlyPrice && (
+                              <button
+                                type="button"
+                                onClick={() => handleSubscribe(realPlan.plan_key, "monthly", monthlyPrice.currency)}
+                                disabled={checkoutInProgress !== null}
+                                className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-60"
+                              >
+                                {checkoutInProgress === `${realPlan.plan_key}:monthly`
+                                  ? (language === "ar" ? "جارٍ التحويل للدفع..." : "Redirecting to checkout...")
+                                  : `${language === "ar" ? "اشترك شهريًا" : "Subscribe monthly"} · ${formatPrice(monthlyPrice.amount_minor / 100, monthlyPrice.currency as CurrencyCode)}`}
+                              </button>
+                            )}
+                            {yearlyPrice && (
+                              <button
+                                type="button"
+                                onClick={() => handleSubscribe(realPlan.plan_key, "yearly", yearlyPrice.currency)}
+                                disabled={checkoutInProgress !== null}
+                                className="w-full rounded-xl border border-indigo-600 bg-white py-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50 disabled:opacity-60"
+                              >
+                                {checkoutInProgress === `${realPlan.plan_key}:yearly`
+                                  ? (language === "ar" ? "جارٍ التحويل للدفع..." : "Redirecting to checkout...")
+                                  : `${language === "ar" ? "اشترك سنويًا" : "Subscribe yearly"} · ${formatPrice(yearlyPrice.amount_minor / 100, yearlyPrice.currency as CurrencyCode)}`}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
