@@ -87,6 +87,5 @@ test('admin authorization trusts only verified app_metadata role claims', () => 
   assert.equal(isTrustedPlatformAdmin({ roles: ['merchant', 'admin'] }), true);
   assert.equal(isTrustedPlatformAdmin({ role: 'merchant', roles: ['merchant'] }), false);
   assert.equal(isTrustedPlatformAdmin(null), false);
-  // A caller-controlled user_metadata object is not passed to this predicate.
-  assert.equal(isTrustedPlatformAdmin({ display_name: 'Owner', role: 'admin' }), true);
+  assert.equal(isTrustedPlatformAdmin({ user_metadata: { role: 'admin' } }), false);
 });
