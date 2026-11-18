@@ -89,7 +89,9 @@ begin
     v_value := null;
   else
     v_value := upper(btrim(coalesce(p_route_value, '')));
-    if length(v_value) not between 1 and 40 or v_value !~ '^[A-Z0-9][A-Z0-9 _./-]*\\Z' then
+    if length(v_value) not between 1 and 40
+       or left(v_value, 1) !~ '[A-Z0-9]'
+       or v_value ~ '[^A-Z0-9 _./-]' then
       raise exception 'INVALID_TABLE_ROUTE_VALUE' using errcode = '22023';
     end if;
   end if;
