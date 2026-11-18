@@ -4,7 +4,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // variables (set on Vercel). It is intentionally NOT editable from the UI:
 // connection settings are infrastructure, not a user-facing preference.
 export function getSupabaseConfig() {
-  const env = (import.meta as any).env || {};
+  // Vite injects import.meta.env at build time for the browser bundle; on the
+  // Node server runtime that object is absent, so fall back to process.env.
+  const meta = ((import.meta as any).env || {}) as Record<string, string | undefined>;
+  const env: Record<string, string | undefined> =
+    typeof process !== 'undefined' && process.env ? { ...meta, ...process.env } : meta;
   const envUrl = env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || env.SUPABASE_URL;
   const envKey = env.VITE_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY;
 
