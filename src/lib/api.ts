@@ -373,7 +373,7 @@ export function createApiApp() {
     }
     try {
       const query = new URLSearchParams({
-        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,created_at,updated_at',
+        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,credentials_ciphertext,credentials_key_version,created_at,updated_at',
         owner_id: `eq.${auth.ownerId}`,
         order: 'created_at.desc',
       });
@@ -386,9 +386,27 @@ export function createApiApp() {
         return;
       }
       const rows = await response.json();
-      // Explicit allowlist: credential ciphertext is never returned to clients.
+      // Decrypt only on the server to expose capability flags, never credentials.
+      const safeRows = Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => {
+        let credentials: Record<string, unknown> = {};
+        if (typeof row.credentials_ciphertext === 'string' && typeof row.credentials_key_version === 'string') {
+          try { credentials = decryptPosCredentials(row.credentials_ciphertext, row.credentials_key_version); } catch { credentials = {}; }
+        }
+        const inboundConfigured = typeof credentials.webhookSecret === 'string' && credentials.webhookSecret.length >= 32;
+        const outboundConfigured = typeof credentials.orderWebhookUrl === 'string' &&
+          typeof credentials.orderWebhookSecret === 'string' && credentials.orderWebhookSecret.length >= 32;
+        const connected = row.status === 'connected';
+        const { credentials_ciphertext: _ciphertext, credentials_key_version: _version, ...metadata } = row;
+        return {
+          ...metadata,
+          inbound_webhooks_configured: inboundConfigured,
+          outbound_orders_configured: outboundConfigured,
+          inbound_webhooks_active: connected && inboundConfigured,
+          outbound_orders_active: connected && outboundConfigured,
+        };
+      }) : [];
       res.set('Cache-Control', 'no-store');
-      res.json(Array.isArray(rows) ? rows : []);
+      res.json(safeRows);
     } catch (err) {
       console.error('[API] POS connection list error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'POS connections are temporarily unavailable' });
@@ -548,8 +566,10 @@ export function createApiApp() {
       return;
     }
     const connectionId = req.params.connectionId;
-    if (!isUuid(connectionId) || req.body?.confirmWebhookConfigured !== true) {
-      res.status(400).json({ error: 'Confirm webhook configuration and provide a valid connection ID' });
+    const confirmInbound = req.body?.confirmWebhookConfigured === true;
+    const confirmOutbound = req.body?.confirmOutboundConfigured === true;
+    if (!isUuid(connectionId) || (!confirmInbound && !confirmOutbound)) {
+      res.status(400).json({ error: 'Confirm at least one POS webhook or outbound order configuration' });
       return;
     }
     try {
@@ -580,8 +600,17 @@ export function createApiApp() {
         return;
       }
       const credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
-      if (typeof credentials.webhookSecret !== 'string' || credentials.webhookSecret.length < 32) {
-        res.status(409).json({ error: 'Generate a webhook secret before activation' });
+      const inboundConfigured = typeof credentials.webhookSecret === 'string' && credentials.webhookSecret.length >= 32;
+      const outboundConfigured = typeof credentials.orderWebhookUrl === 'string' &&
+        credentials.orderWebhookSecret && typeof credentials.orderWebhookSecret === 'string' &&
+        credentials.orderWebhookSecret.length >= 32 &&
+        (() => { try { return new URL(credentials.orderWebhookUrl as string).protocol === 'https:'; } catch { return false; } })();
+      if (confirmInbound && !inboundConfigured) {
+        res.status(409).json({ error: 'Generate an inbound webhook secret before enabling inbound webhooks' });
+        return;
+      }
+      if (confirmOutbound && !outboundConfigured) {
+        res.status(409).json({ error: 'Configure an HTTPS orderWebhookUrl and orderWebhookSecret before enabling outbound orders' });
         return;
       }
       const locationQuery = new URLSearchParams({
@@ -605,7 +634,10 @@ export function createApiApp() {
       }
       if (connection.status === 'connected') {
         res.set('Cache-Control', 'no-store');
-        res.json({ activated: true, alreadyActive: true, inboundWebhooks: true, outboundOrderCreation: false });
+        res.json({
+          activated: true, alreadyActive: true,
+          inboundWebhooks: inboundConfigured, outboundOrderCreation: outboundConfigured,
+        });
         return;
       }
       if (!['pending', 'degraded'].includes(connection.status)) {
@@ -634,7 +666,10 @@ export function createApiApp() {
         return;
       }
       res.set('Cache-Control', 'no-store');
-      res.json({ activated: true, alreadyActive: false, inboundWebhooks: true, outboundOrderCreation: false });
+      res.json({
+        activated: true, alreadyActive: false,
+        inboundWebhooks: inboundConfigured, outboundOrderCreation: outboundConfigured,
+      });
     } catch (err) {
       console.error('[API] POS webhook activation error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'Could not activate POS webhooks' });
