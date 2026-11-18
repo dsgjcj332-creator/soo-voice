@@ -32,7 +32,7 @@ select public.save_pos_order_route(
   'table', 't12'
 );
 
-do $$
+do $test$
 begin
   if (select count(*) from public.pos_order_routes
       where owner_id='f1111111-f111-4111-8111-111111111111') <> 2 then
@@ -44,7 +44,7 @@ begin
         and location_id='fbbb0001-fbbb-4001-8001-fbbbbbbbbbbb') then
     raise exception 'TABLE_ROUTE_NOT_NORMALIZED_OR_SAVED';
   end if;
-end $$;
+end $test$;
 
 -- Replacing the default is atomic and preserves table-specific rules.
 select public.save_pos_order_route(
@@ -53,7 +53,7 @@ select public.save_pos_order_route(
   'fbbb0001-fbbb-4001-8001-fbbbbbbbbbbb',
   'default', null
 );
-do $$
+do $test$
 begin
   if (select count(*) from public.pos_order_routes
       where owner_id='f1111111-f111-4111-8111-111111111111' and route_type='default') <> 1 then
@@ -68,10 +68,10 @@ begin
       where owner_id='f1111111-f111-4111-8111-111111111111' and route_type='table') <> 1 then
     raise exception 'TABLE_ROUTE_WAS_LOST';
   end if;
-end $$;
+end $test$;
 
 -- A different merchant cannot attach another tenant's connection or branch.
-do $$
+do $test$
 begin
   begin
     perform public.save_pos_order_route(
@@ -84,10 +84,10 @@ begin
   exception when insufficient_privilege then
     if sqlerrm not like '%NOT_CONNECTED%' then raise; end if;
   end;
-end $$;
+end $test$;
 
 -- New connections start with neither direction enabled.
-do $
+do $test$
 begin
   if (select inbound_webhooks_enabled from public.pos_connections
       where id='faaaaaaa-faaa-4aaa-8aaa-aaaaaaaaaaaa') is distinct from false
@@ -95,13 +95,13 @@ begin
       where id='faaaaaaa-faaa-4aaa-8aaa-aaaaaaaaaaaa') is distinct from false then
     raise exception 'POS_CAPABILITY_FLAGS_MUST_DEFAULT_FALSE';
   end if;
-end $;
+end $test$;
 
 -- Authenticated merchants can read only their own routing rows.
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub','f1111111-f111-4111-8111-111111111111',true);
-do $$
+do $test$
 begin
   if (select count(*) from public.pos_order_routes) <> 2 then
     raise exception 'ROUTE_TENANT_READ_POLICY_FAILED';
@@ -115,7 +115,7 @@ begin
   exception when insufficient_privilege then
     null;
   end;
-end $$;
+end $test$;
 reset role;
 
 -- Deactivating a branch clears all routes to it so new orders cannot remain
@@ -123,13 +123,13 @@ reset role;
 update public.pos_locations
 set active = false
 where id = 'fbbb0001-fbbb-4001-8001-fbbbbbbbbbbb';
-do $
+do $test$
 begin
   if exists (select 1 from public.pos_order_routes
       where owner_id='f1111111-f111-4111-8111-111111111111'
         and location_id='fbbb0001-fbbb-4001-8001-fbbbbbbbbbbb') then
     raise exception 'INACTIVE_BRANCH_ROUTE_WAS_NOT_CLEARED';
   end if;
-end $;
+end $test$;
 
 rollback;
