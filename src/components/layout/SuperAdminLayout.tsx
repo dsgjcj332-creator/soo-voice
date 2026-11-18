@@ -8,7 +8,8 @@ import {
   LogOut, 
   Activity,
   Globe,
-  Mic
+  Mic,
+  CreditCard
 } from "lucide-react";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { cn } from "../../lib/utils";
