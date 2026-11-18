@@ -185,6 +185,7 @@ test('connection listing exposes capability flags but never encrypted credential
       });
       return json([{
         id: connectionId, provider: 'custom', display_name: 'Bridge', status: 'connected',
+        inbound_webhooks_enabled: false, outbound_orders_enabled: true,
         credentials_ciphertext: encrypted.ciphertext,
         credentials_key_version: encrypted.keyVersion,
       }]);
