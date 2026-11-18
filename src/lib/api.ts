@@ -36,6 +36,24 @@ import { exchangeFoodicsAuthorizationCode } from './pos/foodics/oauth';
 import { persistPosCatalogSnapshot } from './pos/catalog-persistence';
 import type { PosCreateOrderInput, PosProviderId } from './pos/types';
 
+/** Service-role REST backend for the server-to-server (API key) routes. */
+function getServiceBackend(): { supabaseUrl: string; serviceKey: string } | null {
+  const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (!supabaseUrl || !serviceKey) return null;
+  try {
+    const parsed = new URL(supabaseUrl);
+    if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') return null;
+  } catch {
+    return null;
+  }
+  return { supabaseUrl, serviceKey };
+}
+
+function serviceHeaders(serviceKey: string): Record<string, string> {
+  return { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' };
+}
+
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
   const ha = crypto.createHash('sha256').update(a).digest();
@@ -2137,18 +2155,44 @@ export function createApiApp() {
   });
 
   // ============ ANALYTICS ============
+  // Computed from the merchant's real orders table — never fabricated data.
   app.get('/api/analytics/:ownerId', requireApiKey, async (req, res) => {
     try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
       const { ownerId } = req.params;
+      if (!ownerId || ownerId.length > 128) { res.status(400).json({ error: 'A valid owner ID is required' }); return; }
       const { range } = req.query;
       const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
       const since = Date.now() - days * 24 * 60 * 60 * 1000;
-      void ownerId;
-      void since;
-
-      // Never return fabricated success-shaped data. Until the tenant-scoped
-      // analytics repository is configured, make the missing capability explicit.
-      return res.status(501).json({ error: 'Analytics storage is not implemented yet' });
+      const query = new URLSearchParams({
+        select: 'status,total',
+        ownerId: `eq.${ownerId}`,
+        createdAt: `gte.${since}`,
+        limit: '5000',
+      });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?${query}`, { headers: serviceHeaders(backend.serviceKey) });
+      if (!response.ok) { console.error('[API] Analytics orders read failed:', response.status); res.status(503).json({ error: 'Analytics source is temporarily unavailable' }); return; }
+      const rows = await response.json().catch(() => null) as Array<{ status: string; total: string | number }> | null;
+      if (!Array.isArray(rows)) { res.status(503).json({ error: 'Analytics source is temporarily unavailable' }); return; }
+      const ordersByStatus: Record<string, number> = { pending: 0, preparing: 0, completed: 0, cancelled: 0 };
+      let revenueTotal = 0;
+      let paidOrders = 0;
+      for (const row of rows) {
+        const status = typeof row.status === 'string' ? row.status : 'pending';
+        ordersByStatus[status] = (ordersByStatus[status] ?? 0) + 1;
+        const total = Number(row.total) || 0;
+        if (status !== 'cancelled') { revenueTotal += total; paidOrders += 1; }
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        ownerId,
+        range: `${days}d`,
+        totalOrders: rows.length,
+        ordersByStatus,
+        revenueTotal: Math.round(revenueTotal * 100) / 100,
+        averageOrderValue: paidOrders > 0 ? Math.round((revenueTotal / paidOrders) * 100) / 100 : 0,
+      });
     } catch (err) {
       console.error('[API] Analytics error:', err);
       res.status(500).json({ error: 'Failed to fetch analytics' });
@@ -2158,26 +2202,158 @@ export function createApiApp() {
   // ============ CONVERSATIONS ============
   app.get('/api/conversations/:ownerId', requireApiKey, async (req, res) => {
     try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
       const { ownerId } = req.params;
+      if (!ownerId || ownerId.length > 128) { res.status(400).json({ error: 'A valid owner ID is required' }); return; }
       const { status, limit } = req.query;
-      void ownerId;
       const maxLimit = Math.min(parseInt(String(limit)) || 50, 200);
-
-      void status;
-      void maxLimit;
-      return res.status(501).json({ error: 'Conversation storage is not implemented yet' });
+      const query = new URLSearchParams({
+        select: 'id,session_id,status,message_count,last_message_at,created_at,updated_at',
+        ownerId: `eq.${ownerId}`,
+        order: 'updated_at.desc',
+        limit: String(maxLimit),
+      });
+      if (status === 'open' || status === 'closed') query.set('status', `eq.${status}`);
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/conversations?${query}`, { headers: serviceHeaders(backend.serviceKey) });
+      if (!response.ok) { console.error('[API] Conversations read failed:', response.status); res.status(503).json({ error: 'Conversation storage is temporarily unavailable' }); return; }
+      const rows = await response.json().catch(() => null);
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error('[API] Conversations error:', err);
       res.status(500).json({ error: 'Failed to fetch conversations' });
     }
   });
 
+  // Appends one message to (or creates) a merchant conversation keyed by the
+  // voice session id, keeping the summary counters in sync.
+  app.post('/api/conversations/:ownerId', requireApiKey, async (req, res) => {
+    try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
+      const { ownerId } = req.params;
+      if (!ownerId || ownerId.length > 128) { res.status(400).json({ error: 'A valid owner ID is required' }); return; }
+      const body = req.body || {};
+      const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim().slice(0, 160) : '';
+      const role = typeof body.role === 'string' ? body.role : '';
+      const content = typeof body.content === 'string' ? body.content.trim() : '';
+      const closeConversation = body.close === true;
+      if (!sessionId || !['user', 'assistant', 'system'].includes(role) ||
+          !content || content.length > 8000) {
+        res.status(400).json({ error: 'A valid sessionId, role (user/assistant/system) and content are required' });
+        return;
+      }
+      const upsertResponse = await fetch(`${backend.supabaseUrl}/rest/v1/conversations?on_conflict=owner_id,session_id`, {
+        method: 'POST',
+        headers: { ...serviceHeaders(backend.serviceKey), Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify([{
+          ownerId,
+          session_id: sessionId,
+          last_message_at: new Date().toISOString(),
+          ...(closeConversation ? { status: 'closed' } : {}),
+        }]),
+      });
+      const upsertRows = await upsertResponse.json().catch(() => null) as Array<{ id: string; status: string; message_count: number }> | null;
+      if (!upsertResponse.ok || !Array.isArray(upsertRows) || upsertRows.length !== 1) {
+        console.error('[API] Conversation upsert failed:', upsertResponse.status);
+        res.status(503).json({ error: 'Conversation storage is temporarily unavailable' });
+        return;
+      }
+      const conversation = upsertRows[0];
+      const insertResponse = await fetch(`${backend.supabaseUrl}/rest/v1/conversation_messages`, {
+        method: 'POST',
+        headers: { ...serviceHeaders(backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify([{ conversation_id: conversation.id, role, content }]),
+      });
+      const inserted = await insertResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!insertResponse.ok || !Array.isArray(inserted) || inserted.length !== 1) {
+        console.error('[API] Conversation message insert failed:', insertResponse.status);
+        res.status(503).json({ error: 'Conversation storage is temporarily unavailable' });
+        return;
+      }
+      const countResponse = await fetch(`${backend.supabaseUrl}/rest/v1/conversation_messages?conversation_id=eq.${conversation.id}`, {
+        method: 'HEAD',
+        headers: { ...serviceHeaders(backend.serviceKey), Prefer: 'count=exact' },
+      });
+      const contentRange = countResponse.headers.get('content-range') ?? '';
+      const parsedTotal = Number.parseInt(contentRange.split('/')[1] ?? '', 10);
+      const messageCount = Number.isFinite(parsedTotal) ? parsedTotal : conversation.message_count;
+      await fetch(`${backend.supabaseUrl}/rest/v1/conversations?id=eq.${conversation.id}`, {
+        method: 'PATCH',
+        headers: serviceHeaders(backend.serviceKey),
+        body: JSON.stringify({
+          message_count: messageCount,
+          last_message_at: new Date().toISOString(),
+          ...(closeConversation ? { status: 'closed' } : {}),
+        }),
+      });
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({
+        conversationId: conversation.id,
+        messageCount,
+        closed: closeConversation || conversation.status === 'closed',
+      });
+    } catch (err) {
+      console.error('[API] Conversation message error:', err);
+      res.status(500).json({ error: 'Failed to store conversation message' });
+    }
+  });
+
+  app.get('/api/conversations/:ownerId/:conversationId/messages', requireApiKey, async (req, res) => {
+    try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
+      const { ownerId, conversationId } = req.params;
+      if (!ownerId || ownerId.length > 128 || !isUuid(conversationId)) {
+        res.status(400).json({ error: 'A valid owner and conversation ID are required' });
+        return;
+      }
+      const ownershipQuery = new URLSearchParams({ select: 'id', id: `eq.${conversationId}`, ownerId: `eq.${ownerId}`, limit: '1' });
+      const ownershipResponse = await fetch(`${backend.supabaseUrl}/rest/v1/conversations?${ownershipQuery}`, { headers: serviceHeaders(backend.serviceKey) });
+      const ownershipRows = await ownershipResponse.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!ownershipResponse.ok || !Array.isArray(ownershipRows)) { res.status(503).json({ error: 'Conversation storage is temporarily unavailable' }); return; }
+      if (ownershipRows.length !== 1) { res.status(404).json({ error: 'Conversation not found' }); return; }
+      const query = new URLSearchParams({
+        select: 'id,role,content,created_at',
+        conversation_id: `eq.${conversationId}`,
+        order: 'created_at.asc',
+        limit: '500',
+      });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/conversation_messages?${query}`, { headers: serviceHeaders(backend.serviceKey) });
+      if (!response.ok) { console.error('[API] Conversation messages read failed:', response.status); res.status(503).json({ error: 'Conversation storage is temporarily unavailable' }); return; }
+      const rows = await response.json().catch(() => null);
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[API] Conversation messages error:', err);
+      res.status(500).json({ error: 'Failed to fetch conversation messages' });
+    }
+  });
+
   // ============ ORDERS ============
   app.get('/api/orders/:ownerId', requireApiKey, async (req, res) => {
     try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
       const { ownerId } = req.params;
-      void ownerId;
-      return res.status(501).json({ error: 'Order storage is not implemented yet' });
+      if (!ownerId || ownerId.length > 128) { res.status(400).json({ error: 'A valid owner ID is required' }); return; }
+      const { status, limit } = req.query;
+      const maxLimit = Math.min(parseInt(String(limit)) || 50, 200);
+      const query = new URLSearchParams({
+        select: 'id,ownerId,tableNumber,items,total,status,createdAt',
+        ownerId: `eq.${ownerId}`,
+        order: 'createdAt.desc',
+        limit: String(maxLimit),
+      });
+      if (typeof status === 'string' && ['pending', 'preparing', 'completed', 'cancelled'].includes(status)) {
+        query.set('status', `eq.${status}`);
+      }
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?${query}`, { headers: serviceHeaders(backend.serviceKey) });
+      if (!response.ok) { console.error('[API] Orders read failed:', response.status); res.status(503).json({ error: 'Order storage is temporarily unavailable' }); return; }
+      const rows = await response.json().catch(() => null);
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(rows) ? rows : []);
     } catch (err) {
       console.error('[API] Orders error:', err);
       res.status(500).json({ error: 'Failed to fetch orders' });
@@ -2186,13 +2362,24 @@ export function createApiApp() {
 
   app.patch('/api/orders/:orderId/status', requireApiKey, async (req, res) => {
     try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
       const { orderId } = req.params;
       const { status } = req.body;
       if (!['pending', 'preparing', 'completed', 'cancelled'].includes(status)) {
         return res.status(400).json({ error: 'Invalid status' });
       }
-      void orderId;
-      return res.status(501).json({ error: 'Order status persistence is not implemented yet' });
+      if (!orderId || orderId.length > 128) { return res.status(400).json({ error: 'Invalid order ID' }); }
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}`, {
+        method: 'PATCH',
+        headers: { ...serviceHeaders(backend.serviceKey), Prefer: 'return=representation' },
+        body: JSON.stringify({ status }),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows)) { console.error('[API] Order status update failed:', response.status); res.status(503).json({ error: 'Order storage is temporarily unavailable' }); return; }
+      if (rows.length === 0) { res.status(404).json({ error: 'Order not found' }); return; }
+      res.set('Cache-Control', 'no-store');
+      res.json(rows[0]);
     } catch (err) {
       console.error('[API] Order status update error:', err);
       res.status(500).json({ error: 'Failed to update order status' });
@@ -2201,9 +2388,19 @@ export function createApiApp() {
 
   app.delete('/api/orders/:orderId', requireApiKey, async (req, res) => {
     try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
       const { orderId } = req.params;
-      void orderId;
-      return res.status(501).json({ error: 'Order deletion is not implemented yet' });
+      if (!orderId || orderId.length > 128) { res.status(400).json({ error: 'Invalid order ID' }); return; }
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}`, {
+        method: 'DELETE',
+        headers: { ...serviceHeaders(backend.serviceKey), Prefer: 'return=representation' },
+      });
+      const rows = await response.json().catch(() => null) as Array<{ id: string }> | null;
+      if (!response.ok || !Array.isArray(rows)) { console.error('[API] Order delete failed:', response.status); res.status(503).json({ error: 'Order storage is temporarily unavailable' }); return; }
+      if (rows.length === 0) { res.status(404).json({ error: 'Order not found' }); return; }
+      res.set('Cache-Control', 'no-store');
+      res.json({ deleted: rows[0].id });
     } catch (err) {
       console.error('[API] Order delete error:', err);
       res.status(500).json({ error: 'Failed to delete order' });
@@ -2213,12 +2410,62 @@ export function createApiApp() {
   // ============ WEBHOOK SETTINGS ============
   app.get('/api/webhook-settings/:ownerId', requireApiKey, async (req, res) => {
     try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
       const { ownerId } = req.params;
-      void ownerId;
-      return res.status(501).json({ error: 'Webhook settings storage is not implemented yet' });
+      if (!ownerId || ownerId.length > 128) { res.status(400).json({ error: 'A valid owner ID is required' }); return; }
+      const query = new URLSearchParams({ select: '*', ownerId: `eq.${ownerId}`, limit: '1' });
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/merchant_webhook_settings?${query}`, { headers: serviceHeaders(backend.serviceKey) });
+      if (!response.ok) { console.error('[API] Webhook settings read failed:', response.status); res.status(503).json({ error: 'Webhook settings storage is temporarily unavailable' }); return; }
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      res.set('Cache-Control', 'no-store');
+      if (Array.isArray(rows) && rows.length === 1) { res.json(rows[0]); return; }
+      res.json({ ownerId, configured: false });
     } catch (err) {
       console.error('[API] Webhook settings error:', err);
       res.status(500).json({ error: 'Failed to fetch webhook settings' });
+    }
+  });
+
+  app.put('/api/webhook-settings/:ownerId', requireApiKey, async (req, res) => {
+    try {
+      const backend = getServiceBackend();
+      if (!backend) { res.status(503).json({ error: 'Data backend is not configured' }); return; }
+      const { ownerId } = req.params;
+      if (!ownerId || ownerId.length > 128) { res.status(400).json({ error: 'A valid owner ID is required' }); return; }
+      const body = req.body || {};
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      const secret = typeof body.secret === 'string' ? body.secret.trim() : '';
+      const events = Array.isArray(body.events) ? body.events : [];
+      const enabled = body.enabled === false ? false : true;
+      if (!/^https:\/\/[^\s]+$/.test(url) || url.length > 512) {
+        res.status(400).json({ error: 'A valid HTTPS webhook URL is required' });
+        return;
+      }
+      if (secret.length < 32 || secret.length > 256) {
+        res.status(400).json({ error: 'The webhook signing secret must be 32-256 characters' });
+        return;
+      }
+      if (events.length > 25 || events.some((event: unknown) => typeof event !== 'string' || !event || event.length > 64)) {
+        res.status(400).json({ error: 'Webhook events must be a list of at most 25 short strings' });
+        return;
+      }
+      const response = await fetch(`${backend.supabaseUrl}/rest/v1/merchant_webhook_settings?on_conflict=owner_id`, {
+        method: 'POST',
+        headers: { ...serviceHeaders(backend.serviceKey), Prefer: 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify([{ ownerId, url, secret, events, enabled, updated_at: new Date().toISOString() }]),
+      });
+      const rows = await response.json().catch(() => null) as Array<Record<string, unknown>> | null;
+      if (!response.ok || !Array.isArray(rows) || rows.length !== 1) {
+        console.error('[API] Webhook settings upsert failed:', response.status);
+        res.status(503).json({ error: 'Webhook settings storage is temporarily unavailable' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json(rows[0]);
+    } catch (err) {
+      console.error('[API] Webhook settings update error:', err);
+      res.status(500).json({ error: 'Failed to update webhook settings' });
     }
   });
 
