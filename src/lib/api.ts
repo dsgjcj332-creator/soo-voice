@@ -398,7 +398,9 @@ export function createApiApp() {
           try { credentials = decryptPosCredentials(row.credentials_ciphertext, row.credentials_key_version); } catch { credentials = {}; }
         }
         const inboundConfigured = typeof credentials.webhookSecret === 'string' && credentials.webhookSecret.length >= 32;
-        const outboundConfigured = typeof credentials.orderWebhookUrl === 'string' &&
+        const outboundUrlIsHttps = typeof credentials.orderWebhookUrl === 'string' &&
+          (() => { try { return new URL(credentials.orderWebhookUrl as string).protocol === 'https:'; } catch { return false; } })();
+        const outboundConfigured = outboundUrlIsHttps &&
           typeof credentials.orderWebhookSecret === 'string' && credentials.orderWebhookSecret.length >= 32;
         const connected = row.status === 'connected';
         const { credentials_ciphertext: _ciphertext, credentials_key_version: _version, ...metadata } = row;
