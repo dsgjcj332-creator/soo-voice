@@ -10,6 +10,8 @@
  * Standalone (no Express) for clean bundling on the Vercel Node runtime.
  */
 
+import { createHash } from 'node:crypto';
+
 export const config = {
   maxDuration: 25,
 };
@@ -17,8 +19,7 @@ export const config = {
 const ORDER_ID_RE = /^order_[a-f0-9-]{16,64}$/i;
 
 function sha256Hex(value: string): string {
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(value).digest('hex');
+  return createHash('sha256').update(value).digest('hex');
 }
 
 export default async function handler(req: any, res: any) {
