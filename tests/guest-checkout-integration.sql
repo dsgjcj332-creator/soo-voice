@@ -22,6 +22,7 @@ begin
     '77777777-7777-4777-8777-777777777777',
     '12',
     '[{"id":"checkout-secret-item","quantity":2}]'::jsonb,
+    'No onions, sauce on the side',
     'checkout-secret-order-key-01',
     repeat('a', 64),
     repeat('b', 64)
@@ -37,19 +38,25 @@ begin
      or (v_result->>'total')::numeric <> 150 then
     raise exception 'CHECKOUT_DID_NOT_USE_AUTHORITATIVE_CATALOG: %', v_result;
   end if;
-  if not exists (select 1 from public.order_outbox where order_id = v_order_id and event_type = 'order.created') then
-    raise exception 'GUEST_ORDER_OUTBOX_EVENT_MISSING';
+  if not exists (select 1 from public.order_outbox where order_id = v_order_id and event_type = 'order.created'
+    and payload->>'notes' = 'No onions, sauce on the side') then
+    raise exception 'GUEST_ORDER_OUTBOX_EVENT_OR_NOTES_MISSING';
+  end if;
+  if (select order_notes from public.orders where id = v_order_id) <> 'No onions, sauce on the side' then
+    raise exception 'GUEST_ORDER_NOTES_NOT_PERSISTED';
   end if;
 
   v_replay := public.create_guest_order(
     '77777777-7777-4777-8777-777777777777',
     '12',
     '[{"id":"checkout-secret-item","quantity":2}]'::jsonb,
+    'No onions, sauce on the side',
     'checkout-secret-order-key-01',
     repeat('a', 64),
     repeat('b', 64)
   );
-  if v_replay->>'orderId' <> v_order_id or v_replay->>'replayed' <> 'true' then
+  if v_replay->>'orderId' <> v_order_id or v_replay->>'replayed' <> 'true'
+     or v_replay->>'notes' <> 'No onions, sauce on the side' then
     raise exception 'GUEST_CHECKOUT_IDEMPOTENT_RETRY_FAILED: %', v_replay;
   end if;
 end;
