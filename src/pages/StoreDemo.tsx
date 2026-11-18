@@ -1571,7 +1571,7 @@ export function StoreDemo() {
       />}
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
-      {storeSettings.showVoiceWidget && <VoiceWidget onPlaceOrder={handleSubmitOrder} />}
+      {storeSettings.showVoiceWidget && <VoiceWidget ownerId={resolvedOwnerId} onPlaceOrder={handleSubmitOrder} />}
     </div>
   );
 }
