@@ -28,7 +28,7 @@ Then:
 1. Save the connection.
 2. Map the provider's branch in POS integrations and set its currency.
 3. Import/sync the provider catalog.
-4. Approve a menu mapping for every menu item that may appear in guest orders.
+4. Approve a menu mapping for every menu item that may appear in guest orders, including assistant-only/voice-only items. Those items remain hidden from the visual menu but can be explicitly mapped for cashier dispatch.
 5. Configure the middleware to accept the signed order contract below.
 6. Configure the inbound webhook secret separately if you also want catalog/status updates.
 
