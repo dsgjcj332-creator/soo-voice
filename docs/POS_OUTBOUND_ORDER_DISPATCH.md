@@ -27,10 +27,11 @@ Then:
 
 1. Save the connection.
 2. Map the provider's branch in POS integrations and set its currency.
-3. Import/sync the provider catalog.
-4. Approve a menu mapping for every menu item that may appear in guest orders, including assistant-only/voice-only items. Those items remain hidden from the visual menu but can be explicitly mapped for cashier dispatch.
-5. Configure the middleware to accept the signed order contract below.
-6. Configure the inbound webhook secret separately if you also want catalog/status updates.
+3. Click **Enable outbound orders** on that connection. This activation is independent from inbound webhook activation and does not require an inbound secret.
+4. Import/sync the provider catalog.
+5. Approve a menu mapping for every menu item that may appear in guest orders, including assistant-only/voice-only items. Those items remain hidden from the visual menu but can be explicitly mapped for cashier dispatch.
+6. Configure the middleware to accept the signed order contract below.
+7. Configure the inbound webhook secret and activate inbound webhooks separately if you also want catalog/status updates.
 
 The dispatcher never guesses a destination. It uses the merchant's saved default route or an exact table-specific override, and verifies that the referenced connection is connected and the branch is active before loading credentials or catalog mappings.
 
