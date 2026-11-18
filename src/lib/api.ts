@@ -602,7 +602,7 @@ export function createApiApp() {
       const credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
       const inboundConfigured = typeof credentials.webhookSecret === 'string' && credentials.webhookSecret.length >= 32;
       const outboundConfigured = typeof credentials.orderWebhookUrl === 'string' &&
-        credentials.orderWebhookSecret && typeof credentials.orderWebhookSecret === 'string' &&
+        typeof credentials.orderWebhookSecret === 'string' &&
         credentials.orderWebhookSecret.length >= 32 &&
         (() => { try { return new URL(credentials.orderWebhookUrl as string).protocol === 'https:'; } catch { return false; } })();
       if (confirmInbound && !inboundConfigured) {
