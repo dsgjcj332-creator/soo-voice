@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseFoodicsCredentials } from '../src/lib/pos/foodics-credentials.ts';
 
 test('accepts one non-empty Foodics API token and trims surrounding whitespace', () => {
-  assert.deepEqual(parseFoodicsCredentials({ apiToken: '  ' + 'x'.repeat(32) + '  }), { apiToken: 'x'.repeat(32) });
+  assert.deepEqual(parseFoodicsCredentials({ apiToken: '  ' + 'x'.repeat(32) + '  ' }), { apiToken: 'x'.repeat(32) });
 });
 
 test('rejects a missing or non-object Foodics credential payload', () => {
