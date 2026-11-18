@@ -1615,7 +1615,9 @@ export function createApiApp() {
       .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 24);
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
     const inputItems = body.items;
-    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(ownerId) ||
+    const orderNotes = typeof body.notes === 'string' ? body.notes.trim() : '';
+    if ((body.notes !== undefined && (typeof body.notes !== 'string' || body.notes.length > 1000)) ||
+        !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(ownerId) ||
         !/^[0-9a-f-]{36}$/i.test(idempotencyKey) ||
         !tableNumber || !Array.isArray(inputItems) || inputItems.length < 1 || inputItems.length > 50) {
       res.status(400).json({ error: 'Invalid order request' });
@@ -1679,7 +1681,7 @@ export function createApiApp() {
       .update(`soovoice-guest-order:v1:${ownerId}:${idempotencyKey}`)
       .digest('base64url');
     const guestTokenHash = sha256Hex(guestToken);
-    const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items }));
+    const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items, notes: orderNotes }));
 
     try {
       const response = await fetch(`${backend.supabaseUrl}/rest/v1/rpc/create_guest_order`, {
@@ -1689,6 +1691,7 @@ export function createApiApp() {
           p_owner_id: ownerId,
           p_table_number: tableNumber,
           p_items: items,
+          p_order_notes: orderNotes,
           p_idempotency_key: idempotencyKey,
           p_guest_token_hash: guestTokenHash,
           p_request_hash: requestHash,
@@ -1722,6 +1725,7 @@ export function createApiApp() {
         total: Number(result.total),
         tableNumber: result.tableNumber,
         createdAt: Number(result.createdAt),
+        notes: typeof result.notes === 'string' ? result.notes : orderNotes,
         replayed: Boolean(result.replayed),
       });
     } catch (err) {
