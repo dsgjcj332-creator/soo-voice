@@ -5,6 +5,9 @@ alter table public.pos_connections
   add column if not exists inbound_webhooks_enabled boolean not null default false,
   add column if not exists outbound_orders_enabled boolean not null default false;
 
+create unique index if not exists pos_locations_owner_connection_id_idx
+  on public.pos_locations(owner_id, connection_id, id);
+
 create table if not exists public.pos_order_routes (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -20,8 +23,8 @@ create table if not exists public.pos_order_routes (
   ),
   foreign key(owner_id, connection_id)
     references public.pos_connections(owner_id, id) on delete cascade,
-  foreign key(owner_id, location_id)
-    references public.pos_locations(owner_id, id) on delete cascade
+  foreign key(owner_id, connection_id, location_id)
+    references public.pos_locations(owner_id, connection_id, id) on delete cascade
 );
 
 create unique index if not exists pos_order_routes_one_default_idx
