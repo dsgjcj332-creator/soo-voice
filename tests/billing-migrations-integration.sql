@@ -96,7 +96,7 @@ $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', false);
 select set_config('request.jwt.claims', '{"app_metadata":{"role":"admin"}}', false);
-do $
+do $admin_read_test$
 declare v_count integer;
 begin
   if not public.is_soovoice_platform_admin() then raise exception 'BILLING_TEST_ADMIN_CLAIM_NOT_RECOGNIZED'; end if;
@@ -107,18 +107,18 @@ begin
   select count(*) into v_count from public.billing_invoices;
   if v_count <> 1 then raise exception 'BILLING_TEST_ADMIN_INVOICE_OVERVIEW_FAILED'; end if;
 end;
-$;
+$admin_read_test$;
 reset role;
 
 -- User-editable metadata is deliberately not an authorization source.
 set role authenticated;
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', false);
 select set_config('request.jwt.claims', '{"user_metadata":{"role":"admin"}}', false);
-do $
+do $user_metadata_test$
 begin
   if public.is_soovoice_platform_admin() then raise exception 'BILLING_TEST_USER_METADATA_GRANTED_ADMIN'; end if;
 end;
-$;
+$user_metadata_test$;
 reset role;
 
 -- Authenticated merchants can read their own billing records, never another
