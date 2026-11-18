@@ -83,6 +83,7 @@ export function DashboardOverview() {
   const { hasCompletedOnboarding, loadingSettings } = useSettings();
   const { currency } = useSettings();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [servedTodayCount, setServedTodayCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [completedDailyTasks, setCompletedDailyTasks] = useState<string[]>([]);
   const [dailyTasksLoadedKey, setDailyTasksLoadedKey] = useState<string | null>(null);
@@ -259,6 +260,7 @@ export function DashboardOverview() {
     if (!user) return;
     if (user.provider === "local") {
       setOrders([]);
+      setServedTodayCount(0);
       setLoading(false);
       return;
     }
@@ -266,11 +268,41 @@ export function DashboardOverview() {
     const { isConfigured } = getSupabaseConfig();
     if (!isConfigured || !supabase) {
       setOrders([]);
+      setServedTodayCount(0);
       setLoading(false);
       return;
     }
 
     let cancelled = false;
+    let countRefreshSequence = 0;
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayStartMs = dayStart.getTime();
+    const refreshServedTodayCount = async () => {
+      const sequence = ++countRefreshSequence;
+      try {
+        // Count independently from the latest-200 dashboard list so busy
+        // restaurants do not lose completed orders from the third status tile.
+        // Legacy rows without completedAt fall back to their creation time.
+        const [timestamped, legacy] = await Promise.all([
+          supabase.from("orders").select("id", { count: "exact", head: true })
+            .eq("ownerId", user.uid).eq("status", "completed")
+            .not("completedAt", "is", null).gte("completedAt", dayStartMs),
+          supabase.from("orders").select("id", { count: "exact", head: true })
+            .eq("ownerId", user.uid).eq("status", "completed")
+            .is("completedAt", null).gte("createdAt", dayStartMs),
+        ]);
+        if (cancelled || sequence !== countRefreshSequence) return;
+        if (timestamped.error || legacy.error) {
+          console.warn("[Dashboard] Could not refresh completed-order count:", timestamped.error?.message || legacy.error?.message);
+          return;
+        }
+        setServedTodayCount((timestamped.count || 0) + (legacy.count || 0));
+      } catch (error) {
+        if (!cancelled) console.warn("[Dashboard] Completed-order count refresh failed:", error);
+      }
+    };
+    void refreshServedTodayCount();
     let initialLoadComplete = false;
     const queuedChanges: any[] = [];
     const applyOrderChange = (payload: any) => {
@@ -303,7 +335,10 @@ export function DashboardOverview() {
           // Queue changes during the initial query so a slow SELECT cannot
           // overwrite a kitchen status transition that arrived in realtime.
           if (!initialLoadComplete) queuedChanges.push(payload);
-          else applyOrderChange(payload);
+          else {
+            applyOrderChange(payload);
+            void refreshServedTodayCount();
+          }
         }
       )
       .subscribe();
@@ -322,6 +357,7 @@ export function DashboardOverview() {
         initialLoadComplete = true;
         queuedChanges.forEach(applyOrderChange);
         queuedChanges.length = 0;
+        void refreshServedTodayCount();
       } catch (error) {
         console.error("[Dashboard] Could not load orders:", error);
       } finally {
@@ -329,9 +365,13 @@ export function DashboardOverview() {
       }
     };
     void loadOrders();
+    const countPoll = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshServedTodayCount();
+    }, 30000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(countPoll);
       queuedChanges.length = 0;
       void supabase.removeChannel(channel);
     };
@@ -346,7 +386,7 @@ export function DashboardOverview() {
   // into this third tile without requiring a page refresh.
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const servedToday = orders.filter((o) => {
+  const servedToday = servedTodayCount ?? orders.filter((o) => {
     const completedAt = Number(o.completedAt ?? o.createdAt);
     return o.status === "completed" && Number.isFinite(completedAt) && completedAt >= todayStart.getTime();
   }).length;
@@ -359,7 +399,7 @@ export function DashboardOverview() {
   // Recent served (last 5)
   const recentServed = orders
     .filter((o) => o.status === "completed")
-    .sort((a, b) => b.createdAt - a.createdAt)
+    .sort((a, b) => Number(b.completedAt ?? b.createdAt) - Number(a.completedAt ?? a.createdAt))
     .slice(0, 5);
 
   const dailyTasks = [
@@ -634,7 +674,7 @@ export function DashboardOverview() {
                       {isAr ? `طاولة ${o.tableNumber}` : `Table ${o.tableNumber}`}
                     </p>
                     <p className="text-[11px] text-slate-400">
-                      {timeAgo(o.createdAt)} · {o.items?.length || 0} {isAr ? "صنف" : "items"}
+                      {timeAgo(Number(o.completedAt ?? o.createdAt))} · {o.items?.length || 0} {isAr ? "صنف" : "items"}
                     </p>
                   </div>
                   <span className="font-mono text-sm font-bold text-slate-700 shrink-0" dir="ltr">
