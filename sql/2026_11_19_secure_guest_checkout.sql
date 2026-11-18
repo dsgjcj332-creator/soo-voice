@@ -188,10 +188,7 @@ commit;
 
 -- Durable worker leases and retry lifecycle. A worker claims rows with
 -- SKIP LOCKED so multiple server instances cannot process the same event.
-update public.order_outbox
-   set status = 'pending', locked_at = null, locked_by = null
- where status = 'processing' and locked_at is null;
-
+-- Add lease columns before referencing them so a fresh installation works.
 alter table public.order_outbox
   add column if not exists provider_id text,
   add column if not exists connection_id uuid,
@@ -201,6 +198,10 @@ alter table public.order_outbox
   add column if not exists locked_by text,
   add column if not exists max_attempts integer not null default 12
     check (max_attempts between 1 and 100);
+
+update public.order_outbox
+   set status = 'pending', locked_at = null, locked_by = null
+ where status = 'processing' and locked_at is null;
 
 create or replace function public.claim_order_outbox(
   p_worker_id text,
