@@ -30,6 +30,7 @@ begin
      or coalesce(p_provider_event_id, '') = '' or length(p_provider_event_id) > 160
      or p_event_metadata is null or jsonb_typeof(p_event_metadata) <> 'object'
      or coalesce(p_provider_order_id, '') = '' or length(p_provider_order_id) > 200
+     or p_order_status is null
      or p_order_status not in ('pending','preparing','completed','cancelled') then
     raise exception 'INVALID_POS_ORDER_STATUS_EVENT' using errcode = '22023';
   end if;
