@@ -2,6 +2,12 @@ import express from 'express';
 
 type JsonObject = Record<string, unknown>;
 
+export function isTrustedPlatformAdmin(appMetadata: unknown): boolean {
+  if (!appMetadata || typeof appMetadata !== 'object' || Array.isArray(appMetadata)) return false;
+  const metadata = appMetadata as { role?: unknown; roles?: unknown };
+  return metadata.role === 'admin' || (Array.isArray(metadata.roles) && metadata.roles.includes('admin'));
+}
+
 export function isValidPlanInput(value: unknown): value is {
   plan_key: string; display_name: string; description?: string | null;
   features?: JsonObject; usage_limits?: JsonObject; sort_order?: number; is_active?: boolean;
@@ -111,9 +117,8 @@ export function createBillingAdminRouter() {
         return;
       }
       const user = await response.json() as { id?: unknown; app_metadata?: { role?: unknown; roles?: unknown } };
-      const roles = Array.isArray(user.app_metadata?.roles) ? user.app_metadata?.roles : [];
       if (typeof user.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(user.id) ||
-          (user.app_metadata?.role !== 'admin' && !roles.includes('admin'))) {
+          !isTrustedPlatformAdmin(user.app_metadata)) {
         res.status(403).json({ error: 'Platform administrator access is required' });
         return;
       }
