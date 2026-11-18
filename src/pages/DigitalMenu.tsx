@@ -265,21 +265,35 @@ export function DigitalMenu() {
     setImportError("");
 
     try {
+      const importedCategoryMap = new Map<string, string>();
+      const newCategories: MenuCategory[] = [];
+      for (const item of parsedItems) {
+        const raw = String(item.category || categories[0]?.id || "Main Course").trim();
+        const key = raw.toLowerCase();
+        if (importedCategoryMap.has(key)) continue;
+        const match = categories.find((c) =>
+          c.id.toLowerCase() === key ||
+          c.labelAr.trim().toLowerCase() === key ||
+          c.labelEn.trim().toLowerCase() === key
+        );
+        if (match) {
+          importedCategoryMap.set(key, match.id);
+        } else {
+          const id = makeCategoryId(raw, raw);
+          importedCategoryMap.set(key, id);
+          if (!categories.some((c) => c.id === id) && !newCategories.some((c) => c.id === id)) {
+            newCategories.push({ id, labelAr: raw, labelEn: raw, emoji: "", order: categories.length + newCategories.length });
+          }
+        }
+      }
+
       const importedItems: MenuItem[] = parsedItems.map((item, index) => ({
         id: "item_imported_" + crypto.randomUUID(),
         ownerId: user.uid,
         name: String(item.name).trim(),
         price: Number(item.price),
         description: String(item.description || ""),
-        category: (() => {
-          const raw = String(item.category || categories[0]?.id || "Main Course").trim();
-          const match = categories.find((c) =>
-            c.id.toLowerCase() === raw.toLowerCase() ||
-            c.labelAr.trim().toLowerCase() === raw.toLowerCase() ||
-            c.labelEn.trim().toLowerCase() === raw.toLowerCase()
-          );
-          return match?.id || raw;
-        })(),
+        category: importedCategoryMap.get(String(item.category || categories[0]?.id || "Main Course").trim().toLowerCase()) || categories[0]?.id || "Main Course",
         isAiOnly: Boolean(item.isAiOnly),
         createdAt: Date.now() - (index * 1000),
       }));
@@ -300,6 +314,9 @@ export function DigitalMenu() {
         if (error) throw error;
       }
 
+      if (newCategories.length) {
+        setCategories((current) => [...current, ...newCategories].map((cat, index) => ({ ...cat, order: index })));
+      }
       setItems((current) => [...importedItems, ...current].sort((a, b) => b.createdAt - a.createdAt));
       setImportProgress(100);
       setShowImportModal(false);
@@ -426,14 +443,34 @@ export function DigitalMenu() {
     );
   };
 
-  // Delete a category — items using it fall back to the raw id string
-  const deleteCategory = (id: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-    // If the merchant is currently adding an item with this category,
-    // reset to the first remaining category (or 'Main Course' as last resort)
-    if (category === id) {
-      const remaining = categories.filter((c) => c.id !== id);
-      setCategory(remaining[0]?.id || 'Main Course');
+  // Reassign products before deleting a category so no item is left with an orphan category id.
+  const deleteCategory = async (id: string) => {
+    if (categories.length <= 1) {
+      triggerNotification(language === "ar" ? "يجب الاحتفاظ بقسم واحد على الأقل." : "Keep at least one category.");
+      return;
+    }
+    const remaining = categories.filter((c) => c.id !== id);
+    const replacement = remaining[0];
+    const affected = items.filter((item) => item.category === id);
+    try {
+      if (affected.length && user?.provider === "local") {
+        const nextItems = items.map((item) => item.category === id ? { ...item, category: replacement.id } : item);
+        setLocalCollection("menu_items", nextItems, user.uid);
+        setItems(nextItems);
+      } else if (affected.length) {
+        const supabase = getSupabase();
+        if (!isSupabaseMode || !supabase || !user) throw new Error(language === "ar" ? "قاعدة البيانات غير متاحة؛ لم يتم حذف القسم." : "Database unavailable; category was not deleted.");
+        const { error } = await supabase.from("menu_items")
+          .update({ category: replacement.id })
+          .eq("ownerId", user.uid)
+          .eq("category", id);
+        if (error) throw error;
+        setItems((current) => current.map((item) => item.category === id ? { ...item, category: replacement.id } : item));
+      }
+      setCategories(remaining.map((cat, index) => ({ ...cat, order: index })));
+      if (category === id) setCategory(replacement.id);
+    } catch (error) {
+      triggerNotification(error instanceof Error ? error.message : (language === "ar" ? "تعذر حذف القسم." : "Could not delete category."));
     }
   };
 
