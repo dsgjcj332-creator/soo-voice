@@ -790,11 +790,11 @@ export function DigitalMenu() {
               className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl border border-slate-100 bg-slate-50/40"
             >
               {/* Reorder arrows */}
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-row sm:flex-col gap-1">
                 <button
                   onClick={() => moveCategory(cat.id, -1)}
                   disabled={idx === 0}
-                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="min-h-9 min-w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   title={language === "ar" ? "أعلى" : "Move up"}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -804,7 +804,7 @@ export function DigitalMenu() {
                 <button
                   onClick={() => moveCategory(cat.id, 1)}
                   disabled={idx === categories.length - 1}
-                  className="text-slate-400 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="min-h-9 min-w-9 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   title={language === "ar" ? "أسفل" : "Move down"}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
