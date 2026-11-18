@@ -20,6 +20,7 @@ import cors from 'cors';
 import crypto from 'crypto';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { decryptPosCredentials, encryptPosCredentials } from './pos/credentials';
+import { parseFoodicsCredentials } from './pos/foodics-credentials';
 import { normalizePosCatalog } from './pos/catalog-normalizer';
 import { verifyPosWebhookSignature } from './pos/webhook-security';
 import { rotatePosWebhookSecret } from './pos/webhook-secret';
@@ -438,12 +439,12 @@ export function createApiApp() {
     // Foodics uses an account-level API token issued with the account owner's
     // authorization. Accept only that secret here; do not silently store
     // arbitrary JSON or imply that saving it verifies a live connection.
+    let credentialsToStore = credentials as Record<string, unknown>;
     if (provider === 'foodics') {
-      const keys = Object.keys(credentials as Record<string, unknown>);
-      const apiToken = (credentials as Record<string, unknown>).apiToken;
-      if (keys.length !== 1 || keys[0] !== 'apiToken' || typeof apiToken !== 'string' ||
-          apiToken.trim().length < 20 || apiToken.trim().length > 4096) {
-        res.status(400).json({ error: 'Foodics requires a valid apiToken field only' });
+      try {
+        credentialsToStore = parseFoodicsCredentials(credentials);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'FOODICS_API_TOKEN_INVALID' });
         return;
       }
     }
@@ -460,7 +461,7 @@ export function createApiApp() {
     }
 
     try {
-      const encrypted = encryptPosCredentials(credentials as Record<string, unknown>);
+      const encrypted = encryptPosCredentials(credentialsToStore);
       const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections`, {
         method: 'POST',
         headers: {
