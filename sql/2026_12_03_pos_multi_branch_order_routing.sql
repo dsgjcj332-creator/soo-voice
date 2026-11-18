@@ -72,7 +72,7 @@ begin
     raise exception 'SERVICE_ROLE_REQUIRED' using errcode = '42501';
   end if;
   if p_owner_id is null or p_connection_id is null or p_location_id is null
-     or p_route_type not in ('default','table') then
+     or p_route_type is null or p_route_type not in ('default','table') then
     raise exception 'INVALID_POS_ORDER_ROUTE' using errcode = '22023';
   end if;
   if p_route_type = 'default' then
