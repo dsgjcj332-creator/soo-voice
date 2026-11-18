@@ -93,8 +93,7 @@ export function VoiceWidget({ onPlaceOrder, ownerId }: { onPlaceOrder?: () => Pr
       options = JSON.parse(localStorage.getItem('local_menu_modifier_options_' + urlOwnerId) || '[]')
         .filter((o: any) => o.is_active);
     }
-    return groups.map((g: any) => ({ ...g, options: options.filter((o: any) => o.group_id === g.id) }))
-      .filter((g: any) => g.options.length > 0);
+    return groups.map((g: any) => ({ ...g, options: options.filter((o: any) => o.group_id === g.id) }));
   };
   // menuItemsRef.current is updated below, after dbMenuItems is declared.
   
