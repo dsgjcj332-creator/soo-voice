@@ -105,6 +105,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_03_pos_multi_branch_order_routing.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_08_pos_dispatch_alerts.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_09_conversations_and_webhook_settings.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_10_billing_subscriptions_external_unique.sql
       - name: Test store settings save and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/store-settings-migrations-integration.sql
       - name: Test merchant settings persistence and tenant isolation
@@ -129,6 +130,10 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f tests/platform-admin-audit-integration.sql
       - name: Test merchant billing entitlements
         run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-entitlements-integration.sql
+      - name: Seed default billing plans and prices
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_11_billing_plans_seed.sql
+      - name: Test billing seed idempotency and gateway integrity
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-gateway-integration.sql
       - name: Test menu customizer palette migration
         run: psql -X -v ON_ERROR_STOP=1 -f tests/menu-customizer-palette-integration.sql
       - name: Test kitchen completion timestamp migration

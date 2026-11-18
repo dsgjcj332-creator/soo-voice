@@ -2402,6 +2402,29 @@ export function createApiApp() {
     res.json({ status: 'ok', timestamp: Date.now() });
   });
 
+  // Gateway readiness probe for monitoring: booleans only, never secret values,
+  // so an operator can tell which production integrations are configured.
+  app.get('/api/health/billing', (_req, res) => {
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY || '';
+    const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    const foodicsClientId = process.env.FOODICS_CLIENT_ID || '';
+    const foodicsClientSecret = process.env.FOODICS_CLIENT_SECRET || '';
+    const encryptionKey = process.env.POS_CREDENTIALS_ENCRYPTION_KEY || '';
+    res.json({
+      status: 'ok',
+      timestamp: Date.now(),
+      billing: {
+        stripeConfigured: stripeSecretKey.length >= 20,
+        stripeWebhookConfigured: stripeWebhookSecret.length >= 16,
+        stripeCheckoutRedirectsConfigured:
+          Boolean(process.env.BILLING_CHECKOUT_SUCCESS_URL) && Boolean(process.env.BILLING_CHECKOUT_CANCEL_URL),
+        posBackendConfigured: Boolean(getPosBackend()),
+        posCredentialsEncryptionConfigured: encryptionKey.length > 0,
+        foodicsOAuthConfigured: foodicsClientId.length > 0 && foodicsClientSecret.length > 0,
+      },
+    });
+  });
+
   // ============ EPHEMERAL GEMINI TOKEN (voice widget) ============
   /**
    * Mints a short-lived Gemini Live "ephemeral auth token" so browsers never
