@@ -59,9 +59,9 @@ export function MenuDesigner() {
   const [menuBorderRadius, setMenuBorderRadius] = useState("rounded-2xl");
   const [menuParticles, setMenuParticles] = useState("none");
   const [menuLayout, setMenuLayout] = useState("grid");
-  const [customAccentColor, setCustomAccentColor] = useState("#4f46e5");
-  const [customCardColor, setCustomCardColor] = useState("#ffffff");
-  const [customButtonColor, setCustomButtonColor] = useState("#4f46e5");
+  const [customAccentColor, setCustomAccentColor] = useState("");
+  const [customCardColor, setCustomCardColor] = useState("");
+  const [customButtonColor, setCustomButtonColor] = useState("");
   const [designSaveStatus, setDesignSaveStatus] = useState<"idle" | "saving" | "success">("idle");
 
   const activePrimary = COLOR_VARIANTS[menuPrimaryColor] || COLOR_VARIANTS.indigo;
@@ -246,9 +246,9 @@ export function MenuDesigner() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
-                    { label: isAr ? "لون التمييز" : "Accent color", value: customAccentColor, set: setCustomAccentColor },
-                    { label: isAr ? "خلفية خلايا المنتجات" : "Product card color", value: customCardColor, set: setCustomCardColor },
-                    { label: isAr ? "لون الأزرار" : "Button color", value: customButtonColor, set: setCustomButtonColor },
+                    { label: isAr ? "لون التمييز" : "Accent color", value: customAccentColor || "#4f46e5", set: setCustomAccentColor },
+                    { label: isAr ? "خلفية خلايا المنتجات" : "Product card color", value: customCardColor || "#ffffff", set: setCustomCardColor },
+                    { label: isAr ? "لون الأزرار" : "Button color", value: customButtonColor || "#4f46e5", set: setCustomButtonColor },
                   ].map((field) => (
                     <label key={field.label} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 min-w-0">
                       <input type="color" value={field.value} onChange={(e) => field.set(e.target.value)} className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border-0 bg-transparent p-0" />
@@ -496,7 +496,7 @@ export function MenuDesigner() {
                     ].map((card, idx) => (
                       <div
                         key={idx}
-                        style={{ backgroundColor: customCardColor }}
+                        style={customCardColor ? { backgroundColor: customCardColor } : undefined}
                         className={`p-3 flex flex-col justify-between transition-all hover:-translate-y-0.5 ${menuBorderRadius} ${
                           menuBgStyle === "light-clean" ? "bg-white border border-slate-100 shadow-xs" :
                           menuBgStyle === "sunset-glow" ? "bg-white/80 border border-orange-100/50 shadow-xs" :
@@ -511,10 +511,10 @@ export function MenuDesigner() {
                           <p className="text-[7px] opacity-60 leading-tight line-clamp-2 mb-2">{card.desc}</p>
                         </div>
                         <div className="flex items-center justify-between mt-1">
-                          <span className="font-bold text-[9px]" style={{ color: customAccentColor }} dir="ltr">
+                          <span className={`font-bold text-[9px] ${activePrimary.text}`} style={customAccentColor ? { color: customAccentColor } : undefined} dir="ltr">
                             {formatPrice(card.price, currency)}
                           </span>
-                          <button style={{ backgroundColor: customButtonColor }} className="w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] flex items-center justify-center">
+                          <button style={customButtonColor ? { backgroundColor: customButtonColor } : undefined} className={`w-3.5 h-3.5 rounded-full text-white font-bold text-[8px] ${activePrimary.bg} flex items-center justify-center`}>
                             +
                           </button>
                         </div>
