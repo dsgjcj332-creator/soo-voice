@@ -17,7 +17,7 @@ import { useSearchParams } from "react-router-dom";
 import { getSupabase, getSupabaseConfig } from "../../lib/supabase";
 import { currencyPromptLabel } from "../../lib/currency";
 import { brandColor } from "../../lib/theme";
-import { useCart } from "../../contexts/CartContext";
+import { useCart, CartSelectedModifierGroup } from "../../contexts/CartContext";
 import { playChime, haptic } from "../../lib/chime";
 
 type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "error";
@@ -36,10 +36,10 @@ const RESTAURANT_PROMPTS_EN = [
   { label: "🧑‍🍳 Chef's Secret Special", text: "Do you have any secret off-menu specials available today?" }
 ];
 
-export function VoiceWidget({ onPlaceOrder }: { onPlaceOrder?: () => Promise<boolean> }) {
+export function VoiceWidget({ onPlaceOrder, ownerId }: { onPlaceOrder?: () => Promise<boolean>; ownerId?: string }) {
   const { t, language } = useLanguage();
   const [searchParams] = useSearchParams();
-  const urlOwnerId = searchParams.get("ownerId") || searchParams.get("storeId") || undefined;
+  const urlOwnerId = ownerId || searchParams.get("ownerId") || searchParams.get("storeId") || undefined;
 
   const contextSettings = useSettings();
   const contextKnowledge = useKnowledge();
@@ -49,7 +49,7 @@ export function VoiceWidget({ onPlaceOrder }: { onPlaceOrder?: () => Promise<boo
   // try/catch because VoiceWidget is also mounted in the standalone
   // /widget-standalone page, which is OUTSIDE the CartProvider. We
   // only want add-to-cart from the dine-in /store page.
-  let cartApi: { addToCart: (item: { id: string; name: string; price: number }, qty?: number) => void; count: number } | null = null;
+  let cartApi: { addToCart: (item: { id: string; name: string; price: number; modifiers?: CartSelectedModifierGroup[] }, qty?: number) => void; count: number } | null = null;
   try {
     cartApi = useCart();
   } catch {
@@ -67,6 +67,35 @@ export function VoiceWidget({ onPlaceOrder }: { onPlaceOrder?: () => Promise<boo
   const onPlaceOrderRef = useRef(onPlaceOrder);
   onPlaceOrderRef.current = onPlaceOrder;
   const menuItemsRef = useRef<any[]>([]);
+  // Menu modifier data is always loaded from the merchant's own records; client/model-supplied prices are never trusted.
+  const loadProductModifiers = async (dishId: string): Promise<any[]> => {
+    if (!urlOwnerId) throw new Error('merchant_context_missing');
+    const { isConfigured } = getSupabaseConfig();
+    const supabase = getSupabase();
+    let groups: any[] = [], options: any[] = [];
+    if (isConfigured && supabase) {
+      const { data: groupRows, error: groupError } = await supabase.from('menu_modifier_groups')
+        .select('id,name,min_select,max_select,is_required,sort_order,is_active')
+        .eq('owner_id', urlOwnerId).eq('menu_item_id', dishId).eq('is_active', true).order('sort_order');
+      if (groupError) throw groupError;
+      groups = groupRows || [];
+      const ids = groups.map((g: any) => g.id);
+      if (ids.length) {
+        const { data: optionRows, error: optionError } = await supabase.from('menu_modifier_options')
+          .select('id,group_id,name,price_delta,sort_order,is_active')
+          .eq('owner_id', urlOwnerId).in('group_id', ids).eq('is_active', true).order('sort_order');
+        if (optionError) throw optionError;
+        options = optionRows || [];
+      }
+    } else {
+      groups = JSON.parse(localStorage.getItem('local_menu_modifier_groups_' + urlOwnerId) || '[]')
+        .filter((g: any) => g.menu_item_id === dishId && g.is_active);
+      options = JSON.parse(localStorage.getItem('local_menu_modifier_options_' + urlOwnerId) || '[]')
+        .filter((o: any) => o.is_active);
+    }
+    return groups.map((g: any) => ({ ...g, options: options.filter((o: any) => o.group_id === g.id) }))
+      .filter((g: any) => g.options.length > 0);
+  };
   // menuItemsRef.current is updated below, after dbMenuItems is declared.
   
   const [activeDialect, setActiveDialect] = useState<Dialect>("standard");
@@ -477,7 +506,7 @@ ${strictGuardrailsAr}
 قواعد إلزامية لاستخدام الدالة:
 1. اختصر ردودك: جملة واحدة قصيرة في كل مرة، ولا تعِد قراءة تفاصيل الطلب كاملة.
 2. طابق اسم الصنف وسعره مع القائمة حرفيًا؛ لا تخترع صنفًا أو سعرًا. إذا قال العميل "برجر بسعر 50" فاختر فقط صنفًا سعره 50 فعلًا، وإلا اسأله عن الاسم أو وضّح عدم وجود تطابق.
-3. عند رغبة العميل في صنف، استدعِ add_to_cart فورًا بالمعرّف الصحيح والكمية المطلوبة. هذه الأداة تضيف إلى السلة فقط ولا ترسل الطلب للمطبخ.
+3. عند رغبة العميل في صنف، استدعِ get_product_options أولاً لمعرفة مجموعات الاختيارات المتاحة. إذا كانت هناك اختيارات إجبارية فاسأل العميل عنها ولا تختر نيابةً عنه. بعد تحديده، استدعِ add_to_cart بالمعرّف والكمية ومصفوفة modifiers التي تحتوي group_id وoption_ids فقط. لا تخترع اختياراً أو سعراً. هذه الأداة تضيف إلى السلة فقط ولا ترسل الطلب للمطبخ.
 4. بعد الإضافة قل عبارة مصرية قصيرة وودودة مثل "أمرك، ضفتهولك. تحب تزود حاجة تانية؟" أو ما يناسب اللهجة المضبوطة في إعدادات المطعم.
 5. اسأل "تحب تضيف حاجة تانية؟" بعد الإضافة. لا ترسل الطلب للمطبخ إلا عندما يقول العميل بوضوح إنه انتهى أو يؤكد الإرسال مثل "بس كده" أو "ابعت الطلب".
 6. عند تأكيد العميل، استدعِ place_order مرة واحدة. أخبره أن الطلب أُرسل فقط إذا رجعت الأداة ok=true. إذا فشلت، اعتذر باختصار واطلب منه إعادة المحاولة أو استخدام زر إرسال الطلب.
@@ -505,7 +534,7 @@ You have a function called add_to_cart that lets you add any dish from the menu 
 Mandatory rules for using the function:
 1. Keep every spoken reply to one short sentence; do not repeat the full order.
 2. Match the requested item and price exactly against the menu. Never invent products, IDs or prices. If a requested price does not match a menu item, ask a short clarifying question.
-3. When the guest wants an item, call add_to_cart with its exact id and quantity. This adds to the cart only; it does not send the order to the kitchen.
+3. When the guest wants an item, call get_product_options first. If required options exist, ask the guest to choose; never choose on their behalf. Then call add_to_cart with the exact dish id, quantity, and modifiers containing only group_id and option_ids. Never invent options or prices. This adds to the cart only; it does not send the order to the kitchen.
 4. After adding, say briefly: "Of course, added. Would you like anything else?"
 5. Ask if they want anything else. Only call place_order after the guest clearly says they are finished or confirms sending the order.
 6. Call place_order once. Say the order was sent only when the tool returns ok=true; otherwise apologize briefly and offer retry.
@@ -540,6 +569,10 @@ You: call place_order, then "Your order has been sent to the kitchen."
           tools: cartApiRef.current
             ? [{
                 functionDeclarations: [{
+                  name: "get_product_options",
+                  description: "Load the active modifier groups and options for a menu dish. Call before adding a dish when options may exist. Returns IDs, required/min/max constraints, names and stored price deltas.",
+                  parameters: { type: Type.OBJECT, properties: { dish_id: { type: Type.STRING, description: "Exact menu item id." } }, required: ["dish_id"] },
+                }, {
                   name: "add_to_cart",
                   description: "Add a dish from the merchant menu to the guest cart only. Do not claim it has been sent to the kitchen; the guest must confirm and call place_order to submit the cart.",
                   parameters: {
@@ -552,6 +585,14 @@ You: call place_order, then "Your order has been sent to the kitchen."
                       quantity: {
                         type: Type.NUMBER,
                         description: "How many of this dish to add. Defaults to 1. Only use a value > 1 when the guest explicitly asks for more than one.",
+                      },
+                      modifiers: {
+                        type: Type.ARRAY,
+                        description: "Selected modifier groups. Omit groups with no selections. IDs must come from get_product_options.",
+                        items: { type: Type.OBJECT, properties: {
+                          group_id: { type: Type.STRING },
+                          option_ids: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        }, required: ["group_id", "option_ids"] },
                       },
                     },
                     required: ["dish_id"],
@@ -667,6 +708,27 @@ You: call place_order, then "Your order has been sent to the kitchen."
               : Array.isArray(tc) ? tc : [];
             for (const fc of functionCalls) {
               if (!fc) continue;
+              if (fc.name === 'get_product_options') {
+                const dishId = String(fc.args?.dish_id ?? '').trim();
+                try {
+                  const dish = menuItemsRef.current.find((m: any) => String(m.id) === dishId);
+                  if (!dish) throw new Error('dish_not_found');
+                  const groups = await loadProductModifiers(dishId);
+                  const s = await sessionPromise;
+                  s.sendToolResponse({ functionResponses: [{ id: fc.id, name: 'get_product_options', response: {
+                    ok: true, dish_id: dishId, groups: groups.map((g: any) => ({
+                      group_id: g.id, name: g.name, required: !!g.is_required,
+                      min_select: Number(g.min_select), max_select: Number(g.max_select),
+                      options: g.options.map((o: any) => ({ option_id: o.id, name: o.name, price_delta: Number(o.price_delta) })),
+                    })),
+                    message: groups.length ? 'Ask the guest to choose required options before adding. Do not guess.' : 'No active options exist; add the dish without modifiers.',
+                  }}] });
+                } catch (e) {
+                  const session = await sessionPromise;
+                  session.sendToolResponse({ functionResponses: [{ id: fc.id, name: 'get_product_options', response: { ok: false, error: e instanceof Error ? e.message : 'options_unavailable' } }] });
+                }
+                continue;
+              }
               if (fc.name === 'place_order') {
                 const submitOrder = onPlaceOrderRef.current;
                 let ok = false;
@@ -730,11 +792,40 @@ You: call place_order, then "Your order has been sent to the kitchen."
                 }
                 continue;
               }
-              cart.addToCart({
-                id: String(dish.id),
-                name: String(dish.name ?? ''),
-                price: Number(dish.price) || 0,
-              }, qty);
+              let selectedModifiers: CartSelectedModifierGroup[] = [];
+              let finalPrice = Number(dish.price) || 0;
+              try {
+                const groups = await loadProductModifiers(dishId);
+                const requested = Array.isArray(args.modifiers) ? args.modifiers : [];
+                const requestedByGroup = new Map<string, string[]>();
+                for (const entry of requested) {
+                  const groupId = String(entry?.group_id ?? '');
+                  const optionIds = Array.isArray(entry?.option_ids) ? entry.option_ids.map((id: any) => String(id)) : [];
+                  if (!groupId || requestedByGroup.has(groupId) || new Set(optionIds).size !== optionIds.length) throw new Error('invalid_modifier_selection');
+                  requestedByGroup.set(groupId, optionIds);
+                }
+                for (const groupId of requestedByGroup.keys()) if (!groups.some((g: any) => g.id === groupId)) throw new Error('unknown_modifier_group');
+                for (const group of groups) {
+                  const ids = requestedByGroup.get(group.id) || [];
+                  const minimum = group.is_required ? Math.max(1, Number(group.min_select)) : Number(group.min_select);
+                  if (ids.length < minimum || ids.length > Number(group.max_select)) throw new Error('modifier_selection_out_of_range');
+                  const chosen = ids.map(id => group.options.find((o: any) => o.id === id));
+                  if (chosen.some((o: any) => !o)) throw new Error('unknown_modifier_option');
+                  const options = chosen.map((o: any) => ({ id: o.id, name: o.name, priceDelta: Number(o.price_delta) }));
+                  finalPrice += options.reduce((sum: number, o: any) => sum + o.priceDelta, 0);
+                  if (options.length) selectedModifiers.push({ groupId: group.id, groupName: group.name, options });
+                }
+                cart.addToCart({
+                  id: String(dish.id), name: String(dish.name ?? ''), price: finalPrice, modifiers: selectedModifiers,
+                }, qty);
+              } catch (modifierError) {
+                const session = await sessionPromise;
+                session.sendToolResponse({ functionResponses: [{ id: fc.id, name: 'add_to_cart', response: {
+                  ok: false, error: modifierError instanceof Error ? modifierError.message : 'invalid_modifier_selection',
+                  message: 'The modifier selection was not added. Ask the guest to clarify or choose valid options.',
+                }}] });
+                continue;
+              }
               playChime('cart');
               haptic(15);
               try {
@@ -747,7 +838,8 @@ You: call place_order, then "Your order has been sent to the kitchen."
                       ok: true,
                       dish_name: String(dish.name ?? ''),
                       quantity: qty,
-                      price: Number(dish.price) || 0,
+                      price: finalPrice,
+                      modifiers: selectedModifiers.map(g => ({ group: g.groupName, options: g.options.map(o => o.name) })),
                       currency: activeCurrency,
                       message: 'Added to cart only. Ask briefly whether the guest wants anything else. Do not say it was sent to the kitchen.',
                     },
