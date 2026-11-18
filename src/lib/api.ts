@@ -442,7 +442,7 @@ export function createApiApp() {
     let credentialsToStore = credentials as Record<string, unknown>;
     if (provider === 'foodics') {
       try {
-        credentialsToStore = parseFoodicsCredentials(credentials);
+        credentialsToStore = { apiToken: parseFoodicsCredentials(credentials).apiToken };
       } catch (error) {
         res.status(400).json({ error: error instanceof Error ? error.message : 'FOODICS_API_TOKEN_INVALID' });
         return;
