@@ -4,6 +4,7 @@ import { getSupabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
+type PosOrderRoute = { id: string; connection_id: string; location_id: string; route_type: 'default' | 'table'; route_value: string | null; };
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
 type PosMenuItem = { id: string; name: string; description: string | null; price: number; isAiOnly?: boolean };
 type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
@@ -32,6 +33,11 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const isArabic = language === 'ar';
   const [connections, setConnections] = useState<PosConnection[]>([]);
   const [locations, setLocations] = useState<PosLocation[]>([]);
+  const [orderRoutes, setOrderRoutes] = useState<PosOrderRoute[]>([]);
+  const [defaultRouteLocationId, setDefaultRouteLocationId] = useState('');
+  const [tableRouteValue, setTableRouteValue] = useState('');
+  const [tableRouteLocationId, setTableRouteLocationId] = useState('');
+  const [savingRoute, setSavingRoute] = useState(false);
   const [reviewLocationId, setReviewLocationId] = useState('');
   const [catalogRows, setCatalogRows] = useState<PosCatalogRow[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -63,7 +69,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [rotatingWebhookConnectionId, setRotatingWebhookConnectionId] = useState('');
   const [activatingWebhookConnectionId, setActivatingWebhookConnectionId] = useState('');
 
-  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'catalog/apply' | 'catalog/apply-events' | 'menu-items' | 'connections/activate-webhooks', method: 'GET' | 'POST' | 'PATCH', body?: unknown, resourceId?: string) => {
+  const request = useCallback(async (path: 'connections' | 'locations' | 'catalog/mappings' | 'catalog/mapping-events' | 'catalog/apply' | 'catalog/apply-events' | 'menu-items' | 'connections/activate-webhooks' | 'order-routes', method: 'GET' | 'POST' | 'PATCH' | 'DELETE', body?: unknown, resourceId?: string) => {
     const supabase = getSupabase();
     if (!supabase || !user || user.provider !== 'supabase') {
       throw new Error(isArabic ? 'يلزم تسجيل الدخول بحساب موثّق.' : 'A verified Supabase session is required.');
@@ -110,9 +116,21 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     }
   }, [request, isArabic]);
 
+  const loadOrderRoutes = useCallback(async () => {
+    try {
+      const rows = await request('order-routes', 'GET');
+      const saved = Array.isArray(rows) ? rows as PosOrderRoute[] : [];
+      setOrderRoutes(saved);
+      setDefaultRouteLocationId(saved.find(route => route.route_type === 'default')?.location_id || '');
+    } catch (err) {
+      setError(true);
+      setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تحميل قواعد توجيه الطلبات.' : 'Could not load order routing rules.'));
+    }
+  }, [request, isArabic]);
+
   useEffect(() => {
-    if (user?.provider === 'supabase') { void loadConnections(); void loadLocations(); }
-  }, [user?.provider, user?.uid, loadConnections, loadLocations]);
+    if (user?.provider === 'supabase') { void loadConnections(); void loadLocations(); void loadOrderRoutes(); }
+  }, [user?.provider, user?.uid, loadConnections, loadLocations, loadOrderRoutes]);
 
   useEffect(() => {
     setCatalogRows([]);
@@ -309,6 +327,51 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     }
   };
 
+  const saveDefaultRoute = async () => {
+    const location = locations.find(item => item.id === defaultRouteLocationId && item.active);
+    if (!location) return;
+    setSavingRoute(true); setError(false); setMessage('');
+    try {
+      await request('order-routes', 'POST', {
+        routeType: 'default', connectionId: location.connection_id, locationId: location.id,
+      });
+      await loadOrderRoutes();
+      setMessage(isArabic ? 'تم حفظ الفرع الافتراضي لاستقبال الطلبات الجديدة.' : 'Default POS branch saved for new orders.');
+    } catch (err) {
+      setError(true); setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر حفظ الفرع الافتراضي.' : 'Could not save default branch.'));
+    } finally { setSavingRoute(false); }
+  };
+
+  const saveTableRoute = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const location = locations.find(item => item.id === tableRouteLocationId && item.active);
+    if (!location || !tableRouteValue.trim()) return;
+    setSavingRoute(true); setError(false); setMessage('');
+    try {
+      await request('order-routes', 'POST', {
+        routeType: 'table', routeValue: tableRouteValue.trim().toUpperCase(),
+        connectionId: location.connection_id, locationId: location.id,
+      });
+      setTableRouteValue('');
+      await loadOrderRoutes();
+      setMessage(isArabic ? 'تم حفظ قاعدة توجيه الطاولة.' : 'Table routing rule saved.');
+    } catch (err) {
+      setError(true); setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر حفظ قاعدة الطاولة.' : 'Could not save table route.'));
+    } finally { setSavingRoute(false); }
+  };
+
+  const deleteOrderRoute = async (route: PosOrderRoute) => {
+    const confirmed = window.confirm(isArabic ? 'حذف قاعدة التوجيه دي؟ الطلبات الجديدة هترجع للفرع الافتراضي.' : 'Delete this routing rule? New orders will use the default branch.');
+    if (!confirmed) return;
+    try {
+      await request('order-routes', 'DELETE', undefined, route.id);
+      await loadOrderRoutes();
+      setMessage(isArabic ? 'تم حذف قاعدة التوجيه.' : 'Routing rule deleted.');
+    } catch (err) {
+      setError(true); setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر حذف قاعدة التوجيه.' : 'Could not delete routing rule.'));
+    }
+  };
+
   const removeBranch = async (location: PosLocation) => {
     const confirmed = window.confirm(isArabic
       ? `هل تريد إيقاف ربط الفرع «${location.name}»؟ سيظل سجل الطلبات محفوظًا.`
@@ -325,6 +388,10 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر إزالة ربط الفرع.' : 'Could not remove branch mapping.'));
     }
   };
+
+  const routableLocations = locations.filter(location =>
+    location.active && connections.some(connection =>
+      connection.id === location.connection_id && connection.status === 'connected'));
 
   const statusLabel = (status: string) => {
     const labels: Record<string, [string, string]> = {
@@ -550,6 +617,41 @@ export function PosConnectionsPanel({ language }: { language: string }) {
       <div className="mt-3 space-y-2">
         {locations.map(location => <div key={location.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm"><div><p className="font-bold text-slate-800">{location.name}</p><p className="text-xs text-slate-500">{location.provider_location_id} · {location.timezone || '—'} · {location.currency || '—'}</p></div><div className="flex items-center gap-3"><span className={`text-xs font-bold ${location.active ? 'text-emerald-700' : 'text-slate-500'}`}>{location.active ? (isArabic ? 'مضاف' : 'Mapped') : (isArabic ? 'متوقف' : 'Inactive')}</span>{location.active && <button type="button" onClick={() => void removeBranch(location)} className="rounded-lg px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50">{isArabic ? 'إيقاف الربط' : 'Deactivate'}</button>}</div></div>)}
         {locations.length === 0 && <p className="py-3 text-xs text-slate-500">{isArabic ? 'لم تتم إضافة فروع بعد.' : 'No branches mapped yet.'}</p>}
+      </div>
+    </div>
+    <div className="mt-8 border-t border-slate-100 pt-6">
+      <h3 className="font-extrabold text-slate-900">{isArabic ? 'توجيه الطلبات إلى الفروع' : 'Order routing by branch'}</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{isArabic ? 'اختار فرع افتراضي لكل الطلبات، وبعدها تقدر تخصص طاولات معينة لفروع مختلفة. لو مفيش قاعدة للطاولة، الطلب يروح للفرع الافتراضي.' : 'Choose a default branch for new orders, then optionally route specific table references to other branches. Tables without an exact rule use the default branch.'}</p>
+      <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50 p-4 md:grid-cols-[1fr_auto]">
+        <label className="text-xs font-bold text-slate-600">{isArabic ? 'الفرع الافتراضي' : 'Default branch'}
+          <select value={defaultRouteLocationId} onChange={e => setDefaultRouteLocationId(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm">
+            <option value="">{isArabic ? 'اختر الفرع الافتراضي' : 'Choose default branch'}</option>
+            {routableLocations.map(location => <option key={location.id} value={location.id}>{location.name} · {location.currency || '—'}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={() => void saveDefaultRoute()} disabled={savingRoute || !defaultRouteLocationId} className="self-end rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{savingRoute ? (isArabic ? 'جارٍ الحفظ...' : 'Saving...') : (isArabic ? 'حفظ الفرع الافتراضي' : 'Save default branch')}</button>
+      </div>
+      <form onSubmit={saveTableRoute} className="mt-3 grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[1fr_1fr_auto]">
+        <label className="text-xs font-bold text-slate-600">{isArabic ? 'رقم / اسم الطاولة' : 'Table reference'}
+          <input required maxLength={40} value={tableRouteValue} onChange={e => setTableRouteValue(e.target.value.toUpperCase())} placeholder="مثال: T12" className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" />
+        </label>
+        <label className="text-xs font-bold text-slate-600">{isArabic ? 'وجّه الطاولة إلى' : 'Send this table to'}
+          <select required value={tableRouteLocationId} onChange={e => setTableRouteLocationId(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm">
+            <option value="">{isArabic ? 'اختر الفرع' : 'Choose branch'}</option>
+            {routableLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+          </select>
+        </label>
+        <button type="submit" disabled={savingRoute || !tableRouteValue.trim() || !tableRouteLocationId} className="self-end rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{isArabic ? 'إضافة قاعدة' : 'Add rule'}</button>
+      </form>
+      <div className="mt-3 space-y-2">
+        {orderRoutes.map(route => {
+          const location = locations.find(item => item.id === route.location_id);
+          return <div key={route.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm">
+            <div><p className="font-bold text-slate-800">{route.route_type === 'default' ? (isArabic ? 'الفرع الافتراضي' : 'Default branch') : (isArabic ? `الطاولة ${route.route_value}` : `Table ${route.route_value}`)}</p><p className="text-xs text-slate-500">{location?.name || (isArabic ? 'فرع غير متاح' : 'Unavailable branch')} · {location?.currency || '—'}</p></div>
+            <button type="button" onClick={() => void deleteOrderRoute(route)} className="rounded-lg px-2 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50">{isArabic ? 'حذف القاعدة' : 'Delete rule'}</button>
+          </div>;
+        })}
+        {orderRoutes.length === 0 && <p className="py-3 text-xs text-amber-700">{isArabic ? 'لم يتم تحديد فرع افتراضي بعد؛ لن تُرسل الطلبات للكاشير حتى تحفظ قاعدة افتراضية.' : 'No default branch is configured. POS dispatch remains blocked until you save one.'}</p>}
       </div>
     </div>
   </section>;
