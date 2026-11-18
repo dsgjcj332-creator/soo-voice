@@ -80,6 +80,10 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_05_menu_item_modifiers.sql
       - name: Test menu modifier constraints and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/menu-item-modifiers-integration.sql
+      - name: Apply server-side modifier checkout validation
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_06_guest_order_modifier_validation.sql
+      - name: Test server-side modifier checkout pricing and validation
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/guest-order-modifier-checkout-integration.sql
       - name: Apply POS migrations in dependency order
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_21_pos_catalog_storage.sql
