@@ -25,6 +25,10 @@ import { verifyPosWebhookSignature } from './pos/webhook-security';
 import { rotatePosWebhookSecret } from './pos/webhook-secret';
 import { isUuid, parsePosLocationInput } from './pos/location-validation';
 import { createBillingAdminRouter } from './billing-admin-api';
+import { processOrderOutboxBatch, type OrderOutboxEvent, type PosDispatchTarget } from './pos/outbox-worker';
+import { sendCustomPosOrderWebhook } from './pos/custom-webhook-delivery';
+import { SupabaseOutboxStore } from './pos/supabase-outbox-store';
+import type { PosCreateOrderInput, PosProviderId } from './pos/types';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
@@ -1081,6 +1085,204 @@ export function createApiApp() {
       res.status(503).json({ error: 'Could not deactivate POS location' });
     }
   });
+
+  // ============ DURABLE POS ORDER OUTBOX DISPATCH ============
+  // Called by a trusted scheduler/worker using a dedicated bearer secret.
+  // No browser session or merchant-supplied owner ID is accepted here.
+  const dispatchPosOutbox = async (req: express.Request, res: express.Response) => {
+    const workerSecret = process.env.POS_OUTBOX_WORKER_SECRET || '';
+    const authorization = firstHeader(req.headers.authorization) || '';
+    const suppliedSecret = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || '';
+    if (workerSecret.length < 32) {
+      res.status(503).json({ error: 'POS outbox worker is not configured' });
+      return;
+    }
+    if (!suppliedSecret || !safeEqual(suppliedSecret, workerSecret)) {
+      res.status(401).json({ error: 'Unauthorized POS outbox worker' });
+      return;
+    }
+    const backend = getPosBackend();
+    if (!backend) {
+      res.status(503).json({ error: 'POS outbox backend is not configured' });
+      return;
+    }
+
+    const store = new SupabaseOutboxStore(backend.supabaseUrl, backend.serviceKey);
+    const resolveTarget = async (event: OrderOutboxEvent): Promise<PosDispatchTarget> => {
+      const connectionQuery = new URLSearchParams({
+        select: 'id,provider,credentials_ciphertext,credentials_key_version',
+        owner_id: `eq.${event.owner_id}`,
+        status: 'eq.connected',
+      });
+      const connectionResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_connections?${connectionQuery}`, {
+        headers: posServiceHeaders(backend.serviceKey),
+      });
+      const connectionRows = await connectionResponse.json().catch(() => null) as Array<{
+        id: string; provider: string; credentials_ciphertext: string | null;
+        credentials_key_version: string | null;
+      }> | null;
+      if (!connectionResponse.ok || !Array.isArray(connectionRows)) throw new Error('POS_CONNECTION_LOOKUP_FAILED');
+
+      const configured: Array<{ connection: typeof connectionRows[number]; credentials: Record<string, unknown> }> = [];
+      for (const connection of connectionRows) {
+        if (!connection.credentials_ciphertext || !connection.credentials_key_version) continue;
+        let credentials: Record<string, unknown>;
+        try {
+          credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
+        } catch {
+          throw new Error('POS_CREDENTIALS_UNAVAILABLE');
+        }
+        if (typeof credentials.orderWebhookUrl === 'string' &&
+            typeof credentials.orderWebhookSecret === 'string' &&
+            credentials.orderWebhookSecret.length >= 32) {
+          configured.push({ connection, credentials });
+        }
+      }
+      if (configured.length === 0) throw new Error('POS_ORDER_TARGET_NOT_CONFIGURED');
+      if (configured.length !== 1) throw new Error('POS_ORDER_TARGET_AMBIGUOUS');
+      const selected = configured[0];
+      if (!posProviders.has(selected.connection.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
+
+      const locationQuery = new URLSearchParams({
+        select: 'id,currency,provider_location_id',
+        owner_id: `eq.${event.owner_id}`,
+        connection_id: `eq.${selected.connection.id}`,
+        active: 'eq.true',
+      });
+      const locationResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(backend.serviceKey),
+      });
+      const locationRows = await locationResponse.json().catch(() => null) as Array<{
+        id: string; currency: string | null; provider_location_id: string;
+      }> | null;
+      if (!locationResponse.ok || !Array.isArray(locationRows)) throw new Error('POS_LOCATION_LOOKUP_FAILED');
+      if (locationRows.length === 0) throw new Error('POS_LOCATION_NOT_CONFIGURED');
+      if (locationRows.length !== 1) throw new Error('POS_ORDER_LOCATION_AMBIGUOUS');
+      const location = locationRows[0];
+
+      const rawItems = event.payload.items;
+      if (!Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > 50) {
+        throw new Error('POS_ORDER_ITEMS_INVALID');
+      }
+      const mappings = new Map<string, string>();
+      let orderCurrency = location.currency?.toUpperCase() || '';
+      for (const rawItem of rawItems) {
+        const line = rawItem as Record<string, unknown>;
+        const menuItemId = typeof line.id === 'string' ? line.id : '';
+        if (!menuItemId || menuItemId.length > 128) throw new Error('POS_ORDER_ITEM_ID_INVALID');
+
+        const mappingQuery = new URLSearchParams({
+          select: 'provider_item_id,menu_item_id',
+          owner_id: `eq.${event.owner_id}`,
+          connection_id: `eq.${selected.connection.id}`,
+          location_id: `eq.${location.id}`,
+          menu_item_id: `eq.${menuItemId}`,
+          limit: '1',
+        });
+        const mappingResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_catalog_menu_links?${mappingQuery}`, {
+          headers: posServiceHeaders(backend.serviceKey),
+        });
+        const mappingRows = await mappingResponse.json().catch(() => null) as Array<{
+          provider_item_id: string; menu_item_id: string;
+        }> | null;
+        if (!mappingResponse.ok || !Array.isArray(mappingRows)) throw new Error('POS_MENU_MAPPING_LOOKUP_FAILED');
+        if (mappingRows.length !== 1) throw new Error('POS_MENU_ITEM_NOT_MAPPED');
+
+        const catalogQuery = new URLSearchParams({
+          select: 'provider_item_id,currency,active,available',
+          owner_id: `eq.${event.owner_id}`,
+          connection_id: `eq.${selected.connection.id}`,
+          location_id: `eq.${location.id}`,
+          provider_item_id: `eq.${mappingRows[0].provider_item_id}`,
+          active: 'eq.true',
+          available: 'eq.true',
+          limit: '1',
+        });
+        const catalogResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_catalog_items?${catalogQuery}`, {
+          headers: posServiceHeaders(backend.serviceKey),
+        });
+        const catalogRows = await catalogResponse.json().catch(() => null) as Array<{
+          provider_item_id: string; currency: string; active: boolean; available: boolean;
+        }> | null;
+        if (!catalogResponse.ok || !Array.isArray(catalogRows)) throw new Error('POS_CATALOG_LOOKUP_FAILED');
+        if (catalogRows.length !== 1 || !catalogRows[0].active || !catalogRows[0].available) {
+          throw new Error('POS_CATALOG_ITEM_UNAVAILABLE');
+        }
+        const itemCurrency = catalogRows[0].currency.toUpperCase();
+        if (orderCurrency && orderCurrency !== itemCurrency) throw new Error('POS_ORDER_CURRENCY_MISMATCH');
+        orderCurrency = itemCurrency;
+        mappings.set(menuItemId, mappingRows[0].provider_item_id);
+      }
+      if (!/^[A-Z]{3}$/.test(orderCurrency)) throw new Error('POS_LOCATION_CURRENCY_REQUIRED');
+
+      const context = {
+        merchantId: event.owner_id,
+        connectionId: selected.connection.id,
+        locationId: location.id,
+      };
+      return {
+        provider: selected.connection.provider as PosProviderId,
+        context,
+        orderCurrency,
+        menuMappings: mappings,
+        async createOrder(input: PosCreateOrderInput) {
+          return sendCustomPosOrderWebhook({
+            orderWebhookUrl: selected.credentials.orderWebhookUrl as string,
+            orderWebhookSecret: selected.credentials.orderWebhookSecret as string,
+          }, input);
+        },
+      } as PosDispatchTarget;
+    };
+
+    try {
+      const result = await processOrderOutboxBatch(
+        store,
+        `soovoice-${crypto.randomUUID()}`,
+        resolveTarget,
+        (event, target) => {
+          const runtimeTarget = target as PosDispatchTarget & {
+            orderCurrency: string; menuMappings: Map<string, string>;
+          };
+          const rawItems = event.payload.items as Array<Record<string, unknown>>;
+          const lines = rawItems.map(line => {
+            const menuItemId = String(line.id || '');
+            const providerItemId = runtimeTarget.menuMappings.get(menuItemId);
+            const quantity = Number(line.quantity);
+            if (!providerItemId || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+              throw new Error('POS_ORDER_LINE_INVALID_OR_UNMAPPED');
+            }
+            return {
+              catalogItemId: menuItemId,
+              providerItemId,
+              quantity,
+              modifierOptionIds: [],
+            };
+          });
+          const tableNumber = typeof event.payload.tableNumber === 'string'
+            ? event.payload.tableNumber.slice(0, 24) : '';
+          return {
+            merchantId: event.owner_id,
+            locationId: target.context.locationId || '',
+            localOrderId: event.order_id,
+            idempotencyKey: `soovoice:${event.order_id}`,
+            currency: runtimeTarget.orderCurrency,
+            lines,
+            fulfillment: 'dine_in',
+            tableReference: tableNumber || undefined,
+            notes: typeof event.payload.notes === 'string' ? event.payload.notes.slice(0, 1000) : undefined,
+          };
+        },
+        { limit: 10, leaseSeconds: 120 },
+      );
+      res.set('Cache-Control', 'no-store');
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('[API] POS outbox dispatch failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'POS outbox dispatch is temporarily unavailable' });
+    }
+  };
+  app.post('/api/pos/outbox/dispatch', dispatchPosOutbox);
+  app.get('/api/pos/outbox/dispatch', dispatchPosOutbox);
 
   // ============ TRUSTED GUEST ORDER FLOW ============
   // Browser clients submit catalog IDs and quantities only. The database
