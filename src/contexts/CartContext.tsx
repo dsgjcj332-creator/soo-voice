@@ -41,13 +41,17 @@ interface CartContextType {
   setQuantity: (cartLineId: string, qty: number) => void;
   clearCart: () => void;
   total: number;
-  count: number;
+  count: number; // total quantity, not distinct items
+  orderNote: string;
+  setOrderNote: (note: string) => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [orderNote, setOrderNoteState] = useState('');
+  const setOrderNote = useCallback((note: string) => setOrderNoteState(note.slice(0, 1000)), []);
 
   const addToCart = useCallback((newItem: NewCartItem, quantity: number = 1) => {
     const modifiers = newItem.modifiers || [];
@@ -80,12 +84,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const clearCart = useCallback(() => setItems([]), []);
+  const clearCart = useCallback(() => { setItems([]); setOrderNoteState(''); }, []);
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const count = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ items, addToCart, removeFromCart, setQuantity, clearCart, total, count }}>
+    <CartContext.Provider
+      value={{ items, addToCart, removeFromCart, setQuantity, clearCart, total, count, orderNote, setOrderNote }}
+    >
       {children}
     </CartContext.Provider>
   );

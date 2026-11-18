@@ -35,6 +35,7 @@ export function Settings() {
     settings: storeSettings,
     update: updateStoreSettings,
     save: saveStoreSettings,
+    loading: storeSettingsLoading,
   } = useStoreSettings(user?.uid, user?.provider !== 'local');
 
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -45,7 +46,7 @@ export function Settings() {
   };
 
   const handleSaveSettings = async () => {
-    if (saveStatus === 'saving') return;
+    if (saveStatus === 'saving' || loadingSettings || storeSettingsLoading) return;
     setSaveStatus('saving');
     const [storeSaved, preferencesSaved] = await Promise.all([
       saveStoreSettings(),
@@ -102,11 +103,11 @@ export function Settings() {
           <button
             type="button"
             onClick={handleSaveSettings}
-            disabled={saveStatus === 'saving' || loadingSettings}
+            disabled={saveStatus === 'saving' || loadingSettings || storeSettingsLoading}
             className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saveStatus === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {loadingSettings
+            {loadingSettings || storeSettingsLoading
               ? (isAr ? 'جاري تحميل الإعدادات...' : 'Loading settings...')
               : saveStatus === 'saving'
                 ? (isAr ? 'جاري الحفظ...' : 'Saving...')
@@ -463,7 +464,7 @@ export function Settings() {
               )}
               {geoStatus === 'done' && (
                 <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> {isAr ? 'تم حفظ الموقع' : 'Location saved'}
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {isAr ? 'تم تحديد الموقع — اضغط حفظ الإعدادات لتأكيده' : 'Location selected — press Save settings to persist it'}
                 </span>
               )}
               {geoStatus === 'error' && (
