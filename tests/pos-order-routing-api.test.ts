@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApiApp } from '../src/lib/api.ts';
+import { encryptPosCredentials } from '../src/lib/pos/credentials.ts';
 
 const ownerId = '550e8400-e29b-41d4-a716-446655440000';
 const connectionId = '550e8400-e29b-41d4-a716-446655440001';
@@ -128,5 +129,68 @@ test('merchant deletes only a route through the owner-scoped RPC', async () => {
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { id: routeId, deleted: true });
+  });
+});
+
+test('outbound-only POS credentials can activate dispatch without an inbound webhook secret', async () => {
+  const encrypted = encryptPosCredentials({
+    orderWebhookUrl: 'https://bridge.example.com/soovoice/orders',
+    orderWebhookSecret: 'outbound-secret-value-that-is-long-enough-123',
+  });
+  let savedStatus: Record<string, unknown> | undefined;
+  await withApi((url, init) => {
+    if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
+    if (url.pathname === '/rest/v1/pos_connections' && (!init?.method || init.method === 'GET')) {
+      assert.equal(url.searchParams.get('owner_id'), `eq.${ownerId}`);
+      return json([{
+        id: connectionId, status: 'pending',
+        credentials_ciphertext: encrypted.ciphertext,
+        credentials_key_version: encrypted.keyVersion,
+      }]);
+    }
+    if (url.pathname === '/rest/v1/pos_locations') {
+      assert.equal(url.searchParams.get('connection_id'), `eq.${connectionId}`);
+      return json([{ id: locationId }]);
+    }
+    if (url.pathname === '/rest/v1/pos_connections' && init?.method === 'PATCH') {
+      savedStatus = JSON.parse(String(init.body));
+      return json([{ id: connectionId, status: 'connected' }]);
+    }
+    throw new Error(`UNEXPECTED_REQUEST ${init?.method || 'GET'} ${url.pathname}`);
+  }, async (baseUrl) => {
+    const response = await originalFetch(`${baseUrl}/api/pos/connections/${connectionId}/activate-webhooks`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ confirmOutboundConfigured: true }),
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json() as Record<string, unknown>;
+    assert.equal(result.outboundOrderCreation, true);
+    assert.equal(result.inboundWebhooks, false);
+    assert.equal(savedStatus?.status, 'connected');
+  });
+});
+
+test('connection listing exposes capability flags but never encrypted credentials', async () => {
+  const encrypted = encryptPosCredentials({
+    orderWebhookUrl: 'https://bridge.example.com/orders',
+    orderWebhookSecret: 'outbound-secret-value-that-is-long-enough-123',
+  });
+  await withApi((url) => {
+    if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
+    if (url.pathname === '/rest/v1/pos_connections') return json([{
+      id: connectionId, provider: 'custom', display_name: 'Bridge', status: 'connected',
+      credentials_ciphertext: encrypted.ciphertext,
+      credentials_key_version: encrypted.keyVersion,
+    }]);
+    throw new Error(`UNEXPECTED_REQUEST ${url.pathname}`);
+  }, async (baseUrl) => {
+    const response = await originalFetch(`${baseUrl}/api/pos/connections`, { headers });
+    assert.equal(response.status, 200);
+    const [row] = await response.json() as Array<Record<string, unknown>>;
+    assert.equal(row.outbound_orders_configured, true);
+    assert.equal(row.outbound_orders_active, true);
+    assert.equal(row.inbound_webhooks_configured, false);
+    assert.equal('credentials_ciphertext' in row, false);
+    assert.equal('credentials_key_version' in row, false);
   });
 });
