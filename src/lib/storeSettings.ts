@@ -186,33 +186,47 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
 export function useStoreSettings(ownerId?: string | null, remote = false) {
   const { isConfigured } = getSupabaseConfig();
   const [settings, setSettings] = useState<StoreSettings>(() => loadLocalStoreSettings(ownerId));
-  const [loading, setLoading] = useState<boolean>(!!ownerId);
+  const [loading, setLoading] = useState<boolean>(!!ownerId && isConfigured);
   const settingsRef = useRef<StoreSettings>(settings);
+  // A cloud read must never overwrite edits made after that read started.
+  const revisionRef = useRef(0);
 
   useEffect(() => {
     if (!ownerId) {
       setSettings({ ...DEFAULT_STORE_SETTINGS });
-      settingsRef.current = DEFAULT_STORE_SETTINGS;
+      settingsRef.current = { ...DEFAULT_STORE_SETTINGS };
       setLoading(false);
       return;
     }
     let cancelled = false;
 
-    // 1. Instant local paint
+    // 1. Paint the local cache immediately while keeping the settings in a
+    // loading state until the cloud copy has been checked.
     const local = loadLocalStoreSettings(ownerId);
+    const loadRevision = revisionRef.current;
     settingsRef.current = local;
     setSettings(local);
-    setLoading(false);
 
-    // 2. Cloud copy wins when reachable (customers always read from cloud)
-    if (isConfigured) {
-      fetchStoreSettings(ownerId).then((remoteSettings) => {
-        if (!cancelled && remoteSettings) {
-          settingsRef.current = remoteSettings;
-          setSettings(remoteSettings);
-          saveLocalStoreSettings(ownerId, remoteSettings);
-        }
-      });
+    // 2. Cloud copy wins only when the owner has not edited during hydration.
+    if (!isConfigured) {
+      setLoading(false);
+    } else {
+      setLoading(true);
+      fetchStoreSettings(ownerId)
+        .then((remoteSettings) => {
+          if (
+            !cancelled &&
+            remoteSettings &&
+            revisionRef.current === loadRevision
+          ) {
+            settingsRef.current = remoteSettings;
+            setSettings(remoteSettings);
+            saveLocalStoreSettings(ownerId, remoteSettings);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }
 
     return () => {
@@ -240,6 +254,7 @@ export function useStoreSettings(ownerId?: string | null, remote = false) {
         ...patch,
         updatedAt: Math.max(Date.now(), settingsRef.current.updatedAt + 1),
       });
+      revisionRef.current += 1;
       settingsRef.current = next;
       setSettings(next);
       saveLocalStoreSettings(ownerId, next);
