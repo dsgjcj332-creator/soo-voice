@@ -56,7 +56,7 @@ migrations:
 
 1. `sql/2026_11_30_menu_customizer_palette.sql`
 2. `sql/2026_12_01_order_completion_timestamp.sql`
-3. `sql/2026_12_04_guest_order_instructions.sql` (after `sql/2026_11_19_secure_guest_checkout.sql` and before the guest checkout integration test).
+Apply `sql/2026_12_04_guest_order_instructions.sql` immediately after `sql/2026_11_19_secure_guest_checkout.sql` and before the guest checkout integration test.
 
 The palette migration safely no-ops when the optional `menu_customizer` table
 is absent from an isolated test database. Production merchants should have the
