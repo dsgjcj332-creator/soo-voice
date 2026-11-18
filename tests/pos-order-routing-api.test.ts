@@ -133,15 +133,16 @@ test('merchant deletes only a route through the owner-scoped RPC', async () => {
 });
 
 test('outbound-only POS credentials can activate dispatch without an inbound webhook secret', async () => {
-  const encrypted = encryptPosCredentials({
-    orderWebhookUrl: 'https://bridge.example.com/soovoice/orders',
-    orderWebhookSecret: 'outbound-secret-value-that-is-long-enough-123',
-  });
+  let encrypted: ReturnType<typeof encryptPosCredentials> | undefined;
   let savedStatus: Record<string, unknown> | undefined;
   await withApi((url, init) => {
     if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
     if (url.pathname === '/rest/v1/pos_connections' && (!init?.method || init.method === 'GET')) {
       assert.equal(url.searchParams.get('owner_id'), `eq.${ownerId}`);
+      encrypted = encryptPosCredentials({
+        orderWebhookUrl: 'https://bridge.example.com/soovoice/orders',
+        orderWebhookSecret: 'outbound-secret-value-that-is-long-enough-123',
+      });
       return json([{
         id: connectionId, status: 'pending',
         credentials_ciphertext: encrypted.ciphertext,
@@ -171,17 +172,20 @@ test('outbound-only POS credentials can activate dispatch without an inbound web
 });
 
 test('connection listing exposes capability flags but never encrypted credentials', async () => {
-  const encrypted = encryptPosCredentials({
-    orderWebhookUrl: 'https://bridge.example.com/orders',
-    orderWebhookSecret: 'outbound-secret-value-that-is-long-enough-123',
-  });
+  let encrypted: ReturnType<typeof encryptPosCredentials> | undefined;
   await withApi((url) => {
     if (url.pathname === '/auth/v1/user') return json({ id: ownerId });
-    if (url.pathname === '/rest/v1/pos_connections') return json([{
-      id: connectionId, provider: 'custom', display_name: 'Bridge', status: 'connected',
-      credentials_ciphertext: encrypted.ciphertext,
-      credentials_key_version: encrypted.keyVersion,
-    }]);
+    if (url.pathname === '/rest/v1/pos_connections') {
+      encrypted = encryptPosCredentials({
+        orderWebhookUrl: 'https://bridge.example.com/orders',
+        orderWebhookSecret: 'outbound-secret-value-that-is-long-enough-123',
+      });
+      return json([{
+        id: connectionId, provider: 'custom', display_name: 'Bridge', status: 'connected',
+        credentials_ciphertext: encrypted.ciphertext,
+        credentials_key_version: encrypted.keyVersion,
+      }]);
+    }
     throw new Error(`UNEXPECTED_REQUEST ${url.pathname}`);
   }, async (baseUrl) => {
     const response = await originalFetch(`${baseUrl}/api/pos/connections`, { headers });
