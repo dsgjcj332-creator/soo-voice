@@ -72,6 +72,8 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_19_secure_guest_checkout.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_20_enforce_outbox_lease_expiry.sql
+      - name: Test secure guest checkout, voice-only items and idempotency
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/guest-checkout-integration.sql
       - name: Apply POS migrations in dependency order
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
