@@ -19,6 +19,10 @@ type PosConnection = {
   display_name: string | null;
   status: string;
   created_at: string;
+  inbound_webhooks_configured?: boolean;
+  outbound_orders_configured?: boolean;
+  inbound_webhooks_active?: boolean;
+  outbound_orders_active?: boolean;
 };
 
 const PROVIDERS = [
@@ -302,6 +306,33 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     }
   };
 
+  const activateOutboundConnection = async (connection: PosConnection) => {
+    const activeBranches = locations.filter(location => location.connection_id === connection.id && location.active).length;
+    if (!connection.outbound_orders_configured) {
+      setError(true);
+      setMessage(isArabic ? 'بيانات orderWebhookUrl و orderWebhookSecret غير مكتملة. أضفها مشفرة عند إنشاء الاتصال.' : 'Outbound credentials are missing. Add orderWebhookUrl and orderWebhookSecret to the encrypted connection credentials.');
+      return;
+    }
+    if (activeBranches === 0) {
+      setError(true);
+      setMessage(isArabic ? 'أضف فرعًا نشطًا قبل تفعيل إرسال الطلبات.' : 'Add an active branch before enabling outbound orders.');
+      return;
+    }
+    if (!window.confirm(isArabic
+      ? 'هل تأكدت أن وسيط الكاشير جاهز لاستقبال الطلبات الموقعة؟ لازم تحفظ الفرع الافتراضي وقواعد الطاولات قبل وصول طلبات العملاء.'
+      : 'Have you confirmed that your POS middleware is ready to receive signed orders? Save the default branch and table rules before accepting customer orders?')) return;
+    setActivatingWebhookConnectionId(connection.id);
+    setError(false); setMessage('');
+    try {
+      const result = await request('connections/activate-webhooks', 'POST', { confirmOutboundConfigured: true }, connection.id);
+      if (result.outboundOrderCreation !== true) throw new Error(isArabic ? 'لم يتم تأكيد تفعيل إرسال الطلبات.' : 'Outbound order activation was not confirmed.');
+      await loadConnections();
+      setMessage(isArabic ? 'تم تفعيل الاتصال لإرسال الطلبات. احفظ الفرع الافتراضي واربط أصناف كل فرع.' : 'Outbound order dispatch is enabled. Save a default branch and map items for each branch.');
+    } catch (err) {
+      setError(true); setMessage(err instanceof Error ? err.message : (isArabic ? 'تعذر تفعيل إرسال الطلبات.' : 'Could not enable outbound order dispatch.'));
+    } finally { setActivatingWebhookConnectionId(''); }
+  };
+
   const saveBranch = async (event: React.FormEvent) => {
     event.preventDefault();
     setSavingBranch(true);
@@ -478,9 +509,13 @@ export function PosConnectionsPanel({ language }: { language: string }) {
             <button type="button" onClick={() => void navigator.clipboard.writeText(`${window.location.origin}/api/pos/webhooks/${connection.id}`).then(() => setMessage(isArabic ? 'تم نسخ عنوان Webhook.' : 'Webhook URL copied.')).catch(() => setMessage(isArabic ? 'تعذر النسخ؛ انسخ العنوان يدويًا.' : 'Copy failed; copy the URL manually.'))} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
               <Copy className="h-3.5 w-3.5" />{isArabic ? 'نسخ عنوان Webhook' : 'Copy webhook URL'}
             </button>
-            {connection.status !== 'connected' && <button type="button" onClick={() => void activateWebhookConnection(connection)} disabled={activatingWebhookConnectionId === connection.id || !locations.some(location => location.connection_id === connection.id && location.active)} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+            {connection.inbound_webhooks_configured && !connection.inbound_webhooks_active && <button type="button" onClick={() => void activateWebhookConnection(connection)} disabled={activatingWebhookConnectionId === connection.id || !locations.some(location => location.connection_id === connection.id && location.active)} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
               {activatingWebhookConnectionId === connection.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
               {isArabic ? 'تفعيل استقبال Webhook' : 'Activate inbound webhooks'}
+            </button>}
+            {connection.outbound_orders_configured && !connection.outbound_orders_active && <button type="button" onClick={() => void activateOutboundConnection(connection)} disabled={activatingWebhookConnectionId === connection.id || !locations.some(location => location.connection_id === connection.id && location.active)} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+              {activatingWebhookConnectionId === connection.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              {isArabic ? 'تفعيل إرسال الطلبات' : 'Enable outbound orders'}
             </button>}
           </div>
         </div>;
