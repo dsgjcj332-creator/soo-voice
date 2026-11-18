@@ -64,6 +64,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
   const [provider, setProvider] = useState('foodics');
   const [displayName, setDisplayName] = useState('');
   const [credentialsText, setCredentialsText] = useState('');
+  const [foodicsApiToken, setFoodicsApiToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -225,20 +226,31 @@ export function PosConnectionsPanel({ language }: { language: string }) {
     event.preventDefault();
     setMessage('');
     let credentials: unknown;
-    try {
-      credentials = JSON.parse(credentialsText);
-      if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) throw new Error('invalid');
-      if (Object.keys(credentials as Record<string, unknown>).length === 0) throw new Error('empty');
-    } catch {
-      setError(true);
-      setMessage(isArabic ? 'أدخل بيانات الاعتماد بصيغة JSON صحيحة تحتوي على حقول.' : 'Enter a valid JSON object containing credential fields.');
-      return;
+    if (provider === 'foodics') {
+      const token = foodicsApiToken.trim();
+      if (token.length < 20 || token.length > 4096) {
+        setError(true);
+        setMessage(isArabic ? 'أدخل Foodics API Token صالحًا.' : 'Enter a valid Foodics API token.');
+        return;
+      }
+      credentials = { apiToken: token };
+    } else {
+      try {
+        credentials = JSON.parse(credentialsText);
+        if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)) throw new Error('invalid');
+        if (Object.keys(credentials as Record<string, unknown>).length === 0) throw new Error('empty');
+      } catch {
+        setError(true);
+        setMessage(isArabic ? 'أدخل بيانات الاعتماد بصيغة JSON صحيحة تحتوي على حقول.' : 'Enter a valid JSON object containing credential fields.');
+        return;
+      }
     }
     setSaving(true);
     setError(false);
     try {
       await request('connections', 'POST', { provider, displayName: displayName.trim() || undefined, credentials });
       setCredentialsText('');
+      setFoodicsApiToken('');
       setDisplayName('');
       setShowForm(false);
       setMessage(isArabic ? 'تم حفظ بيانات الربط المشفّرة. الحالة: قيد الإعداد، ولم يتم اختبار الاتصال بعد.' : 'Encrypted credentials saved. Status: pending setup; the provider connection has not been tested.');
@@ -477,14 +489,23 @@ export function PosConnectionsPanel({ language }: { language: string }) {
           <input value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={100} placeholder={isArabic ? 'مثال: فرع الزقازيق' : 'e.g. Main branch'} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm" />
         </label>
       </div>
-      <label className="block text-xs font-bold text-slate-600">{isArabic ? 'بيانات الاعتماد بصيغة JSON' : 'Credentials as JSON'}
+      {provider === 'foodics' ? <>
+        <label className="block text-xs font-bold text-slate-600">{isArabic ? 'Foodics API Token' : 'Foodics API token'}
+          <input type="password" value={foodicsApiToken} onChange={e => setFoodicsApiToken(e.target.value)} required minLength={20} maxLength={4096} autoComplete="new-password" spellCheck={false} placeholder={isArabic ? 'الصق الرمز الذي أصدرته Foodics' : 'Paste the API token issued for your Foodics account'} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-mono text-sm" />
+        </label>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
+          {isArabic
+            ? 'لاستخراج الرمز، يلزم طلب التكامل من مالك حساب Foodics وتحديد صلاحيات القراءة للمنيو والفروع والكتابة للطلبات حسب احتياجك. الرمز على مستوى الحساب كله، وليس فرعًا واحدًا؛ SooVoice سيحتاج إلى تصفية البيانات حسب الفرع. حفظ الرمز هنا يخزّنه مشفرًا فقط ولا يختبر الاتصال أو يفعّل المزامنة بعد.'
+            : 'Request API access through the Foodics integration team with approval from the account owner and least-privilege scopes for branches/menu reads and order creation as needed. The token is account-wide, not branch-scoped; SooVoice must filter by branch. Saving stores it encrypted only and does not test or activate the provider connection.'}
+        </div>
+      </> : <label className="block text-xs font-bold text-slate-600">{isArabic ? 'بيانات الاعتماد بصيغة JSON' : 'Credentials as JSON'}
         <textarea value={credentialsText} onChange={e => setCredentialsText(e.target.value)} required rows={6} autoComplete="off" spellCheck={false} placeholder={'{"apiKey":"YOUR_SECRET","storeId":"YOUR_STORE_ID"}' } className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs" />
-      </label>
+      </label>}
       <p className="text-xs leading-5 text-slate-500">{isArabic ? 'استخدم أسماء الحقول التي يحددها مزوّدك. لا تلصق بيانات حقيقية في بيئة تجريبية غير موثوقة. لن نعرض هذه القيم بعد الحفظ.' : 'Use the field names specified by your provider. Do not paste live secrets into an untrusted test environment. Values will not be displayed after saving.'}</p>
-      <p className="text-xs leading-5 text-indigo-700">{isArabic ? 'لإرسال الطلبات عبر وسيط كاشير عام، أضف orderWebhookUrl و orderWebhookSecret (سر بطول 32 حرفًا على الأقل) إلى JSON. بعد الحفظ أنشئ سر Webhook الوارد من زر الاتصال. لازم تربط كل صنف من المنيو بصنف الكاشير وتحدد عملة الفرع.' : 'For outbound orders through a universal POS bridge, include orderWebhookUrl and orderWebhookSecret (at least 32 characters) in this JSON. After saving, generate the inbound webhook secret from the connection action. Every menu item must be mapped to a POS catalog item and the branch currency must be set.'}</p>
+      {provider !== 'foodics' && <p className="text-xs leading-5 text-indigo-700">{isArabic ? 'لإرسال الطلبات عبر وسيط كاشير عام، أضف orderWebhookUrl و orderWebhookSecret (سر بطول 32 حرفًا على الأقل) إلى JSON. بعد الحفظ أنشئ سر Webhook الوارد من زر الاتصال. لازم تربط كل صنف من المنيو بصنف الكاشير وتحدد عملة الفرع.' : 'For outbound orders through a universal POS bridge, include orderWebhookUrl and orderWebhookSecret (at least 32 characters) in this JSON. After saving, generate the inbound webhook secret from the connection action. Every menu item must be mapped to a POS catalog item and the branch currency must be set.'}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={saving || !credentialsText.trim()} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{isArabic ? 'حفظ مشفّر' : 'Save encrypted'}</button>
-        <button type="button" onClick={() => { setShowForm(false); setCredentialsText(''); }} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">{isArabic ? 'إلغاء' : 'Cancel'}</button>
+        <button type="submit" disabled={saving || (provider === 'foodics' ? !foodicsApiToken.trim() : !credentialsText.trim())} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{isArabic ? 'حفظ مشفّر' : 'Save encrypted'}</button>
+        <button type="button" onClick={() => { setShowForm(false); setCredentialsText(''); setFoodicsApiToken(''); }} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">{isArabic ? 'إلغاء' : 'Cancel'}</button>
       </div>
     </form>}
 
