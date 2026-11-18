@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { 
   CreditCard, 
   Code, 
@@ -16,13 +16,81 @@ import {
 import { useLanguage } from "../contexts/LanguageContext";
 import { useSettings } from "../contexts/SettingsContext";
 import { useAuth } from "../contexts/AuthContext";
-import { currencySymbol, formatPrice } from "../lib/currency";
+import { currencySymbol, formatPrice, type CurrencyCode } from "../lib/currency";
+import { getSupabase, getSupabaseConfig } from "../lib/supabase";
 
 export function Billing() {
   const { language } = useLanguage();
   const { currency } = useSettings();
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [billingError, setBillingError] = useState("");
+  const [currentSubscription, setCurrentSubscription] = useState<{
+    status: string;
+    billing_interval: string | null;
+    currency: string | null;
+    trial_ends_at: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+  } | null>(null);
+  const [recentInvoices, setRecentInvoices] = useState<Array<{
+    id: string;
+    invoice_number: string;
+    status: string;
+    currency: string;
+    total_minor: number;
+    issued_at: string;
+    due_at: string | null;
+    paid_at: string | null;
+  }>>([]);
+
+
+  useEffect(() => {
+    if (!user || user.provider === "local") {
+      setBillingLoading(false);
+      return;
+    }
+    const { isConfigured } = getSupabaseConfig();
+    const supabase = getSupabase();
+    if (!isConfigured || !supabase) {
+      setBillingError(language === "ar" ? "قاعدة البيانات غير مُعدة." : "Billing database is not configured.");
+      setBillingLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadBillingRecords = async () => {
+      setBillingLoading(true);
+      const [subscriptionResult, invoicesResult] = await Promise.all([
+        supabase
+          .from("merchant_subscriptions")
+          .select("status,billing_interval,currency,trial_ends_at,current_period_end,cancel_at_period_end")
+          .eq("owner_id", user.uid)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("billing_invoices")
+          .select("id,invoice_number,status,currency,total_minor,issued_at,due_at,paid_at")
+          .eq("owner_id", user.uid)
+          .order("issued_at", { ascending: false })
+          .limit(10),
+      ]);
+      if (cancelled) return;
+      const error = subscriptionResult.error || invoicesResult.error;
+      if (error) {
+        setBillingError(error.message);
+      } else {
+        setBillingError("");
+        setCurrentSubscription(subscriptionResult.data || null);
+        setRecentInvoices((invoicesResult.data || []) as typeof recentInvoices);
+      }
+      setBillingLoading(false);
+    };
+    void loadBillingRecords();
+    return () => { cancelled = true; };
+  }, [user, language]);
 
   // ROI Calculator states
   const [monthlyVisitors, setMonthlyVisitors] = useState(10000);
@@ -145,12 +213,62 @@ export function Billing() {
               <h2 className="text-lg font-bold text-slate-800">
                 {language === "ar" ? "اشتراك المتجر الحالي" : "Merchant Subscription Plan"}
               </h2>
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                {language === "ar" ? "حالة الاشتراك: تحتاج تحقق" : "Subscription status: unverified"}
+              <span className={`px-3 py-1 rounded-full text-xs font-bold ${currentSubscription ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                {billingLoading
+                  ? (language === "ar" ? "جاري تحميل الاشتراك..." : "Loading subscription...")
+                  : currentSubscription
+                    ? (language === "ar" ? `حالة الاشتراك: ${currentSubscription.status}` : `Subscription: ${currentSubscription.status}`)
+                    : (language === "ar" ? "لا يوجد اشتراك مسجل" : "No subscription record")}
               </span>
             </div>
 
 
+            {billingError && (
+              <p role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                {language === "ar" ? "تعذر تحميل سجلات اشتراكك. قد تحتاج قاعدة البيانات إلى تطبيق ترحيل الفوترة." : "Could not load your billing records. The billing migration may need to be applied."}
+              </p>
+            )}
+            {currentSubscription && (
+              <div className="mb-5 grid grid-cols-1 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm md:grid-cols-3">
+                <div>
+                  <p className="text-xs text-slate-500">{language === "ar" ? "دورة الفوترة" : "Billing interval"}</p>
+                  <p className="mt-1 font-bold text-slate-800">{currentSubscription.billing_interval || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">{language === "ar" ? "نهاية الفترة التجريبية" : "Trial ends"}</p>
+                  <p className="mt-1 font-bold text-slate-800">{currentSubscription.trial_ends_at ? new Date(currentSubscription.trial_ends_at).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US") : "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">{language === "ar" ? "نهاية الفترة الحالية" : "Current period ends"}</p>
+                  <p className="mt-1 font-bold text-slate-800">{currentSubscription.current_period_end ? new Date(currentSubscription.current_period_end).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US") : "—"}</p>
+                </div>
+              </div>
+            )}
+            <div className="mb-5 overflow-hidden rounded-xl border border-slate-100">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <h3 className="text-sm font-bold text-slate-800">{language === "ar" ? "آخر الفواتير" : "Recent invoices"}</h3>
+              </div>
+              {billingLoading ? (
+                <p className="p-4 text-xs text-slate-500">{language === "ar" ? "جاري تحميل الفواتير..." : "Loading invoices..."}</p>
+              ) : recentInvoices.length === 0 ? (
+                <p className="p-4 text-xs text-slate-500">{language === "ar" ? "لا توجد فواتير مسجلة حتى الآن." : "No invoices have been recorded yet."}</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {recentInvoices.map((invoice) => (
+                    <div key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs">
+                      <div>
+                        <p className="font-bold text-slate-800">{invoice.invoice_number}</p>
+                        <p className="mt-1 text-slate-500">{new Date(invoice.issued_at).toLocaleDateString(language === "ar" ? "ar-EG" : "en-US")}</p>
+                      </div>
+                      <div className="text-end">
+                        <p className="font-bold text-slate-800">{formatPrice(Number(invoice.total_minor) / 100, invoice.currency as CurrencyCode)}</p>
+                        <p className="mt-1 text-slate-500">{invoice.status}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {pricingPlans.map((plan) => {
                 return (
