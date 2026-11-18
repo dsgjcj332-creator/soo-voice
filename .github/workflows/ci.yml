@@ -68,6 +68,10 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f tests/fixtures/pos-migrations-bootstrap.sql
       - name: Bootstrap owner-scoped orders table
         run: psql -X -v ON_ERROR_STOP=1 -f sql/orders_setup.sql
+      - name: Apply secure guest checkout and outbox migrations
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_19_secure_guest_checkout.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_20_enforce_outbox_lease_expiry.sql
       - name: Apply POS migrations in dependency order
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
