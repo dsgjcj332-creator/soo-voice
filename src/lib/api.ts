@@ -24,6 +24,7 @@ import { normalizePosCatalog } from './pos/catalog-normalizer';
 import { verifyPosWebhookSignature } from './pos/webhook-security';
 import { rotatePosWebhookSecret } from './pos/webhook-secret';
 import { isUuid, parsePosLocationInput } from './pos/location-validation';
+import { createBillingAdminRouter } from './billing-admin-api';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
 function safeEqual(a: string, b: string): boolean {
@@ -94,6 +95,10 @@ export function createApiApp() {
 
   // Global per-IP limiter for the whole API surface.
   app.use(rateLimit(60_000, 600));
+
+  // Billing management uses Supabase-verified app_metadata admin claims;
+  // service-role credentials remain server-side and never reach the browser.
+  app.use('/api/admin/billing', createBillingAdminRouter());
 
   const requireApiKey = (
     req: express.Request,
