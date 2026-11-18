@@ -467,6 +467,11 @@ export function PosConnectionsPanel({ language }: { language: string }) {
           <select value={provider} onChange={e => setProvider(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-medium">
             {PROVIDERS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
+          <span className="mt-2 block text-[11px] font-normal leading-5 text-amber-700">
+            {provider === 'custom'
+              ? (isArabic ? 'هذا اتصال مخصص عبر وسيط HTTPS موقّع. أنت مسؤول عن تحويل الطلبات إلى نظام الكاشير.' : 'This is a custom signed HTTPS bridge. Your middleware is responsible for translating orders to the POS.')
+              : (isArabic ? 'اختيار اسم الشركة لا يعني وجود ربط API أو OAuth مباشر معها حتى الآن. حفظ بيانات الاتصال ينشئ سجلًا فقط؛ إرسال الطلبات يحتاج وسيط HTTPS موقّعًا، والمزامنة المباشرة تنتظر موصل الشركة الأصلي.' : 'Selecting a vendor does not mean its native API or OAuth adapter is available yet. Saving creates a connection record only; outbound orders require a signed HTTPS bridge, while direct sync awaits that vendor adapter.')}
+          </span>
         </label>
         <label className="block text-xs font-bold text-slate-600">{isArabic ? 'اسم تعريفي (اختياري)' : 'Display name (optional)'}
           <input value={displayName} onChange={e => setDisplayName(e.target.value)} maxLength={100} placeholder={isArabic ? 'مثال: فرع الزقازيق' : 'e.g. Main branch'} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm" />
