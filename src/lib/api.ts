@@ -220,7 +220,7 @@ export function createApiApp() {
     }
     try {
       const connectionQuery = new URLSearchParams({
-        select: 'id,owner_id,provider,status,credentials_ciphertext,credentials_key_version',
+        select: 'id,owner_id,provider,status,credentials_ciphertext,credentials_key_version,inbound_webhooks_enabled',
         id: `eq.${connectionId}`,
         status: 'eq.connected',
         limit: '1',
@@ -235,12 +235,17 @@ export function createApiApp() {
       const connections = await connectionResponse.json() as Array<{
         id: string; owner_id: string; provider: string; status: string;
         credentials_ciphertext: string | null; credentials_key_version: string | null;
+        inbound_webhooks_enabled: boolean;
       }>;
       if (!Array.isArray(connections) || connections.length !== 1) {
         res.status(404).json({ error: 'Active POS connection not found' });
         return;
       }
       const connection = connections[0];
+      if (connection.inbound_webhooks_enabled !== true) {
+        res.status(409).json({ error: 'Inbound webhooks are not enabled for this connection' });
+        return;
+      }
       if (!connection.credentials_ciphertext || !connection.credentials_key_version) {
         res.status(503).json({ error: 'POS webhook credentials are unavailable' });
         return;
@@ -1391,7 +1396,7 @@ export function createApiApp() {
       const route = selectPosOrderRoute(routeRows, tableReference);
 
       const connectionQuery = new URLSearchParams({
-        select: 'id,provider,credentials_ciphertext,credentials_key_version',
+        select: 'id,provider,credentials_ciphertext,credentials_key_version,outbound_orders_enabled',
         id: `eq.${route.connection_id}`,
         owner_id: `eq.${event.owner_id}`,
         status: 'eq.connected',
@@ -1402,12 +1407,13 @@ export function createApiApp() {
       });
       type PosConnectionRow = {
         id: string; provider: string; credentials_ciphertext: string | null;
-        credentials_key_version: string | null;
+        credentials_key_version: string | null; outbound_orders_enabled: boolean;
       };
       const connectionRows = await connectionResponse.json().catch(() => null) as PosConnectionRow[] | null;
       if (!connectionResponse.ok || !Array.isArray(connectionRows)) throw new Error('POS_CONNECTION_LOOKUP_FAILED');
       if (connectionRows.length !== 1) throw new Error('POS_ROUTE_CONNECTION_NOT_CONNECTED');
       const selected = connectionRows[0];
+      if (selected.outbound_orders_enabled !== true) throw new Error('POS_OUTBOUND_NOT_ENABLED');
       if (!selected.credentials_ciphertext || !selected.credentials_key_version) {
         throw new Error('POS_CREDENTIALS_UNAVAILABLE');
       }
