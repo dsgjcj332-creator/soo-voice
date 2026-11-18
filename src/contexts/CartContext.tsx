@@ -1,30 +1,44 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { playChime, haptic } from '../lib/chime';
 
-/**
- * Cart for the guest-facing menu (/store).
- *
- * The provider renders nothing visible — the floating button is in the
- * consumer (StoreDemo) so it can be positioned relative to its own layout.
- * The provider just exposes useCart().
- *
- * The audible "added to cart" chime + haptic now live in `lib/chime.ts`
- * so they can be shared with the order-tracking flow, which fires its
- * own chimes when the kitchen changes the order's status.
- */
+export interface CartSelectedModifierGroup {
+  groupId: string;
+  groupName: string;
+  options: Array<{
+    id: string;
+    name: string;
+    priceDelta: number;
+  }>;
+}
 
 export interface CartItem {
   id: string;
+  cartLineId: string;
   name: string;
   price: number;
   quantity: number;
+  modifiers: CartSelectedModifierGroup[];
+}
+
+type NewCartItem = Omit<CartItem, 'quantity' | 'cartLineId' | 'modifiers'> & {
+  modifiers?: CartSelectedModifierGroup[];
+};
+
+export function getCartLineId(item: Pick<CartItem, 'id' | 'modifiers'> | NewCartItem): string {
+  const normalized = [...(item.modifiers || [])]
+    .map(group => ({
+      groupId: group.groupId,
+      optionIds: group.options.map(option => option.id).sort(),
+    }))
+    .sort((a, b) => a.groupId.localeCompare(b.groupId));
+  return `${item.id}:${JSON.stringify(normalized)}`;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (item: Omit<CartItem, 'quantity'>, quantity?: number) => void;
-  removeFromCart: (id: string) => void;
-  setQuantity: (id: string, qty: number) => void;
+  addToCart: (item: NewCartItem, quantity?: number) => void;
+  removeFromCart: (cartLineId: string) => void;
+  setQuantity: (cartLineId: string, qty: number) => void;
   clearCart: () => void;
   total: number;
   count: number; // total quantity, not distinct items
@@ -39,38 +53,38 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [orderNote, setOrderNoteState] = useState('');
   const setOrderNote = useCallback((note: string) => setOrderNoteState(note.slice(0, 1000)), []);
 
-  const addToCart = useCallback((newItem: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
-    setItems((prev) => {
-      const existing = prev.find((item) => item.id === newItem.id);
+  const addToCart = useCallback((newItem: NewCartItem, quantity: number = 1) => {
+    const modifiers = newItem.modifiers || [];
+    const cartLineId = getCartLineId({ ...newItem, modifiers });
+    const normalizedItem: CartItem = { ...newItem, modifiers, cartLineId, quantity: 1 };
+
+    setItems(prev => {
+      const existing = prev.find(item => item.cartLineId === cartLineId);
       if (existing) {
-        return prev.map((item) =>
-          item.id === newItem.id
+        return prev.map(item =>
+          item.cartLineId === cartLineId
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
       }
-      return [...prev, { ...newItem, quantity }];
+      return [...prev, { ...normalizedItem, quantity }];
     });
-    // The 'cart' chime is a short ascending 2-note (A5 → E6) — discreet,
-    // hospitality-appropriate. The shared chime lib also fires a small
-    // haptic on supported devices.
     playChime('cart');
     haptic(15);
   }, []);
 
-  const removeFromCart = useCallback((id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  const removeFromCart = useCallback((cartLineId: string) => {
+    setItems(prev => prev.filter(item => item.cartLineId !== cartLineId));
   }, []);
 
-  const setQuantity = useCallback((id: string, qty: number) => {
-    setItems((prev) => {
-      if (qty <= 0) return prev.filter((item) => item.id !== id);
-      return prev.map((item) => (item.id === id ? { ...item, quantity: qty } : item));
+  const setQuantity = useCallback((cartLineId: string, qty: number) => {
+    setItems(prev => {
+      if (qty <= 0) return prev.filter(item => item.cartLineId !== cartLineId);
+      return prev.map(item => item.cartLineId === cartLineId ? { ...item, quantity: qty } : item);
     });
   }, []);
 
   const clearCart = useCallback(() => { setItems([]); setOrderNoteState(''); }, []);
-
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const count = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -85,8 +99,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) {
-    throw new Error('useCart must be used within a CartProvider');
-  }
+  if (!context) throw new Error('useCart must be used within a CartProvider');
   return context;
 }

@@ -22,6 +22,7 @@ export const config = {
 interface OrderItemInput {
   id: string;
   quantity: number;
+  modifiers?: Array<{ groupId: string; optionIds: string[] }>;
 }
 
 interface RequestBody {
@@ -30,6 +31,7 @@ interface RequestBody {
   idempotencyKey?: string;
   items?: OrderItemInput[];
   notes?: string;
+  modifiersVersion?: number;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -73,6 +75,7 @@ export default async function handler(req: any, res: any) {
   const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   const inputItems = body.items;
   const orderNotes = typeof body.notes === 'string' ? body.notes.trim() : '';
+  const modifiersVersion = body.modifiersVersion ?? 1;
 
   // Normalize Arabic-Indic + Persian digits and strip bidi marks.
   const tableNumber = tableNumberRaw
@@ -85,6 +88,11 @@ export default async function handler(req: any, res: any) {
   if (body.notes !== undefined && (typeof body.notes !== 'string' || body.notes.length > 1000)) {
     res.statusCode = 400;
     res.end(JSON.stringify({ error: 'Order instructions must be 1000 characters or fewer' }));
+    return;
+  }
+  if (modifiersVersion !== 1) {
+    res.statusCode = 400;
+    res.end(JSON.stringify({ error: 'Unsupported modifier selection format' }));
     return;
   }
   if (!UUID_RE.test(ownerId)) {
@@ -109,19 +117,43 @@ export default async function handler(req: any, res: any) {
   }
 
   const seen = new Set<string>();
-  const items: Array<{ id: string; quantity: number }> = [];
+  const items: Array<{ id: string; quantity: number; modifiers: Array<{ groupId: string; optionIds: string[] }> }> = [];
   for (const line of inputItems) {
     const id = typeof line?.id === 'string' ? line.id.trim() : '';
     const quantity = Number(line?.quantity);
-    if (!id || id.length > 128 || !Number.isInteger(quantity) || quantity < 1 || quantity > 20 || seen.has(id)) {
+    const rawModifiers = line?.modifiers === undefined ? [] : line.modifiers;
+    if (!id || id.length > 128 || !Number.isInteger(quantity) || quantity < 1 || quantity > 20
+      || !Array.isArray(rawModifiers) || rawModifiers.length > 20) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: 'Invalid order item or quantity' }));
       return;
     }
-    seen.add(id);
-    items.push({ id, quantity });
+    const seenGroups = new Set<string>();
+    const modifiers: Array<{ groupId: string; optionIds: string[] }> = [];
+    for (const group of rawModifiers) {
+      const groupId = typeof group?.groupId === 'string' ? group.groupId : '';
+      const optionIds = group?.optionIds;
+      if (!UUID_RE.test(groupId) || seenGroups.has(groupId) || !Array.isArray(optionIds) || optionIds.length > 20
+        || optionIds.some((optionId: unknown) => typeof optionId !== 'string' || !UUID_RE.test(optionId))
+        || new Set(optionIds).size !== optionIds.length) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Invalid product modifier selection' }));
+        return;
+      }
+      seenGroups.add(groupId);
+      modifiers.push({ groupId, optionIds: [...optionIds].sort() });
+    }
+    modifiers.sort((x, y) => x.groupId.localeCompare(y.groupId));
+    const lineKey = id + ':' + JSON.stringify(modifiers);
+    if (seen.has(lineKey)) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: 'Duplicate order line' }));
+      return;
+    }
+    seen.add(lineKey);
+    items.push({ id, quantity, modifiers });
   }
-  items.sort((a, b) => a.id.localeCompare(b.id));
+  items.sort((a, b) => a.id.localeCompare(b.id) || JSON.stringify(a.modifiers).localeCompare(JSON.stringify(b.modifiers)));
 
   // Durable owner + per-client limits are shared across serverless instances.
   // HMAC bucket keys ensure raw IP addresses are never stored.
@@ -175,7 +207,7 @@ export default async function handler(req: any, res: any) {
     `soovoice-guest-order:v1:${ownerId}:${idempotencyKey}`
   );
   const guestTokenHash = sha256Hex(guestToken);
-  const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items, notes: orderNotes }));
+  const requestHash = sha256Hex(JSON.stringify({ ownerId, tableNumber, items, notes: orderNotes, modifiersVersion }));
 
   // --- Call the Supabase RPC ---
   try {
@@ -191,6 +223,7 @@ export default async function handler(req: any, res: any) {
         p_table_number: tableNumber,
         p_items: items,
         p_order_notes: orderNotes,
+        p_modifiers_version: modifiersVersion,
         p_idempotency_key: idempotencyKey,
         p_guest_token_hash: guestTokenHash,
         p_request_hash: requestHash,

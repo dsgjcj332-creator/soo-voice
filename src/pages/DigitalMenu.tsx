@@ -20,6 +20,7 @@ import { useSettings } from "../contexts/SettingsContext";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
 import { CURRENCY_LIST, normalizeCurrency, formatPrice, type CurrencyCode } from "../lib/currency";
 import { useStoreSettings } from "../lib/storeSettings";
+import { ModifierManager } from "../components/ModifierManager";
 import {
   MenuCategory,
   loadLocalCategories,
@@ -958,6 +959,7 @@ export function DigitalMenu() {
                           ? <span className="rounded-full bg-purple-50 px-2 py-1 text-[10px] font-bold text-purple-600">{language === "ar" ? "للذكاء فقط" : "AI only"}</span>
                           : <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-600">{language === "ar" ? "ظاهر بالمنيو" : "Visible"}</span>}
                       </div>
+                      <ModifierManager itemId={item.id} ownerId={user?.uid || ""} language={language} localMode={user?.provider === "local"} />
                     </div>
                     <button onClick={() => handleDeleteItem(item.id)} aria-label={language === "ar" ? "حذف المنتج" : "Delete product"} className="min-h-11 min-w-11 shrink-0 rounded-xl text-rose-500 hover:bg-rose-50 flex items-center justify-center">
                       <Trash2 className="w-4 h-4" />
@@ -1011,6 +1013,9 @@ export function DigitalMenu() {
                           )}
                         </td>
                         <td className="py-4 px-6 text-right">
+                          <div className="min-w-[220px]">
+                            <ModifierManager itemId={item.id} ownerId={user?.uid || ""} language={language} localMode={user?.provider === "local"} />
+                          </div>
                           <button
                             onClick={() => handleDeleteItem(item.id)}
                             className="text-red-400 hover:text-red-600 transition-colors p-2 hover:bg-red-50 rounded-lg"

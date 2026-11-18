@@ -18,6 +18,7 @@ import {
   sessionRemainingSeconds, formatCountdown,
 } from '../lib/storeSettings';
 import { playChime, haptic } from '../lib/chime';
+import { GuestModifierPicker } from '../components/GuestModifierPicker';
 
 
 export function StoreDemo() {
@@ -26,6 +27,7 @@ export function StoreDemo() {
   const { user } = useAuth();
   const { items: cartItems, addToCart, setQuantity, removeFromCart, clearCart, total: cartTotal, count: cartCount, orderNote, setOrderNote } = useCart();
   const [dbMenuItems, setDbMenuItems] = React.useState<any[]>([]);
+  const [modifierItem, setModifierItem] = React.useState<any | null>(null);
   const [cartOpen, setCartOpen] = React.useState(false);
   const [checkoutStatus, setCheckoutStatus] = React.useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [lastOrder, setLastOrder] = React.useState<{ id: string; guestToken: string; items: any[]; total: number; tableNumber: string; createdAt: number; notes?: string } | null>(null);
@@ -349,13 +351,18 @@ export function StoreDemo() {
       const orderItems = cartItems.map(item => ({
         id: String(item.id),
         quantity: Math.max(1, Math.round(Number(item.quantity) || 0)),
+        modifiers: (item.modifiers || []).map(group => ({
+          groupId: group.groupId,
+          optionIds: group.options.map(option => option.id).sort(),
+        })).sort((a, b) => a.groupId.localeCompare(b.groupId)),
       }));
       const normalizedOrderNote = String(orderNote || '').trim().slice(0, 1000);
       const requestFingerprint = JSON.stringify({
         ownerId: resolvedOwnerId,
         tableNumber,
-        items: [...orderItems].sort((a, b) => a.id.localeCompare(b.id)),
+        items: [...orderItems].sort((a, b) => a.id.localeCompare(b.id) || JSON.stringify(a.modifiers).localeCompare(JSON.stringify(b.modifiers))),
         notes: normalizedOrderNote,
+        modifiersVersion: 1,
       });
       if (!orderIdempotencyKeyRef.current || orderIdempotencyKeyRef.current.fingerprint !== requestFingerprint) {
         orderIdempotencyKeyRef.current = {
@@ -371,6 +378,7 @@ export function StoreDemo() {
           tableNumber,
           idempotencyKey: orderIdempotencyKeyRef.current.key,
           items: orderItems,
+          modifiersVersion: 1,
           notes: normalizedOrderNote,
         }),
       });
@@ -1029,7 +1037,7 @@ export function StoreDemo() {
             <div className={`grid gap-4 md:gap-6 mt-6 md:mt-8 ${menuLayout === "grid" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1"}`}>
               {filteredMenuItems.map((item) => {
                 // Existing quantity in cart (for showing +1 / + buttons instead of just Add)
-                const inCart = cartItems.find((c) => c.id === item.id);
+                const inCart = cartItems.find((c) => c.id === item.id && c.modifiers.length === 0);
                 return (
                 <div key={item.id} style={customCardColor ? { backgroundColor: customCardColor } : undefined} className={`${currentBgTheme.cardBg} ${menuBorderRadius} p-4 md:p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between border ${currentBgTheme.accentCardBg}`}>
                   <div>
@@ -1047,7 +1055,7 @@ export function StoreDemo() {
                       mobile tapping. */}
                   {!inCart ? (
                     <button
-                      onClick={() => addToCart({ id: item.id, name: item.name, price: item.price })}
+                      onClick={() => setModifierItem(item)}
                       style={customButtonColor ? { backgroundColor: customButtonColor, color: "#ffffff" } : undefined}
                       className={`w-full flex items-center justify-center gap-2 transition-all py-3 rounded-xl font-bold text-sm shadow-xs min-h-[44px] ${currentPrimary.buttonBg}`}
                     >
@@ -1057,7 +1065,7 @@ export function StoreDemo() {
                   ) : (
                     <div className={`flex items-center justify-between rounded-xl overflow-hidden ${currentPrimary.bg} text-white`}>
                       <button
-                        onClick={() => setQuantity(item.id, inCart.quantity - 1)}
+                        onClick={() => setQuantity(inCart.cartLineId, inCart.quantity - 1)}
                         className="w-12 h-12 flex items-center justify-center hover:bg-black/10 transition-colors"
                         title={language === 'ar' ? 'إنقاص' : 'Decrease'}
                       >
@@ -1067,7 +1075,7 @@ export function StoreDemo() {
                         {inCart.quantity} {language === 'ar' ? 'في الطلب' : 'in cart'}
                       </span>
                       <button
-                        onClick={() => setQuantity(item.id, inCart.quantity + 1)}
+                        onClick={() => setQuantity(inCart.cartLineId, inCart.quantity + 1)}
                         className="w-12 h-12 flex items-center justify-center hover:bg-black/10 transition-colors"
                         title={language === 'ar' ? 'زيادة' : 'Increase'}
                       >
@@ -1190,9 +1198,14 @@ export function StoreDemo() {
               ) : (
                 <ul className="space-y-3">
                   {cartItems.map((ci) => (
-                    <li key={ci.id} className="flex items-center gap-2 p-3 rounded-2xl border border-slate-100">
+                    <li key={ci.cartLineId} className="flex items-center gap-2 p-3 rounded-2xl border border-slate-100">
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-800 text-sm leading-snug truncate">{ci.name}</p>
+                        {ci.modifiers.length > 0 && (
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            {ci.modifiers.flatMap(group => group.options.map(option => option.name)).join(' · ')}
+                          </p>
+                        )}
                         <p className="text-xs text-slate-400" dir="ltr">
                           {formatPrice(ci.price, menuCurrency)}
                           {' '}{language === 'ar' ? 'للقطعة' : 'each'}
@@ -1200,7 +1213,7 @@ export function StoreDemo() {
                       </div>
                       <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg shrink-0">
                         <button
-                          onClick={() => setQuantity(ci.id, ci.quantity - 1)}
+                          onClick={() => setQuantity(ci.cartLineId, ci.quantity - 1)}
                           className="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                           aria-label={language === 'ar' ? 'إنقاص' : 'Decrease'}
                         >
@@ -1208,7 +1221,7 @@ export function StoreDemo() {
                         </button>
                         <span className="w-7 text-center font-bold text-sm text-slate-800">{ci.quantity}</span>
                         <button
-                          onClick={() => setQuantity(ci.id, ci.quantity + 1)}
+                          onClick={() => setQuantity(ci.cartLineId, ci.quantity + 1)}
                           className="w-9 h-9 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                           aria-label={language === 'ar' ? 'زيادة' : 'Increase'}
                         >
@@ -1219,7 +1232,7 @@ export function StoreDemo() {
                         {formatPrice(ci.price * ci.quantity, menuCurrency)}
                       </span>
                       <button
-                        onClick={() => removeFromCart(ci.id)}
+                        onClick={() => removeFromCart(ci.cartLineId)}
                         className="text-slate-300 hover:text-rose-500 transition-colors p-1.5 -m-1.5 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-rose-50"
                         aria-label={language === 'ar' ? 'حذف' : 'Remove'}
                         title={language === 'ar' ? 'حذف' : 'Remove'}
@@ -1565,6 +1578,15 @@ export function StoreDemo() {
           </>
         )}
       </div>
+
+      {modifierItem && <GuestModifierPicker
+        item={modifierItem}
+        ownerId={resolvedOwnerId}
+        language={language}
+        localMode={user?.provider === 'local' || !getSupabaseConfig().isConfigured}
+        onClose={() => setModifierItem(null)}
+        onAdd={(selected) => addToCart(selected)}
+      />}
 
       {/* Voice waiter — hidden when the merchant disables it in Settings */}
       {storeSettings.showVoiceWidget && <VoiceWidget onPlaceOrder={handleSubmitOrder} />}
