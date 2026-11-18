@@ -483,7 +483,7 @@ export function StoreDemo() {
     ctx.fillRect(0, 0, W, H);
 
     // Top accent bar
-    ctx.fillStyle = '#4f46e5';
+    ctx.fillStyle = invoiceAccentHex;
     ctx.fillRect(0, 0, W, 6);
 
     let logoImg: HTMLImageElement | null = null;
@@ -729,6 +729,11 @@ export function StoreDemo() {
   };
 
   const currentPrimary = primaryColorStyles[menuPrimaryColor as keyof typeof primaryColorStyles] || primaryColorStyles.indigo;
+  const primaryColorHex: Record<string, string> = {
+    indigo: "#4f46e5", rose: "#e11d48", emerald: "#059669",
+    amber: "#f59e0b", violet: "#7c3aed", gold: "#a16207",
+  };
+  const invoiceAccentHex = customAccentColor || primaryColorHex[menuPrimaryColor] || "#4f46e5";
   const currentBgTheme = bgThemeStyles[menuBgStyle as keyof typeof bgThemeStyles] || bgThemeStyles["light-clean"];
 
   // ---- Full-screen Access Gate (geo-fence verdict pending / denied / expired session) ----
