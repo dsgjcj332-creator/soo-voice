@@ -3,10 +3,10 @@
 This change prioritizes the guest ordering journey and the merchant-facing menu experience.
 
 ## Guest checkout
-The guest browser sends only catalog item IDs and quantities to `POST /api/store/orders`.
+The guest browser sends only catalog item IDs and quantities plus an optional order-level instruction (maximum 1000 characters) to `POST /api/store/orders`.
 The trusted server validates the request, enforces rate limits, and calls
 `create_guest_order` so catalog prices are reloaded from the database and the
-order plus `order.created` outbox event are committed together.
+order, guest instructions, and `order.created` outbox event are committed together. The instruction is stored on the order and forwarded to the POS bridge as the order-level notes field.
 
 Required server environment:
 - `SUPABASE_URL`
@@ -19,6 +19,7 @@ tracking-token verification.
 ## Voice order lifecycle
 - `add_to_cart` only adds the catalog item to the active cart.
 - The assistant asks whether the guest wants anything else.
+- `set_order_note` captures guest-provided instructions (for example, no onions) without changing catalog prices. The guest can review or edit them in the cart.
 - `place_order` is exposed only on the store page and only submits after an
   explicit guest confirmation.
 - The assistant reports success only after the secure checkout endpoint returns
@@ -55,6 +56,7 @@ migrations:
 
 1. `sql/2026_11_30_menu_customizer_palette.sql`
 2. `sql/2026_12_01_order_completion_timestamp.sql`
+3. `sql/2026_12_04_guest_order_instructions.sql` (after `sql/2026_11_19_secure_guest_checkout.sql` and before the guest checkout integration test).
 
 The palette migration safely no-ops when the optional `menu_customizer` table
 is absent from an isolated test database. Production merchants should have the
