@@ -29,7 +29,7 @@ end; $$;
 reset role;
 -- Anonymous access is denied at the SQL privilege layer; assert this as
 -- the migration owner rather than issuing a query that is expected to error.
-do $
+do $$
 begin
  if has_table_privilege('anon','public.merchant_settings','SELECT')
     or has_table_privilege('anon','public.merchant_settings','INSERT')
