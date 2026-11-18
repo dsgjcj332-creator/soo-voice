@@ -95,6 +95,14 @@ function rateLimit(windowMs: number, max: number) {
 export function createApiApp() {
   const app = express();
 
+  // Deployment marker: every response from the unified API carries this header,
+  // so operators can tell unifier-served routes apart from standalone functions
+  // and verify that the bundled catch-all is actually the one serving traffic.
+  app.use((_req, res, next) => {
+    res.setHeader('x-soovoice-api', 'bundled-express');
+    next();
+  });
+
   // CORS: restrict to ALLOWED_ORIGINS when configured. Left open by default so
   // the embeddable voice widget keeps working on merchant storefronts.
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
