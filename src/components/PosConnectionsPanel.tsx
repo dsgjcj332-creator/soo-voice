@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
-type PosMenuItem = { id: string; name: string; description: string | null; price: number };
+type PosMenuItem = { id: string; name: string; description: string | null; price: number; isAiOnly?: boolean };
 type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
 type PosApplyField = 'name' | 'description' | 'price';
 type PosApplyEvent = { id: string; provider_item_id: string; selected_fields: PosApplyField[]; before_state: Record<string, unknown>; after_state: Record<string, unknown>; created_at: string };
@@ -376,6 +376,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
         <textarea value={credentialsText} onChange={e => setCredentialsText(e.target.value)} required rows={6} autoComplete="off" spellCheck={false} placeholder={'{"apiKey":"YOUR_SECRET","storeId":"YOUR_STORE_ID"}' } className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs" />
       </label>
       <p className="text-xs leading-5 text-slate-500">{isArabic ? 'استخدم أسماء الحقول التي يحددها مزوّدك. لا تلصق بيانات حقيقية في بيئة تجريبية غير موثوقة. لن نعرض هذه القيم بعد الحفظ.' : 'Use the field names specified by your provider. Do not paste live secrets into an untrusted test environment. Values will not be displayed after saving.'}</p>
+      <p className="text-xs leading-5 text-indigo-700">{isArabic ? 'لإرسال الطلبات عبر وسيط كاشير عام، أضف orderWebhookUrl و orderWebhookSecret (سر بطول 32 حرفًا على الأقل) إلى JSON. بعد الحفظ أنشئ سر Webhook الوارد من زر الاتصال. لازم تربط كل صنف من المنيو بصنف الكاشير وتحدد عملة الفرع.' : 'For outbound orders through a universal POS bridge, include orderWebhookUrl and orderWebhookSecret (at least 32 characters) in this JSON. After saving, generate the inbound webhook secret from the connection action. Every menu item must be mapped to a POS catalog item and the branch currency must be set.'}</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={saving || !credentialsText.trim()} className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{isArabic ? 'حفظ مشفّر' : 'Save encrypted'}</button>
         <button type="button" onClick={() => { setShowForm(false); setCredentialsText(''); }} className="rounded-xl px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200">{isArabic ? 'إلغاء' : 'Cancel'}</button>
@@ -445,7 +446,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
               <label className="min-w-0 flex-1 text-xs font-semibold text-slate-600">{isArabic ? 'اربطه بمنتج من منيو SooVoice' : 'Link to a SooVoice menu item'}
                 <select disabled={!item.active} value={mappingSelections[item.provider_item_id] ?? catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id ?? ''} onChange={e => setMappingSelections(current => ({ ...current, [item.provider_item_id]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm">
                   <option value="">{isArabic ? 'اختر منتج المنيو' : 'Select menu item'}</option>
-                  {menuItems.map(menuItem => <option key={menuItem.id} value={menuItem.id}>{menuItem.name} · {Number(menuItem.price).toFixed(2)}</option>)}
+                  {menuItems.map(menuItem => <option key={menuItem.id} value={menuItem.id}>{menuItem.name}{menuItem.isAiOnly ? (isArabic ? ' · صوتي فقط' : ' · voice only') : ''} · {Number(menuItem.price).toFixed(2)}</option>)}
                 </select>
               </label>
               <div className="w-full rounded-lg bg-slate-50 p-3">

@@ -1,0 +1,37 @@
+name: POS outbox dispatcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-outbox-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Dispatch pending POS orders
+        env:
+          WORKER_URL: ${{ secrets.POS_OUTBOX_WORKER_URL }}
+          WORKER_SECRET: ${{ secrets.POS_OUTBOX_WORKER_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$WORKER_URL" || -z "$WORKER_SECRET" ]]; then
+            echo "POS outbox scheduler secrets are not configured; skipping safely."
+            exit 0
+          fi
+          case "$WORKER_URL" in
+            https://*) ;;
+            *) echo "POS_OUTBOX_WORKER_URL must use HTTPS."; exit 1 ;;
+          esac
+          curl --silent --show-error --fail-with-body --max-time 45 \
+            -H "Authorization: Bearer $WORKER_SECRET" \
+            "${WORKER_URL%/}/api/pos/outbox/dispatch"

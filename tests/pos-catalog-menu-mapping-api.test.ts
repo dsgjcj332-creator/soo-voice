@@ -157,6 +157,34 @@ test('POS menu mapping verifies tenant scope and records explicit merchant appro
   );
 });
 
+test('POS menu mapping allows a merchant-owned voice-only item for outbound cashier orders', async () => {
+  await withApi(
+    (url, init) => successfulSupabase(url, init, {
+      menuRows: [{
+        id: 'menu-ai-addon', name: 'Extra sauce', description: null, price: 8,
+        ownerId, isAiOnly: true,
+      }],
+    }),
+    async (baseUrl, requests) => {
+      const response = await originalFetch(`${baseUrl}/api/pos/catalog/mappings`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationId, providerItemId: 'provider-extra-sauce', menuItemId: 'menu-ai-addon',
+        }),
+      });
+      assert.equal(response.status, 201);
+      const menuRequest = requests.find(request => request.url.pathname === '/rest/v1/menu_items');
+      assert.equal(menuRequest?.url.searchParams.get('ownerId'), `eq.${ownerId}`);
+      assert.equal(menuRequest?.url.searchParams.has('or'), false);
+      const mappingRequest = requests.find(request =>
+        request.url.pathname === '/rest/v1/pos_catalog_menu_links' && request.init?.method === 'POST');
+      const saved = JSON.parse(String(mappingRequest?.init?.body));
+      assert.equal(saved.menu_item_id, 'menu-ai-addon');
+    },
+  );
+});
+
 test('POS menu mapping refuses a menu item that is not returned for the authenticated merchant', async () => {
   await withApi(
     (url, init) => successfulSupabase(url, init, { menuRows: [] }),
