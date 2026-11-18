@@ -1248,7 +1248,7 @@ export function StoreDemo() {
                     <>{language === 'ar' ? '✓ تم إرسال الطلب للمطبخ' : '✓ Sent to kitchen'}</>
                   ) : checkoutStatus === 'error' ? (
                     <>
-                      {submitErrorKind === 'not_ready'
+                      {submitErrorKind === 'schema'
                         ? (language === 'ar'
                             ? 'الطلب متوقف مؤقتًا لحماية بياناتك — يجري تجهيز إرسال آمن من الخادم.'
                             : 'Checkout is temporarily unavailable while secure server-side order validation is being implemented.')
