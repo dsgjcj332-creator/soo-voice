@@ -66,6 +66,8 @@ jobs:
           sudo apt-get install -y postgresql-client
       - name: Bootstrap isolated Supabase auth roles
         run: psql -X -v ON_ERROR_STOP=1 -f tests/fixtures/pos-migrations-bootstrap.sql
+      - name: Bootstrap owner-scoped orders table
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/orders_setup.sql
       - name: Apply POS migrations in dependency order
         run: |
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_18_multi_pos_registry.sql
