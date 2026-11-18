@@ -20,6 +20,33 @@ import { OnboardingWizard } from "../components/onboarding/OnboardingWizard";
 import { getSupabase, getSupabaseConfig } from "../lib/supabase";
 import { formatPrice } from "../lib/currency";
 
+type DailyTaskKey = "kitchen" | "conversations" | "menu" | "voice" | "connections";
+const DAILY_TASK_KEYS: DailyTaskKey[] = ["kitchen", "conversations", "menu", "voice", "connections"];
+
+async function persistDailyTasks(ownerId: string, taskDate: string, completedIds: string[]): Promise<boolean> {
+  const supabase = getSupabase();
+  const { isConfigured } = getSupabaseConfig();
+  if (!isConfigured || !supabase) return false;
+  const completed = new Set(completedIds);
+  const timestamp = new Date().toISOString();
+  const rows = DAILY_TASK_KEYS.map((task_key) => ({
+    owner_id: ownerId,
+    task_date: taskDate,
+    task_key,
+    completed: completed.has(task_key),
+    completed_by: completed.has(task_key) ? ownerId : null,
+    completed_at: completed.has(task_key) ? timestamp : null,
+  }));
+  const { error } = await supabase
+    .from("merchant_daily_tasks")
+    .upsert(rows, { onConflict: "owner_id,task_date,task_key" });
+  if (error) {
+    console.warn("Daily checklist cloud save failed:", error.message);
+    return false;
+  }
+  return true;
+}
+
 /**
  * Dashboard overview — a real restaurant overview, not a SaaS analytics
  * dashboard. Built around the question the owner actually asks when
@@ -57,6 +84,8 @@ export function DashboardOverview() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [completedDailyTasks, setCompletedDailyTasks] = useState<string[]>([]);
+  const [dailyTasksLoadedKey, setDailyTasksLoadedKey] = useState<string | null>(null);
+  const [dailyTasksSyncStatus, setDailyTasksSyncStatus] = useState<'loading' | 'local' | 'syncing' | 'synced' | 'error'>('loading');
 
   const localDayKey = (() => {
     const now = new Date();
@@ -65,24 +94,164 @@ export function DashboardOverview() {
   const dailyTasksStorageKey = user?.uid ? `soovoice:daily-tasks:${user.uid}:${localDayKey}` : null;
 
   useEffect(() => {
-    if (!dailyTasksStorageKey) return;
-    try {
-      const saved = window.localStorage.getItem(dailyTasksStorageKey);
-      const parsed = saved ? JSON.parse(saved) : [];
-      setCompletedDailyTasks(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
-    } catch {
+    if (!dailyTasksStorageKey) {
       setCompletedDailyTasks([]);
+      setDailyTasksLoadedKey(dailyTasksStorageKey);
+      setDailyTasksSyncStatus('local');
+      return;
     }
-  }, [dailyTasksStorageKey]);
+    let cancelled = false;
+    let initialLoadFinished = false;
+    const queuedRealtimeRows: any[] = [];
+    const readLocalTasks = () => {
+      try {
+        const saved = window.localStorage.getItem(dailyTasksStorageKey);
+        const parsed = saved ? JSON.parse(saved) : [];
+        return Array.isArray(parsed)
+          ? parsed.filter((id): id is string => DAILY_TASK_KEYS.includes(id as DailyTaskKey))
+          : [];
+      } catch {
+        return [];
+      }
+    };
+    const localTasks = readLocalTasks();
+    setDailyTasksLoadedKey(null);
+    setDailyTasksSyncStatus('loading');
+
+    if (!user || user.provider === 'local') {
+      setCompletedDailyTasks(localTasks);
+      setDailyTasksLoadedKey(dailyTasksStorageKey);
+      setDailyTasksSyncStatus('local');
+      return;
+    }
+
+    const supabase = getSupabase();
+    const { isConfigured } = getSupabaseConfig();
+    if (!isConfigured || !supabase) {
+      setCompletedDailyTasks(localTasks);
+      setDailyTasksLoadedKey(dailyTasksStorageKey);
+      setDailyTasksSyncStatus('error');
+      return;
+    }
+
+    const applyRealtimeRow = (row: any) => {
+      if (!row || row.task_date !== localDayKey || !DAILY_TASK_KEYS.includes(row.task_key as DailyTaskKey)) return;
+      setCompletedDailyTasks((current) => {
+        if (row.completed) return current.includes(row.task_key) ? current : [...current, row.task_key];
+        return current.filter((id) => id !== row.task_key);
+      });
+      setDailyTasksSyncStatus('synced');
+    };
+
+    const channel = supabase
+      .channel(`daily-tasks-${user.uid}-${localDayKey}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'merchant_daily_tasks',
+        filter: `owner_id=eq.${user.uid}`,
+      }, (payload) => {
+        const row = payload.new && Object.keys(payload.new).length
+          ? payload.new
+          : payload.old;
+        if (!initialLoadFinished) queuedRealtimeRows.push(row);
+        else applyRealtimeRow(row);
+      })
+      .subscribe();
+
+    const loadRemoteTasks = async () => {
+      const { data, error } = await supabase
+        .from('merchant_daily_tasks')
+        .select('task_key, completed, task_date')
+        .eq('owner_id', user.uid)
+        .eq('task_date', localDayKey);
+
+      if (cancelled) return;
+      if (error) {
+        console.warn('Daily checklist cloud load failed:', error.message);
+        setCompletedDailyTasks(localTasks);
+        setDailyTasksSyncStatus('error');
+      } else {
+        const remoteTasks = (data || [])
+          .filter((row: any) => row.completed && DAILY_TASK_KEYS.includes(row.task_key as DailyTaskKey))
+          .map((row: any) => row.task_key as string);
+        if (!(data || []).length && localTasks.length) {
+          const migrated = await persistDailyTasks(user.uid, localDayKey, localTasks);
+          if (cancelled) return;
+          setCompletedDailyTasks(localTasks);
+          setDailyTasksSyncStatus(migrated ? 'synced' : 'error');
+        } else {
+          setCompletedDailyTasks(remoteTasks);
+          setDailyTasksSyncStatus('synced');
+        }
+      }
+      initialLoadFinished = true;
+      queuedRealtimeRows.forEach(applyRealtimeRow);
+      setDailyTasksLoadedKey(dailyTasksStorageKey);
+    };
+
+    void loadRemoteTasks();
+
+    // Realtime is preferred; polling keeps the checklist usable if the table
+    // has not yet been added to the Supabase Realtime publication.
+    const poll = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible' || cancelled) return;
+      const { data, error } = await supabase
+        .from('merchant_daily_tasks')
+        .select('task_key, completed')
+        .eq('owner_id', user.uid)
+        .eq('task_date', localDayKey);
+      if (cancelled || error) return;
+      const remoteTasks = (data || [])
+        .filter((row: any) => row.completed && DAILY_TASK_KEYS.includes(row.task_key as DailyTaskKey))
+        .map((row: any) => row.task_key as string);
+      setCompletedDailyTasks((current) =>
+        current.length === remoteTasks.length && current.every((id) => remoteTasks.includes(id))
+          ? current
+          : remoteTasks
+      );
+      setDailyTasksSyncStatus('synced');
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+      void supabase.removeChannel(channel);
+    };
+  }, [dailyTasksStorageKey, localDayKey, user?.uid, user?.provider]);
 
   useEffect(() => {
-    if (!dailyTasksStorageKey) return;
+    if (!dailyTasksStorageKey || dailyTasksLoadedKey !== dailyTasksStorageKey) return;
     try {
       window.localStorage.setItem(dailyTasksStorageKey, JSON.stringify(completedDailyTasks));
     } catch {
-      // The checklist remains usable for this session if browser storage is unavailable.
+      // The cloud remains authoritative when available; local cache is best-effort.
     }
-  }, [dailyTasksStorageKey, completedDailyTasks]);
+  }, [dailyTasksStorageKey, completedDailyTasks, dailyTasksLoadedKey]);
+
+  const handleDailyTaskToggle = async (taskId: DailyTaskKey) => {
+    const nextTasks = completedDailyTasks.includes(taskId)
+      ? completedDailyTasks.filter((id) => id !== taskId)
+      : [...completedDailyTasks, taskId];
+    setCompletedDailyTasks(nextTasks);
+    if (dailyTasksStorageKey) {
+      try { window.localStorage.setItem(dailyTasksStorageKey, JSON.stringify(nextTasks)); } catch {}
+    }
+    if (!user || user.provider === 'local') {
+      setDailyTasksSyncStatus('local');
+      return;
+    }
+    setDailyTasksSyncStatus('syncing');
+    const saved = await persistDailyTasks(user.uid, localDayKey, nextTasks);
+    setDailyTasksSyncStatus(saved ? 'synced' : 'error');
+  };
+
+  const retryDailyTaskSync = async () => {
+    if (!user || user.provider === 'local') return;
+    setDailyTasksSyncStatus('syncing');
+    const saved = await persistDailyTasks(user.uid, localDayKey, completedDailyTasks);
+    setDailyTasksSyncStatus(saved ? 'synced' : 'error');
+  };
 
   // Load + subscribe to orders (live, like the kitchen page)
   useEffect(() => {
@@ -238,7 +407,7 @@ export function DashboardOverview() {
         </div>
       </header>
 
-      {/* Daily execution center — checklist is stored per merchant and day in this browser. */}
+      {/* Daily execution center — shared in the merchant account, with local demo fallback. */}
       <section id="daily-execution" className="mb-8 rounded-2xl border border-indigo-100 bg-white p-5 shadow-xs md:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -247,7 +416,17 @@ export function DashboardOverview() {
               {isAr ? "التنفيذ اليومي" : "Daily execution"}
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              {isAr ? "قائمة متابعة يومية للمطعم — محفوظة على هذا الجهاز." : "A daily restaurant checklist — saved in this browser on this device."}
+              {dailyTasksSyncStatus === 'loading'
+                ? (isAr ? 'جاري تحميل مهام اليوم...' : "Loading today's tasks...")
+                : dailyTasksSyncStatus === 'syncing'
+                  ? (isAr ? 'جاري مزامنة التغييرات مع حساب المطعم...' : 'Syncing changes to the restaurant account...')
+                  : dailyTasksSyncStatus === 'synced'
+                    ? (isAr ? 'المهام محفوظة في حساب المطعم ومتزامنة بين الأجهزة.' : 'Tasks are saved to the restaurant account and synced across devices.')
+                    : dailyTasksSyncStatus === 'error'
+                      ? (isAr ? 'تعذر تأكيد المزامنة. النسخة المحلية محفوظة ويمكن إعادة المحاولة.' : 'Cloud sync could not be confirmed. The local copy is kept; you can retry.')
+                      : user?.provider === 'local'
+                      ? (isAr ? 'وضع التجربة: المهام محفوظة على هذا الجهاز فقط.' : 'Demo mode: tasks are saved on this device only.')
+                      : (isAr ? 'الاتصال السحابي غير متاح حاليًا؛ المهام المحلية محفوظة.' : 'Cloud storage is unavailable; the local copy is kept.')}
             </p>
           </div>
           <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700">
@@ -264,9 +443,10 @@ export function DashboardOverview() {
               <div key={id} className={`flex items-center gap-3 rounded-xl border p-3 transition-colors ${done ? "border-emerald-100 bg-emerald-50/50" : "border-slate-100 bg-slate-50/70"}`}>
                 <button
                   type="button"
+                  disabled={dailyTasksSyncStatus === 'syncing' || dailyTasksSyncStatus === 'loading'}
                   aria-label={done ? (isAr ? "إلغاء إكمال المهمة" : "Mark task incomplete") : (isAr ? "إكمال المهمة" : "Mark task complete")}
                   aria-pressed={done}
-                  onClick={() => setCompletedDailyTasks((current) => done ? current.filter((taskId) => taskId !== id) : [...current, id])}
+                  onClick={() => void handleDailyTaskToggle(id as DailyTaskKey)}
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${done ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-transparent hover:border-indigo-400"}`}
                 >
                   <CheckCircle2 className="h-4 w-4" />
@@ -283,6 +463,16 @@ export function DashboardOverview() {
             );
           })}
         </div>
+        {dailyTasksSyncStatus === 'error' && user?.provider !== 'local' && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800">
+              {isAr ? 'المهام موجودة محليًا، لكن لم يتم تأكيد حفظها على السحابة.' : 'Tasks are kept locally, but cloud persistence has not been confirmed.'}
+            </p>
+            <button type="button" onClick={() => void retryDailyTaskSync()} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-amber-800 border border-amber-200 hover:bg-amber-100">
+              {isAr ? 'إعادة المزامنة' : 'Retry sync'}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Status row — 3 quiet cards */}
