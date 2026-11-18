@@ -49,7 +49,7 @@ export function VoiceWidget({ onPlaceOrder }: { onPlaceOrder?: () => Promise<boo
   // try/catch because VoiceWidget is also mounted in the standalone
   // /widget-standalone page, which is OUTSIDE the CartProvider. We
   // only want add-to-cart from the dine-in /store page.
-  let cartApi: { addToCart: (item: { id: string; name: string; price: number }, qty?: number) => void; count: number } | null = null;
+  let cartApi: { addToCart: (item: { id: string; name: string; price: number }, qty?: number) => void; setOrderNote: (note: string) => void; count: number } | null = null;
   try {
     cartApi = useCart();
   } catch {
@@ -507,8 +507,9 @@ Mandatory rules for using the function:
 2. Match the requested item and price exactly against the menu. Never invent products, IDs or prices. If a requested price does not match a menu item, ask a short clarifying question.
 3. When the guest wants an item, call add_to_cart with its exact id and quantity. This adds to the cart only; it does not send the order to the kitchen.
 4. After adding, say briefly: "Of course, added. Would you like anything else?"
-5. Ask if they want anything else. Only call place_order after the guest clearly says they are finished or confirms sending the order.
-6. Call place_order once. Say the order was sent only when the tool returns ok=true; otherwise apologize briefly and offer retry.
+5. If the guest gives special instructions (e.g. no onions), call set_order_note with their exact wording. Never claim an allergy is safe or verified.
+6. Ask if they want anything else. Only call place_order after the guest clearly says they are finished or confirms sending the order.
+7. Call place_order once. Say the order was sent only when the tool returns ok=true; otherwise apologize briefly and offer retry.
 7. Follow the exact configured dialect/locale: Egyptian Arabic, Gulf Arabic, Levantine Arabic, or simple standard Arabic. Never mix dialects.
 
 Example:
@@ -556,6 +557,10 @@ You: call place_order, then "Your order has been sent to the kitchen."
                     },
                     required: ["dish_id"],
                   },
+                }, {
+                  name: "set_order_note",
+                  description: "Set or replace the guest's special instructions for the whole order, such as no onions or allergy information. Do not invent or infer allergies. Keep the note concise.",
+                  parameters: { type: Type.OBJECT, properties: { note: { type: Type.STRING, description: "Guest's exact order instructions, maximum 1000 characters." } }, required: ["note"] },
                 }, ...(onPlaceOrderRef.current ? [{
                   name: "place_order",
                   description: "Submit the guest's current cart to the merchant kitchen. Call only after the guest clearly confirms they are finished and wants to send the order. Returns whether secure checkout actually succeeded.",
@@ -698,6 +703,15 @@ You: call place_order, then "Your order has been sent to the kitchen."
                 } catch (responseError) {
                   console.error('[VoiceWidget] place_order response failed:', responseError);
                 }
+                continue;
+              }
+              if (fc.name === 'set_order_note') {
+                const note = String((fc.args || {}).note ?? '').trim().slice(0, 1000);
+                cartApiRef.current?.setOrderNote(note);
+                try {
+                  const s = await sessionPromise;
+                  s.sendToolResponse({ functionResponses: [{ id: fc.id, name: 'set_order_note', response: { ok: true, message: note ? 'Order instructions saved. Confirm the wording with the guest.' : 'Order instructions cleared.' } }] });
+                } catch (e) { console.error('[VoiceWidget] set_order_note response failed:', e); }
                 continue;
               }
               if (fc.name !== 'add_to_cart') continue;
