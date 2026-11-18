@@ -1374,18 +1374,40 @@ export function createApiApp() {
   // ============ DURABLE POS ORDER OUTBOX DISPATCH ============
   // Called by a trusted scheduler/worker using a dedicated bearer secret.
   // No browser session or merchant-supplied owner ID is accepted here.
-  const dispatchPosOutbox = async (req: express.Request, res: express.Response) => {
-    const workerSecret = process.env.POS_OUTBOX_WORKER_SECRET || '';
-    const authorization = firstHeader(req.headers.authorization) || '';
-    const suppliedSecret = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || '';
-    if (workerSecret.length < 32) {
-      res.status(503).json({ error: 'POS outbox worker is not configured' });
-      return;
-    }
-    if (!suppliedSecret || !safeEqual(suppliedSecret, workerSecret)) {
-      res.status(401).json({ error: 'Unauthorized POS outbox worker' });
-      return;
-    }
+  // Records one alert row per dead-lettered outbox event so the owning
+  // merchant can see which orders never reached their POS. Idempotent on
+  // event_id; alerting failures never fail the dispatch itself.
+  const recordPosDispatchAlerts = async (backend: { supabaseUrl: string; serviceKey: string }): Promise<number> => {
+    const query = new URLSearchParams({
+      select: 'id,order_id,owner_id,attempts,last_error_code',
+      status: 'eq.dead_letter',
+      limit: '50',
+    });
+    const response = await fetch(`${backend.supabaseUrl}/rest/v1/order_outbox?${query}`, {
+      headers: posServiceHeaders(backend.serviceKey),
+    });
+    const rows = await response.json().catch(() => null) as Array<{
+      id: string; order_id: string; owner_id: string; attempts: number; last_error_code: string | null;
+    }> | null;
+    if (!response.ok || !Array.isArray(rows)) throw new Error('POS_DEAD_LETTER_LOOKUP_FAILED');
+    if (rows.length === 0) return 0;
+    const insertResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_dispatch_alerts`, {
+      method: 'POST',
+      headers: { ...posServiceHeaders(backend.serviceKey), Prefer: 'resolution=ignore-duplicates,return=representation' },
+      body: JSON.stringify(rows.map(row => ({
+        owner_id: row.owner_id,
+        order_id: row.order_id,
+        event_id: row.id,
+        error_code: row.last_error_code,
+        attempts: row.attempts,
+      }))),
+    });
+    const inserted = await insertResponse.json().catch(() => null) as unknown[] | null;
+    if (!insertResponse.ok || !Array.isArray(inserted)) throw new Error('POS_DISPATCH_ALERT_INSERT_FAILED');
+    return inserted.length;
+  };
+
+  const respondWithPosOutboxDispatch = async (res: express.Response) => {
     const backend = getPosBackend();
     if (!backend) {
       res.status(503).json({ error: 'POS outbox backend is not configured' });
@@ -1578,15 +1600,61 @@ export function createApiApp() {
         },
         { limit: 10, leaseSeconds: 120 },
       );
+      let alertsRecorded = 0;
+      try {
+        alertsRecorded = await recordPosDispatchAlerts(backend);
+      } catch (alertError) {
+        console.error('[API] POS dispatch alert recording failed:', alertError instanceof Error ? alertError.message : 'unknown');
+      }
       res.set('Cache-Control', 'no-store');
-      res.status(200).json(result);
+      res.status(200).json({ ...result, alertsRecorded });
     } catch (error) {
       console.error('[API] POS outbox dispatch failed:', error instanceof Error ? error.message : 'unknown');
       res.status(503).json({ error: 'POS outbox dispatch is temporarily unavailable' });
     }
   };
+
+  const dispatchPosOutbox = async (req: express.Request, res: express.Response) => {
+    const workerSecret = process.env.POS_OUTBOX_WORKER_SECRET || '';
+    const authorization = firstHeader(req.headers.authorization) || '';
+    const suppliedSecret = /^Bearer\s+(.+)$/i.exec(authorization)?.[1] || '';
+    if (workerSecret.length < 32) {
+      res.status(503).json({ error: 'POS outbox worker is not configured' });
+      return;
+    }
+    if (!suppliedSecret || !safeEqual(suppliedSecret, workerSecret)) {
+      res.status(401).json({ error: 'Unauthorized POS outbox worker' });
+      return;
+    }
+    await respondWithPosOutboxDispatch(res);
+  };
+
+  // Scheduled cron entry: Vercel crons call this path with the platform
+  // CRON_SECRET bearer token every two minutes (see vercel.json). It runs
+  // the same dispatch pipeline as the manual worker endpoint and stays
+  // unreachable without the secret.
+  const requireCronSecret: express.RequestHandler = (req, res, next) => {
+    const cronSecret = process.env.CRON_SECRET || '';
+    if (cronSecret.length < 32) {
+      res.status(503).json({ error: 'POS cron dispatch is not configured' });
+      return;
+    }
+    const cronAuthorization = firstHeader(req.headers.authorization) || '';
+    const cronSupplied = /^Bearer\s+(.+)$/i.exec(cronAuthorization)?.[1] || '';
+    if (!cronSupplied || !safeEqual(cronSupplied, cronSecret)) {
+      res.status(401).json({ error: 'Unauthorized POS cron dispatch' });
+      return;
+    }
+    next();
+  };
+
   app.post('/api/pos/outbox/dispatch', dispatchPosOutbox);
   app.get('/api/pos/outbox/dispatch', dispatchPosOutbox);
+  app.get('/api/pos/outbox/cron', requireCronSecret, (req, res) => {
+    respondWithPosOutboxDispatch(res).catch(() => {
+      if (!res.headersSent) res.status(503).json({ error: 'POS outbox dispatch is temporarily unavailable' });
+    });
+  });
 
   // ============ TRUSTED GUEST ORDER FLOW ============
   // Browser clients submit catalog IDs and quantities only. The database
