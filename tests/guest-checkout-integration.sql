@@ -61,6 +61,7 @@ $$;
 reset role;
 
 do $
+begin
   -- Direct row assertion runs as the database test owner, after resetting
   -- the restricted service_role used to exercise the checkout RPC.
   if not exists (
