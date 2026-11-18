@@ -107,4 +107,18 @@ begin
 end $$;
 reset role;
 
+-- Deactivating a branch clears all routes to it so new orders cannot remain
+-- pinned to a branch that the merchant has explicitly disabled.
+update public.pos_locations
+set active = false
+where id = 'bbbb0001-bbbb-4001-8001-bbbbbbbbbbbb';
+do $
+begin
+  if exists (select 1 from public.pos_order_routes
+      where owner_id='11111111-1111-4111-8111-111111111111'
+        and location_id='bbbb0001-bbbb-4001-8001-bbbbbbbbbbbb') then
+    raise exception 'INACTIVE_BRANCH_ROUTE_WAS_NOT_CLEARED';
+  end if;
+end $;
+
 rollback;
