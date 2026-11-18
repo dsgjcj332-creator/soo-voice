@@ -92,6 +92,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_11_30_menu_customizer_palette.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_01_order_completion_timestamp.sql
           psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_02_pos_order_status_webhook.sql
+          psql -X -v ON_ERROR_STOP=1 -f sql/2026_12_03_pos_multi_branch_order_routing.sql
       - name: Test store settings save and tenant isolation
         run: psql -X -v ON_ERROR_STOP=1 -f tests/store-settings-migrations-integration.sql
       - name: Verify schema, RLS and grants
@@ -100,6 +101,8 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f tests/pos-migrations-integration.sql
       - name: Test POS order status webhook idempotency and transitions
         run: psql -X -v ON_ERROR_STOP=1 -f tests/pos-order-status-webhook-integration.sql
+      - name: Test POS default and table-specific order routing
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/pos-order-routing-migrations-integration.sql
       - name: Test billing foundation RLS and invariants
         run: psql -X -v ON_ERROR_STOP=1 -f tests/billing-migrations-integration.sql
       - name: Test merchant daily task RLS and persistence

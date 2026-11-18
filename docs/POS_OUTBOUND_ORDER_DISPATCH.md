@@ -27,12 +27,21 @@ Then:
 
 1. Save the connection.
 2. Map the provider's branch in POS integrations and set its currency.
-3. Import/sync the provider catalog.
-4. Approve a menu mapping for every menu item that may appear in guest orders, including assistant-only/voice-only items. Those items remain hidden from the visual menu but can be explicitly mapped for cashier dispatch.
-5. Configure the middleware to accept the signed order contract below.
-6. Configure the inbound webhook secret separately if you also want catalog/status updates.
+3. Click **Enable outbound orders** on that connection. This activation is independent from inbound webhook activation and does not require an inbound secret.
+4. Import/sync the provider catalog.
+5. Approve a menu mapping for every menu item that may appear in guest orders, including assistant-only/voice-only items. Those items remain hidden from the visual menu but can be explicitly mapped for cashier dispatch.
+6. Configure the middleware to accept the signed order contract below.
+7. Configure the inbound webhook secret and activate inbound webhooks separately if you also want catalog/status updates.
 
-For safety, the current dispatcher requires exactly one connected POS connection with outbound webhook credentials and exactly one active branch for that merchant. If zero or multiple destinations are configured, the order remains in retry/dead-letter handling instead of being sent to an arbitrary branch. Multi-connection and multi-branch routing UI is a subsequent milestone.
+The dispatcher never guesses a destination. It uses the merchant's saved default route or an exact table-specific override, and verifies that the referenced connection is connected and the branch is active before loading credentials or catalog mappings.
+
+## Multi-branch routing
+
+The merchant must save a default branch under Integrations → POS → Order routing. The default is used for orders without a matching table reference. Optional table rules route an exact table identifier (case-insensitive after trimming) to another active branch and POS connection. An exact table rule takes precedence over the default. If no default exists, or a selected connection/branch is disconnected or inactive, the event is retried and is never sent to an arbitrary branch.
+
+The routing table is tenant-scoped and readable by its merchant; all writes go through authenticated API endpoints and service-role database functions that verify the selected connection is connected and the branch is active and belongs to it. The migration automatically seeds a default only for merchants that already have outbound enabled on exactly one connected POS connection with exactly one active mapped branch. Other merchants must explicitly enable outbound and choose a default branch.
+
+Each routed branch needs its own approved menu-to-POS mappings and active catalog items. A menu item missing from the selected branch's mapping blocks that order rather than silently sending it to a different branch.
 
 ## Outbound request contract
 

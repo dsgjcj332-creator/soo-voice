@@ -28,6 +28,7 @@ import { createBillingAdminRouter } from './billing-admin-api';
 import { processOrderOutboxBatch, type OrderOutboxEvent, type PosDispatchTarget } from './pos/outbox-worker';
 import { sendCustomPosOrderWebhook } from './pos/custom-webhook-delivery';
 import { SupabaseOutboxStore } from './pos/supabase-outbox-store';
+import { selectPosOrderRoute } from './pos/order-routing';
 import type { PosCreateOrderInput, PosProviderId } from './pos/types';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
@@ -219,7 +220,7 @@ export function createApiApp() {
     }
     try {
       const connectionQuery = new URLSearchParams({
-        select: 'id,owner_id,provider,status,credentials_ciphertext,credentials_key_version',
+        select: 'id,owner_id,provider,status,credentials_ciphertext,credentials_key_version,inbound_webhooks_enabled',
         id: `eq.${connectionId}`,
         status: 'eq.connected',
         limit: '1',
@@ -234,12 +235,17 @@ export function createApiApp() {
       const connections = await connectionResponse.json() as Array<{
         id: string; owner_id: string; provider: string; status: string;
         credentials_ciphertext: string | null; credentials_key_version: string | null;
+        inbound_webhooks_enabled: boolean;
       }>;
       if (!Array.isArray(connections) || connections.length !== 1) {
         res.status(404).json({ error: 'Active POS connection not found' });
         return;
       }
       const connection = connections[0];
+      if (connection.inbound_webhooks_enabled !== true) {
+        res.status(409).json({ error: 'Inbound webhooks are not enabled for this connection' });
+        return;
+      }
       if (!connection.credentials_ciphertext || !connection.credentials_key_version) {
         res.status(503).json({ error: 'POS webhook credentials are unavailable' });
         return;
@@ -372,7 +378,7 @@ export function createApiApp() {
     }
     try {
       const query = new URLSearchParams({
-        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,created_at,updated_at',
+        select: 'id,provider,display_name,status,granted_scopes,last_sync_at,last_error_code,credentials_ciphertext,credentials_key_version,inbound_webhooks_enabled,outbound_orders_enabled,created_at,updated_at',
         owner_id: `eq.${auth.ownerId}`,
         order: 'created_at.desc',
       });
@@ -385,9 +391,29 @@ export function createApiApp() {
         return;
       }
       const rows = await response.json();
-      // Explicit allowlist: credential ciphertext is never returned to clients.
+      // Decrypt only on the server to expose capability flags, never credentials.
+      const safeRows = Array.isArray(rows) ? rows.map((row: Record<string, unknown>) => {
+        let credentials: Record<string, unknown> = {};
+        if (typeof row.credentials_ciphertext === 'string' && typeof row.credentials_key_version === 'string') {
+          try { credentials = decryptPosCredentials(row.credentials_ciphertext, row.credentials_key_version); } catch { credentials = {}; }
+        }
+        const inboundConfigured = typeof credentials.webhookSecret === 'string' && credentials.webhookSecret.length >= 32;
+        const outboundUrlIsHttps = typeof credentials.orderWebhookUrl === 'string' &&
+          (() => { try { return new URL(credentials.orderWebhookUrl as string).protocol === 'https:'; } catch { return false; } })();
+        const outboundConfigured = outboundUrlIsHttps &&
+          typeof credentials.orderWebhookSecret === 'string' && credentials.orderWebhookSecret.length >= 32;
+        const connected = row.status === 'connected';
+        const { credentials_ciphertext: _ciphertext, credentials_key_version: _version, ...metadata } = row;
+        return {
+          ...metadata,
+          inbound_webhooks_configured: inboundConfigured,
+          outbound_orders_configured: outboundConfigured,
+          inbound_webhooks_active: connected && row.inbound_webhooks_enabled === true && inboundConfigured,
+          outbound_orders_active: connected && row.outbound_orders_enabled === true && outboundConfigured,
+        };
+      }) : [];
       res.set('Cache-Control', 'no-store');
-      res.json(Array.isArray(rows) ? rows : []);
+      res.json(safeRows);
     } catch (err) {
       console.error('[API] POS connection list error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'POS connections are temporarily unavailable' });
@@ -537,9 +563,9 @@ export function createApiApp() {
     }
   });
 
-  // Explicitly activate inbound canonical webhooks after the merchant has
-  // configured the provider endpoint, saved a per-connection secret, and mapped
-  // at least one active branch. This is not an outbound order-create adapter.
+  // Activate the selected connection for one or both supported directions.
+  // Inbound webhook and outbound bridge credentials are validated separately;
+  // an outbound-only middleware connection does not need an inbound secret.
   app.post('/api/pos/connections/:connectionId/activate-webhooks', posConnectionRateLimit, async (req, res) => {
     const auth = await authenticatePosMerchant(req);
     if (!auth) {
@@ -547,13 +573,15 @@ export function createApiApp() {
       return;
     }
     const connectionId = req.params.connectionId;
-    if (!isUuid(connectionId) || req.body?.confirmWebhookConfigured !== true) {
-      res.status(400).json({ error: 'Confirm webhook configuration and provide a valid connection ID' });
+    const confirmInbound = req.body?.confirmWebhookConfigured === true;
+    const confirmOutbound = req.body?.confirmOutboundConfigured === true;
+    if (!isUuid(connectionId) || (!confirmInbound && !confirmOutbound)) {
+      res.status(400).json({ error: 'Confirm at least one POS webhook or outbound order configuration' });
       return;
     }
     try {
       const query = new URLSearchParams({
-        select: 'id,status,credentials_ciphertext,credentials_key_version',
+        select: 'id,status,credentials_ciphertext,credentials_key_version,inbound_webhooks_enabled,outbound_orders_enabled',
         id: `eq.${connectionId}`,
         owner_id: `eq.${auth.ownerId}`,
         limit: '1',
@@ -563,7 +591,7 @@ export function createApiApp() {
       });
       const rows = await read.json().catch(() => null) as Array<{
         id: string; status: string; credentials_ciphertext: string | null;
-        credentials_key_version: string | null;
+        credentials_key_version: string | null; inbound_webhooks_enabled: boolean; outbound_orders_enabled: boolean;
       }> | null;
       if (!read.ok) {
         res.status(503).json({ error: 'Could not verify POS connection' });
@@ -579,8 +607,17 @@ export function createApiApp() {
         return;
       }
       const credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
-      if (typeof credentials.webhookSecret !== 'string' || credentials.webhookSecret.length < 32) {
-        res.status(409).json({ error: 'Generate a webhook secret before activation' });
+      const inboundConfigured = typeof credentials.webhookSecret === 'string' && credentials.webhookSecret.length >= 32;
+      const outboundConfigured = typeof credentials.orderWebhookUrl === 'string' &&
+        typeof credentials.orderWebhookSecret === 'string' &&
+        credentials.orderWebhookSecret.length >= 32 &&
+        (() => { try { return new URL(credentials.orderWebhookUrl as string).protocol === 'https:'; } catch { return false; } })();
+      if (confirmInbound && !inboundConfigured) {
+        res.status(409).json({ error: 'Generate an inbound webhook secret before enabling inbound webhooks' });
+        return;
+      }
+      if (confirmOutbound && !outboundConfigured) {
+        res.status(409).json({ error: 'Configure an HTTPS orderWebhookUrl and orderWebhookSecret before enabling outbound orders' });
         return;
       }
       const locationQuery = new URLSearchParams({
@@ -602,13 +639,21 @@ export function createApiApp() {
         res.status(409).json({ error: 'Add at least one active POS branch before activation' });
         return;
       }
-      if (connection.status === 'connected') {
-        res.set('Cache-Control', 'no-store');
-        res.json({ activated: true, alreadyActive: true, inboundWebhooks: true, outboundOrderCreation: false });
+      if (!['pending', 'degraded', 'connected'].includes(connection.status)) {
+        res.status(409).json({ error: 'This POS connection cannot be activated from its current state' });
         return;
       }
-      if (!['pending', 'degraded'].includes(connection.status)) {
-        res.status(409).json({ error: 'This POS connection cannot be activated from its current state' });
+      const nextInboundEnabled = connection.inbound_webhooks_enabled || confirmInbound;
+      const nextOutboundEnabled = connection.outbound_orders_enabled || confirmOutbound;
+      if (connection.status === 'connected' &&
+          nextInboundEnabled === connection.inbound_webhooks_enabled &&
+          nextOutboundEnabled === connection.outbound_orders_enabled) {
+        res.set('Cache-Control', 'no-store');
+        res.json({
+          activated: true, alreadyActive: true,
+          inboundWebhooks: connection.inbound_webhooks_enabled,
+          outboundOrderCreation: connection.outbound_orders_enabled,
+        });
         return;
       }
       const updateQuery = new URLSearchParams({
@@ -620,7 +665,13 @@ export function createApiApp() {
       const update = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${updateQuery}`, {
         method: 'PATCH',
         headers: { ...posServiceHeaders(auth.backend.serviceKey), Prefer: 'return=representation' },
-        body: JSON.stringify({ status: 'connected', last_error_code: null, updated_at: new Date().toISOString() }),
+        body: JSON.stringify({
+          status: 'connected',
+          inbound_webhooks_enabled: nextInboundEnabled,
+          outbound_orders_enabled: nextOutboundEnabled,
+          last_error_code: null,
+          updated_at: new Date().toISOString(),
+        }),
       });
       const updated = await update.json().catch(() => null) as Array<{ id: string; status: string }> | null;
       if (!update.ok) {
@@ -633,7 +684,10 @@ export function createApiApp() {
         return;
       }
       res.set('Cache-Control', 'no-store');
-      res.json({ activated: true, alreadyActive: false, inboundWebhooks: true, outboundOrderCreation: false });
+      res.json({
+        activated: true, alreadyActive: false,
+        inboundWebhooks: nextInboundEnabled, outboundOrderCreation: nextOutboundEnabled,
+      });
     } catch (err) {
       console.error('[API] POS webhook activation error:', err instanceof Error ? err.message : 'unknown');
       res.status(503).json({ error: 'Could not activate POS webhooks' });
@@ -1049,6 +1103,121 @@ export function createApiApp() {
     }
   });
 
+  // ============ MERCHANT POS ORDER ROUTING ============
+  // Routing rules are edited only through verified merchant sessions. The
+  // database RPC rechecks connection/location ownership and active state.
+  app.get('/api/pos/order-routes', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    try {
+      const query = new URLSearchParams({
+        select: 'id,connection_id,location_id,route_type,route_value,created_at,updated_at',
+        owner_id: `eq.${auth.ownerId}`,
+        order: 'route_type.asc,route_value.asc',
+      });
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_order_routes?${query}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const rows = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(rows)) {
+        res.status(503).json({ error: 'POS order routes are temporarily unavailable' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json(rows);
+    } catch (error) {
+      console.error('[API] POS order route list failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'POS order routes are temporarily unavailable' });
+    }
+  });
+
+  app.post('/api/pos/order-routes', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const body = req.body || {};
+    const connectionId = typeof body.connectionId === 'string' ? body.connectionId : '';
+    const locationId = typeof body.locationId === 'string' ? body.locationId : '';
+    const routeType = body.routeType;
+    const routeValue = body.routeValue;
+    if (!isUuid(connectionId) || !isUuid(locationId) ||
+        !['default', 'table'].includes(routeType) ||
+        (routeType === 'default' && routeValue != null) ||
+        (routeType === 'table' && (typeof routeValue !== 'string' ||
+          routeValue.trim().length < 1 || routeValue.trim().length > 40 ||
+          !/^[A-Za-z0-9][A-Za-z0-9 _./-]*$/.test(routeValue.trim())))) {
+      res.status(400).json({ error: 'A valid route type, connection, branch, and optional table reference are required' });
+      return;
+    }
+    try {
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/save_pos_order_route`, {
+        method: 'POST',
+        headers: posServiceHeaders(auth.backend.serviceKey),
+        body: JSON.stringify({
+          p_owner_id: auth.ownerId,
+          p_connection_id: connectionId,
+          p_location_id: locationId,
+          p_route_type: routeType,
+          p_route_value: routeType === 'table' ? routeValue.trim().toUpperCase() : null,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result || typeof result !== 'object') {
+        const code = typeof result?.message === 'string' ? result.message : '';
+        if (code.includes('NOT_CONNECTED') || code.includes('NOT_ACTIVE_OR_NOT_OWNED')) {
+          res.status(409).json({ error: 'The selected POS connection or branch is not active and connected' });
+          return;
+        }
+        console.error('[API] POS order route save failed:', response.status, code);
+        res.status(503).json({ error: 'Could not save POS order route' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json(result);
+    } catch (error) {
+      console.error('[API] POS order route save failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'Could not save POS order route' });
+    }
+  });
+
+  app.delete('/api/pos/order-routes/:routeId', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) {
+      res.status(401).json({ error: 'A valid merchant session is required' });
+      return;
+    }
+    const routeId = req.params.routeId;
+    if (!isUuid(routeId)) {
+      res.status(400).json({ error: 'A valid route ID is required' });
+      return;
+    }
+    try {
+      const response = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/delete_pos_order_route`, {
+        method: 'POST',
+        headers: posServiceHeaders(auth.backend.serviceKey),
+        body: JSON.stringify({ p_owner_id: auth.ownerId, p_route_id: routeId }),
+      });
+      const deleted = await response.json().catch(() => false);
+      if (!response.ok) {
+        res.status(503).json({ error: 'Could not delete POS order route' });
+        return;
+      }
+      if (deleted !== true) {
+        res.status(404).json({ error: 'POS order route not found' });
+        return;
+      }
+      res.status(200).json({ id: routeId, deleted: true });
+    } catch (error) {
+      console.error('[API] POS order route delete failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(503).json({ error: 'Could not delete POS order route' });
+    }
+  });
+
   // ============ POS LOCATION / BRANCH MANAGEMENT ============
   // Branch records are manually mapped until provider discovery adapters exist.
   app.get('/api/pos/locations', posConnectionRateLimit, async (req, res) => {
@@ -1212,46 +1381,64 @@ export function createApiApp() {
 
     const store = new SupabaseOutboxStore(backend.supabaseUrl, backend.serviceKey);
     const resolveTarget = async (event: OrderOutboxEvent): Promise<PosDispatchTarget> => {
+      const routeQuery = new URLSearchParams({
+        select: 'id,connection_id,location_id,route_type,route_value',
+        owner_id: `eq.${event.owner_id}`,
+      });
+      const routeResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_order_routes?${routeQuery}`, {
+        headers: posServiceHeaders(backend.serviceKey),
+      });
+      const routeRows = await routeResponse.json().catch(() => null) as Array<{
+        id: string; connection_id: string; location_id: string;
+        route_type: 'default' | 'table'; route_value: string | null;
+      }> | null;
+      if (!routeResponse.ok || !Array.isArray(routeRows)) throw new Error('POS_ORDER_ROUTE_LOOKUP_FAILED');
+      const tableReference = typeof event.payload.tableNumber === 'string'
+        ? event.payload.tableNumber : '';
+      const route = selectPosOrderRoute(routeRows, tableReference);
+
       const connectionQuery = new URLSearchParams({
-        select: 'id,provider,credentials_ciphertext,credentials_key_version',
+        select: 'id,provider,credentials_ciphertext,credentials_key_version,outbound_orders_enabled',
+        id: `eq.${route.connection_id}`,
         owner_id: `eq.${event.owner_id}`,
         status: 'eq.connected',
+        limit: '1',
       });
       const connectionResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_connections?${connectionQuery}`, {
         headers: posServiceHeaders(backend.serviceKey),
       });
       type PosConnectionRow = {
         id: string; provider: string; credentials_ciphertext: string | null;
-        credentials_key_version: string | null;
+        credentials_key_version: string | null; outbound_orders_enabled: boolean;
       };
       const connectionRows = await connectionResponse.json().catch(() => null) as PosConnectionRow[] | null;
       if (!connectionResponse.ok || !Array.isArray(connectionRows)) throw new Error('POS_CONNECTION_LOOKUP_FAILED');
-
-      const configured: Array<{ connection: PosConnectionRow; credentials: Record<string, unknown> }> = [];
-      for (const connection of connectionRows) {
-        if (!connection.credentials_ciphertext || !connection.credentials_key_version) continue;
-        let credentials: Record<string, unknown>;
-        try {
-          credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
-        } catch {
-          throw new Error('POS_CREDENTIALS_UNAVAILABLE');
-        }
-        if (typeof credentials.orderWebhookUrl === 'string' &&
-            typeof credentials.orderWebhookSecret === 'string' &&
-            credentials.orderWebhookSecret.length >= 32) {
-          configured.push({ connection, credentials });
-        }
+      if (connectionRows.length !== 1) throw new Error('POS_ROUTE_CONNECTION_NOT_CONNECTED');
+      const selected = connectionRows[0];
+      if (selected.outbound_orders_enabled !== true) throw new Error('POS_OUTBOUND_NOT_ENABLED');
+      if (!selected.credentials_ciphertext || !selected.credentials_key_version) {
+        throw new Error('POS_CREDENTIALS_UNAVAILABLE');
       }
-      if (configured.length === 0) throw new Error('POS_ORDER_TARGET_NOT_CONFIGURED');
-      if (configured.length !== 1) throw new Error('POS_ORDER_TARGET_AMBIGUOUS');
-      const selected = configured[0];
-      if (!posProviders.has(selected.connection.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
+      let credentials: Record<string, unknown>;
+      try {
+        credentials = decryptPosCredentials(selected.credentials_ciphertext, selected.credentials_key_version);
+      } catch {
+        throw new Error('POS_CREDENTIALS_UNAVAILABLE');
+      }
+      if (typeof credentials.orderWebhookUrl !== 'string' ||
+          typeof credentials.orderWebhookSecret !== 'string' ||
+          credentials.orderWebhookSecret.length < 32) {
+        throw new Error('POS_ORDER_TARGET_NOT_CONFIGURED');
+      }
+      if (!posProviders.has(selected.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
 
       const locationQuery = new URLSearchParams({
         select: 'id,currency,provider_location_id',
+        id: `eq.${route.location_id}`,
         owner_id: `eq.${event.owner_id}`,
-        connection_id: `eq.${selected.connection.id}`,
+        connection_id: `eq.${selected.id}`,
         active: 'eq.true',
+        limit: '1',
       });
       const locationResponse = await fetch(`${backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
         headers: posServiceHeaders(backend.serviceKey),
@@ -1260,8 +1447,7 @@ export function createApiApp() {
         id: string; currency: string | null; provider_location_id: string;
       }> | null;
       if (!locationResponse.ok || !Array.isArray(locationRows)) throw new Error('POS_LOCATION_LOOKUP_FAILED');
-      if (locationRows.length === 0) throw new Error('POS_LOCATION_NOT_CONFIGURED');
-      if (locationRows.length !== 1) throw new Error('POS_ORDER_LOCATION_AMBIGUOUS');
+      if (locationRows.length !== 1) throw new Error('POS_ROUTE_LOCATION_NOT_ACTIVE');
       const location = locationRows[0];
 
       const rawItems = event.payload.items;
@@ -1278,7 +1464,7 @@ export function createApiApp() {
         const mappingQuery = new URLSearchParams({
           select: 'provider_item_id,menu_item_id',
           owner_id: `eq.${event.owner_id}`,
-          connection_id: `eq.${selected.connection.id}`,
+          connection_id: `eq.${selected.id}`,
           location_id: `eq.${location.id}`,
           menu_item_id: `eq.${menuItemId}`,
           limit: '1',
@@ -1295,7 +1481,7 @@ export function createApiApp() {
         const catalogQuery = new URLSearchParams({
           select: 'provider_item_id,currency,active,available',
           owner_id: `eq.${event.owner_id}`,
-          connection_id: `eq.${selected.connection.id}`,
+          connection_id: `eq.${selected.id}`,
           location_id: `eq.${location.id}`,
           provider_item_id: `eq.${mappingRows[0].provider_item_id}`,
           active: 'eq.true',
@@ -1321,19 +1507,19 @@ export function createApiApp() {
 
       const context = {
         merchantId: event.owner_id,
-        connectionId: selected.connection.id,
+        connectionId: selected.id,
         locationId: location.id,
       };
       return {
-        provider: selected.connection.provider as PosProviderId,
+        provider: selected.provider as PosProviderId,
         context,
         orderCurrency,
         menuMappings: mappings,
         providerLocationId: location.provider_location_id,
         async createOrder(input: PosCreateOrderInput) {
           return sendCustomPosOrderWebhook({
-            orderWebhookUrl: selected.credentials.orderWebhookUrl as string,
-            orderWebhookSecret: selected.credentials.orderWebhookSecret as string,
+            orderWebhookUrl: credentials.orderWebhookUrl as string,
+            orderWebhookSecret: credentials.orderWebhookSecret as string,
           }, input);
         },
       } as PosDispatchTarget;

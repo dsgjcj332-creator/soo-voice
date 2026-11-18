@@ -249,3 +249,18 @@ A first inbound catalog event path is implemented for connected POS connections 
 - Contract and payload examples: `docs/POS_UNIVERSAL_WEBHOOK_CONTRACT.md`.
 
 This is a generic ingress contract, not automatic compatibility with every POS product. Each vendor still needs its own API/auth adapter or middleware capable of producing the canonical signed payload. Provider webhook subscription setup, secret provisioning/rotation UI, order events, polling/scheduled sync and actual POS order dispatch remain future work. CI PostgreSQL is isolated infrastructure; actual Supabase Staging migration and two-merchant acceptance testing remain required before release.
+
+
+## Multi-branch POS routing checkpoint (2026-11-18)
+
+Implemented on `feat/pos-multi-branch-order-routing`:
+
+- Added a tenant-scoped `pos_order_routes` table with one default destination per merchant and exact table-reference overrides.
+- Added service-role-only transactional RPCs to save/delete routing rules; the RPC validates that the connection is connected and the branch is active, belongs to that connection, and belongs to the merchant.
+- Existing merchants with exactly one connected connection and one active branch receive a safe default route during migration. Ambiguous merchants must choose explicitly.
+- Added authenticated merchant APIs and Integrations UI for choosing the default branch, routing specific tables to another POS connection/branch, and deleting obsolete rules.
+- The outbox dispatcher now chooses an exact table route first, otherwise the default. It no longer tries to infer a destination from the number of configured POS connections/branches.
+- Every selected branch still requires its own approved menu mappings and active catalog items. Missing mappings fail closed and are retried; orders are never redirected to a different branch as a fallback.
+- Added unit, API, and PostgreSQL integration tests for route selection, merchant scoping, replacement, and invalid/ambiguous routes.
+
+Apply `sql/2026_12_03_pos_multi_branch_order_routing.sql` after `sql/2026_12_02_pos_order_status_webhook.sql`. Native provider-specific OAuth/API adapters and actual vendor sandbox certification remain separate milestones.
