@@ -36,7 +36,7 @@ export function GuestModifierPicker({ item, ownerId, language, localMode = false
           }
         }
         if (cancelled) return;
-        setGroups(gs.map((g: any) => ({ ...g, options: os.filter((o: any) => o.group_id === g.id).sort((a: any,b: any) => a.sort_order-b.sort_order) })).filter((g: Group) => g.options.length));
+        setGroups(gs.map((g: any) => ({ ...g, options: os.filter((o: any) => o.group_id === g.id).sort((a: any,b: any) => a.sort_order-b.sort_order) })));
       } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
       finally { if (!cancelled) setLoading(false); }
     };
