@@ -30,6 +30,10 @@ import { processOrderOutboxBatch, type OrderOutboxEvent, type PosDispatchTarget 
 import { sendCustomPosOrderWebhook } from './pos/custom-webhook-delivery';
 import { SupabaseOutboxStore } from './pos/supabase-outbox-store';
 import { selectPosOrderRoute } from './pos/order-routing';
+import { FoodicsClient } from './pos/foodics/client';
+import { buildFoodicsOrderPayload, mapFoodicsProductsToCatalogItems, type FoodicsPricingSource } from './pos/foodics/mapping';
+import { exchangeFoodicsAuthorizationCode } from './pos/foodics/oauth';
+import { persistPosCatalogSnapshot } from './pos/catalog-persistence';
 import type { PosCreateOrderInput, PosProviderId } from './pos/types';
 
 /** Constant-time string comparison (hash both sides first to equalize length). */
@@ -1371,6 +1375,133 @@ export function createApiApp() {
     }
   });
 
+  // ============ FOODICS REAL INTEGRATION ============
+  // Exchanges an OAuth authorization code (delivered to the app's redirect
+  // URL by the Foodics console) for the account access token. The client
+  // secret stays server-side; the returned token is stored by the merchant
+  // through the existing POST /api/pos/connections vault flow.
+  app.post('/api/pos/foodics/oauth/exchange', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const clientId = process.env.FOODICS_CLIENT_ID || '';
+    const clientSecret = process.env.FOODICS_CLIENT_SECRET || '';
+    if (clientId.length < 8 || clientSecret.length < 16) {
+      res.status(503).json({ error: 'FOODICS_CLIENT_NOT_CONFIGURED' });
+      return;
+    }
+    const body = req.body || {};
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    const redirectUri = typeof body.redirectUri === 'string' ? body.redirectUri.trim() : '';
+    const sandbox = body.sandbox === true;
+    if (!code || code.length > 512 || !/^https:\/\//.test(redirectUri) || redirectUri.length > 512) {
+      res.status(400).json({ error: 'A valid authorization code and HTTPS redirect URI are required' });
+      return;
+    }
+    try {
+      const { apiToken } = await exchangeFoodicsAuthorizationCode({ code, clientId, clientSecret, redirectUri, sandbox });
+      res.set('Cache-Control', 'no-store');
+      res.json({ apiToken, sandbox });
+    } catch (error) {
+      console.error('[API] Foodics OAuth exchange failed:', error instanceof Error ? error.message : 'unknown');
+      res.status(502).json({ error: 'FOODICS_TOKEN_EXCHANGE_FAILED' });
+    }
+  });
+
+  // Pulls the live Foodics catalog (products with per-branch pricing and
+  // modifier groups) and persists the complete snapshot for one location
+  // through the service-role-only catalog RPC.
+  app.post('/api/pos/connections/:connectionId/sync-catalog', posConnectionRateLimit, async (req, res) => {
+    const auth = await authenticatePosMerchant(req);
+    if (!auth) { res.status(401).json({ error: 'A valid merchant session is required' }); return; }
+    const connectionId = typeof req.params.connectionId === 'string' ? req.params.connectionId : '';
+    const body = req.body || {};
+    const locationId = typeof body.locationId === 'string' ? body.locationId : '';
+    const sandbox = body.sandbox === true;
+    if (!isUuid(connectionId) || !isUuid(locationId)) {
+      res.status(400).json({ error: 'A valid connection and location ID are required' });
+      return;
+    }
+    try {
+      const connectionQuery = new URLSearchParams({
+        select: 'id,provider,status,credentials_ciphertext,credentials_key_version',
+        id: `eq.${connectionId}`, owner_id: `eq.${auth.ownerId}`, limit: '1',
+      });
+      const connectionResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_connections?${connectionQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const connectionRows = await connectionResponse.json().catch(() => null) as Array<{
+        id: string; provider: string; status: string;
+        credentials_ciphertext: string | null; credentials_key_version: string | null;
+      }> | null;
+      if (!connectionResponse.ok) { res.status(503).json({ error: 'Could not verify POS connection' }); return; }
+      const connection = connectionRows?.[0];
+      if (!connection || connection.provider !== 'foodics') { res.status(404).json({ error: 'Foodics connection not found' }); return; }
+      if (connection.status !== 'connected') { res.status(409).json({ error: 'POS connection is not connected' }); return; }
+      if (!connection.credentials_ciphertext || !connection.credentials_key_version) {
+        res.status(409).json({ error: 'POS credentials are unavailable' });
+        return;
+      }
+      let credentials: Record<string, unknown>;
+      try {
+        credentials = decryptPosCredentials(connection.credentials_ciphertext, connection.credentials_key_version);
+      } catch {
+        res.status(409).json({ error: 'POS credentials are unavailable' });
+        return;
+      }
+      const apiToken = typeof credentials.apiToken === 'string' ? credentials.apiToken : '';
+      if (!apiToken) { res.status(409).json({ error: 'A Foodics API token is required' }); return; }
+
+      const locationQuery = new URLSearchParams({
+        select: 'id,provider_location_id,currency', id: `eq.${locationId}`,
+        owner_id: `eq.${auth.ownerId}`, connection_id: `eq.${connectionId}`, active: 'eq.true', limit: '1',
+      });
+      const locationResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/pos_locations?${locationQuery}`, {
+        headers: posServiceHeaders(auth.backend.serviceKey),
+      });
+      const locationRows = await locationResponse.json().catch(() => null) as Array<{
+        id: string; provider_location_id: string; currency: string | null;
+      }> | null;
+      if (!locationResponse.ok) { res.status(503).json({ error: 'Could not verify POS location' }); return; }
+      const location = locationRows?.[0];
+      if (!location) { res.status(404).json({ error: 'Active POS location not found for this connection' }); return; }
+      const currency = (location.currency ?? '').toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency)) {
+        res.status(409).json({ error: 'POS location currency must be confirmed before syncing' });
+        return;
+      }
+
+      const client = new FoodicsClient({ apiToken, sandbox });
+      const products = await client.listProducts();
+      const items = mapFoodicsProductsToCatalogItems(products, location.provider_location_id, currency);
+      const result = await persistPosCatalogSnapshot({
+        rpc: async (functionName, args) => {
+          const rpcResponse = await fetch(`${auth.backend.supabaseUrl}/rest/v1/rpc/${functionName}`, {
+            method: 'POST',
+            headers: posServiceHeaders(auth.backend.serviceKey),
+            body: JSON.stringify(args),
+          });
+          const data = await rpcResponse.json().catch(() => null);
+          return { data, error: rpcResponse.ok ? null : { message: `RPC_${functionName}_FAILED` } };
+        },
+      }, {
+        ownerId: auth.ownerId,
+        connectionId,
+        locationId,
+        providerLocationId: location.provider_location_id,
+        items,
+        completeSnapshot: true,
+      });
+      res.set('Cache-Control', 'no-store');
+      res.json({ syncedItems: items.length, result });
+    } catch (error) {
+      console.error('[API] Foodics catalog sync failed:', error instanceof Error ? error.message : 'unknown');
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'FOODICS_AUTHORIZATION_FAILED') { res.status(401).json({ error: 'FOODICS_AUTHORIZATION_FAILED' }); return; }
+      if (message === 'FOODICS_RATE_LIMITED') { res.status(429).json({ error: 'FOODICS_RATE_LIMITED' }); return; }
+      res.status(502).json({ error: 'FOODICS_CATALOG_SYNC_FAILED' });
+    }
+  });
+
   // ============ DURABLE POS ORDER OUTBOX DISPATCH ============
   // Called by a trusted scheduler/worker using a dedicated bearer secret.
   // No browser session or merchant-supplied owner ID is accepted here.
@@ -1460,12 +1591,17 @@ export function createApiApp() {
       } catch {
         throw new Error('POS_CREDENTIALS_UNAVAILABLE');
       }
-      if (typeof credentials.orderWebhookUrl !== 'string' ||
+      if (!posProviders.has(selected.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
+      // Foodics connections carrying an account API token deliver through the
+      // real Foodics Orders API and do not need webhook credentials.
+      const isFoodicsDirect = selected.provider === 'foodics'
+        && typeof credentials.apiToken === 'string'
+        && !credentials.orderWebhookUrl;
+      if (!isFoodicsDirect && (typeof credentials.orderWebhookUrl !== 'string' ||
           typeof credentials.orderWebhookSecret !== 'string' ||
-          credentials.orderWebhookSecret.length < 32) {
+          credentials.orderWebhookSecret.length < 32)) {
         throw new Error('POS_ORDER_TARGET_NOT_CONFIGURED');
       }
-      if (!posProviders.has(selected.provider)) throw new Error('POS_PROVIDER_UNSUPPORTED');
 
       const locationQuery = new URLSearchParams({
         select: 'id,currency,provider_location_id',
@@ -1490,6 +1626,10 @@ export function createApiApp() {
         throw new Error('POS_ORDER_ITEMS_INVALID');
       }
       const mappings = new Map<string, string>();
+      const pricedItems = new Map<string, {
+        unitPrice: number;
+        modifierGroups: Array<{ id: string; options?: Array<{ id: string; priceDelta?: number }> }>;
+      }>();
       let orderCurrency = location.currency?.toUpperCase() || '';
       for (const rawItem of rawItems) {
         const line = rawItem as Record<string, unknown>;
@@ -1514,7 +1654,7 @@ export function createApiApp() {
         if (mappingRows.length !== 1) throw new Error('POS_MENU_ITEM_NOT_MAPPED');
 
         const catalogQuery = new URLSearchParams({
-          select: 'provider_item_id,currency,active,available',
+          select: 'provider_item_id,currency,active,available,unit_price,modifier_groups',
           owner_id: `eq.${event.owner_id}`,
           connection_id: `eq.${selected.id}`,
           location_id: `eq.${location.id}`,
@@ -1528,6 +1668,7 @@ export function createApiApp() {
         });
         const catalogRows = await catalogResponse.json().catch(() => null) as Array<{
           provider_item_id: string; currency: string; active: boolean; available: boolean;
+          unit_price: string | number; modifier_groups: Array<{ id: string; options?: Array<{ id: string; priceDelta?: number }> }> | null;
         }> | null;
         if (!catalogResponse.ok || !Array.isArray(catalogRows)) throw new Error('POS_CATALOG_LOOKUP_FAILED');
         if (catalogRows.length !== 1 || !catalogRows[0].active || !catalogRows[0].available) {
@@ -1537,6 +1678,10 @@ export function createApiApp() {
         if (orderCurrency && orderCurrency !== itemCurrency) throw new Error('POS_ORDER_CURRENCY_MISMATCH');
         orderCurrency = itemCurrency;
         mappings.set(menuItemId, mappingRows[0].provider_item_id);
+        pricedItems.set(mappingRows[0].provider_item_id, {
+          unitPrice: Number(catalogRows[0].unit_price),
+          modifierGroups: Array.isArray(catalogRows[0].modifier_groups) ? catalogRows[0].modifier_groups : [],
+        });
       }
       if (!/^[A-Z]{3}$/.test(orderCurrency)) throw new Error('POS_LOCATION_CURRENCY_REQUIRED');
 
@@ -1545,6 +1690,9 @@ export function createApiApp() {
         connectionId: selected.id,
         locationId: location.id,
       };
+      // Foodics connections carrying an API token are delivered through the
+      // real Foodics Orders API; connections configured with an order webhook
+      // URL keep the provider-neutral signed-webhook delivery.
       return {
         provider: selected.provider as PosProviderId,
         context,
@@ -1552,6 +1700,32 @@ export function createApiApp() {
         menuMappings: mappings,
         providerLocationId: location.provider_location_id,
         async createOrder(input: PosCreateOrderInput) {
+          if (isFoodicsDirect) {
+            const client = new FoodicsClient({
+              apiToken: credentials.apiToken as string,
+              sandbox: credentials.sandbox === true,
+            });
+            const pricing: FoodicsPricingSource = {
+              itemPrice: providerItemId => pricedItems.get(providerItemId)?.unitPrice ?? null,
+              optionPrice: optionId => {
+                for (const row of pricedItems.values()) {
+                  for (const group of row.modifierGroups) {
+                    const option = (group.options ?? []).find(item => item.id === optionId);
+                    if (option) return typeof option.priceDelta === 'number' ? option.priceDelta : null;
+                  }
+                }
+                return null;
+              },
+            };
+            const payload = buildFoodicsOrderPayload(input, pricing);
+            const result = await client.createOrder(payload);
+            return {
+              providerOrderId: payload.id,
+              status: 'accepted',
+              acceptedAt: new Date().toISOString(),
+              rawStatus: result.duplicated ? 'duplicate_id_replay' : 'created',
+            };
+          }
           return sendCustomPosOrderWebhook({
             orderWebhookUrl: credentials.orderWebhookUrl as string,
             orderWebhookSecret: credentials.orderWebhookSecret as string,

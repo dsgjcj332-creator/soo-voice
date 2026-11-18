@@ -54,3 +54,37 @@ status webhook (`2026_12_02_pos_order_status_webhook.sql`), which updates the
 local order state that the kitchen display reads. End-to-end parity between
 SooVoice, the POS and the kitchen is verified per provider in the production
 readiness phase.
+
+## Foodics real integration
+
+Foodics connections carrying an account API token deliver orders through the
+official Foodics Orders API instead of the custom signed webhook:
+
+- **Client** (`src/lib/pos/foodics/client.ts`): documented v5 base URLs
+  (`api.foodics.com/v5`, `api-sandbox.foodics.com/v5`), mandatory capitalized
+  `Authorization: Bearer` header, `page`-based pagination (50 per page,
+  looped on `meta.last_page`), comma-separated `include=branches,modifiers`
+  for catalog relations, and the documented `Duplicate ID.` 422 replay path.
+- **Idempotency**: the Foodics order `id` is a deterministic UUIDv4-shaped
+  hash of the local order id, so worker retries replay the same id and Foodics
+  returns `Duplicate ID.` instead of double-entering the order; the worker
+  marks the event delivered either way.
+- **Catalog sync**: `POST /api/pos/connections/{id}/sync-catalog` pulls live
+  products with per-branch `pivot.price` / `is_active` / `is_in_stock` and
+  modifier groups, maps them to the canonical catalog contract (selections
+  capped at the number of available options) and persists a complete snapshot
+  through the service-role catalog RPC.
+- **OAuth**: `POST /api/pos/foodics/oauth/exchange` swaps an authorization
+  code for the account token using `FOODICS_CLIENT_ID` / `FOODICS_CLIENT_SECRET`
+  server-side; the returned token is stored through the existing connection
+  vault. Authorize URL builder follows `console(.sandbox).foodics.com/authorize`.
+- **Order payload**: `type` 1 (dine-in) / 2 (pickup) / 3 (delivery),
+  `branch_id`, per-product `unit_price` from the approved catalog, modifier
+  options with absolute prices, table references surfaced via `kitchen_notes`
+  (Foodics `table_id` expects a table UUID, which guest table numbers are not).
+
+Not wired yet (documented honestly in adapter capabilities): order reads and
+cancellation, and `verifyWebhook` fails closed because Foodics does not publish
+a webhook signature scheme in its official documentation; status/menu updates
+therefore still enter through the verified ingress until Foodics documents it.
+
