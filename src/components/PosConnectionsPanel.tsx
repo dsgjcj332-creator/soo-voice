@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 type PosLocation = { id: string; connection_id: string; provider_location_id: string; name: string; timezone: string | null; currency: string | null; active: boolean; };
 type PosCatalogRow = { id: string; provider_item_id: string; category_id: string | null; name: string; description: string | null; currency: string; unit_price: number; available: boolean; active: boolean; source_updated_at: string; };
-type PosMenuItem = { id: string; name: string; description: string | null; price: number };
+type PosMenuItem = { id: string; name: string; description: string | null; price: number; isAiOnly?: boolean };
 type PosCatalogField = 'name' | 'description' | 'price' | 'available' | 'categoryId';
 type PosApplyField = 'name' | 'description' | 'price';
 type PosApplyEvent = { id: string; provider_item_id: string; selected_fields: PosApplyField[]; before_state: Record<string, unknown>; after_state: Record<string, unknown>; created_at: string };
@@ -407,7 +407,7 @@ export function PosConnectionsPanel({ language }: { language: string }) {
               <label className="min-w-0 flex-1 text-xs font-semibold text-slate-600">{isArabic ? 'اربطه بمنتج من منيو SooVoice' : 'Link to a SooVoice menu item'}
                 <select disabled={!item.active} value={mappingSelections[item.provider_item_id] ?? catalogMappings.find(mapping => mapping.provider_item_id === item.provider_item_id)?.menu_item_id ?? ''} onChange={e => setMappingSelections(current => ({ ...current, [item.provider_item_id]: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm">
                   <option value="">{isArabic ? 'اختر منتج المنيو' : 'Select menu item'}</option>
-                  {menuItems.map(menuItem => <option key={menuItem.id} value={menuItem.id}>{menuItem.name} · {Number(menuItem.price).toFixed(2)}</option>)}
+                  {menuItems.map(menuItem => <option key={menuItem.id} value={menuItem.id}>{menuItem.name}{menuItem.isAiOnly ? (isArabic ? ' · صوتي فقط' : ' · voice only') : ''} · {Number(menuItem.price).toFixed(2)}</option>)}
                 </select>
               </label>
               <div className="w-full rounded-lg bg-slate-50 p-3">
